@@ -82,6 +82,9 @@ test("createOfficeToolExecutor dispatches apply-edit and capture requests throug
       calls.push({ name: "navigateOfficeAnchor", payload: { host, anchor } });
       return { host, anchor };
     },
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
   });
 
   const applyRequest: OfficeToolRequest = {
@@ -130,6 +133,9 @@ test("createOfficeToolExecutor dispatches Word navigation and formats Office run
       throw { message: "No selection", code: "ItemNotFound", debugInfo: { errorLocation: "Range.getText" } };
     },
     navigateOfficeAnchor: async (host, anchor) => ({ host, anchor }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
     logger: {
       error: (...args: unknown[]) => {
         logEntries.push(args);
@@ -172,6 +178,9 @@ test("createOfficeToolExecutor forwards get-context scope to the host adapter", 
     },
     applyHostAction: async () => ({ ok: true }),
     navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
   });
 
   const result = await executeOfficeTool({

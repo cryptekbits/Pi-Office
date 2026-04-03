@@ -64,7 +64,6 @@ Implemented on 2026-04-02:
 
 Still pending from the plan:
 
-- split the monolithic Office host file into host-specific adapters
 - deeper Excel parity such as chart axes/labels editing, pivot schema/filter refinements, table-aware sort/filter affordances, and remaining formatting helpers like borders
 - broader PowerPoint structure coverage such as notes regions and deeper layout/master editing beyond slide-level targeting
 - fuller Word review/document structure coverage such as wider non-selection navigation affordances beyond headings/comments/revisions/notes
@@ -93,7 +92,7 @@ Still pending from the plan:
 
 ### Phase 0. Foundation Refactor
 
-- [ ] Split `apps/taskpane/src/lib/office.ts` into host-specific adapters:
+- [x] Split `apps/taskpane/src/lib/office.ts` into host-specific adapters:
   - `apps/taskpane/src/lib/office/shared/*`
   - `apps/taskpane/src/lib/office/word/*`
   - `apps/taskpane/src/lib/office/excel/*`
