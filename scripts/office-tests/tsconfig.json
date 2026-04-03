@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "node"
+    ],
+    "rootDir": "../..",
+    "outDir": "./dist"
+  },
+  "include": [
+    "../../apps/taskpane/src/lib/office-bridge.ts",
+    "../../apps/taskpane/src/lib/office-action-policy.ts",
+    "./src/**/*.ts"
+  ]
+}

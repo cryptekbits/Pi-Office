@@ -1,0 +1,17 @@
+{
+  "actions": [
+    {
+      "id": "ShowTaskpane",
+      "type": "ExecuteFunction",
+      "name": "Show Pi-Office sidebar"
+    }
+  ],
+  "shortcuts": [
+    {
+      "action": "ShowTaskpane",
+      "key": {
+        "default": "Ctrl+Alt+P"
+      }
+    }
+  ]
+}

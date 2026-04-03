@@ -1,0 +1,29 @@
+# Node and build output
+node_modules/
+dist/
+.turbo/
+
+# Workspace artifacts
+.pi-office/
+.codex-office-tests-dist/
+.tmp-pi-image-gen/
+debugging_screenshots/
+.codex-inspect-chart-template.py
+.codex-temp-chart-template.pptx
+coverage/
+*.log
+npm-debug.log*
+
+# Local TLS/dev files
+certs/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Env / local config
+.env
+.env.*
+!.env.example

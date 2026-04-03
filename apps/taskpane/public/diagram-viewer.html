@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Expanded View</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #201f1e;
+        --toolbar-bg: #f3f2f1;
+        --toolbar-border: #e1dfdd;
+        --btn-bg: #ffffff;
+        --btn-hover: #f3f2f1;
+        --btn-border: #8a8886;
+        --accent: #185abd;
+      }
+      .dark {
+        --bg: #1e1e1e;
+        --fg: #d4d4d4;
+        --toolbar-bg: #252526;
+        --toolbar-border: #3c3c3c;
+        --btn-bg: #2d2d2d;
+        --btn-hover: #3c3c3c;
+        --btn-border: #555555;
+        --accent: #4a90d9;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      }
+
+      /* ---- Viewer shell (view mode) ---- */
+      #viewer-shell {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      .viewer-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        background: var(--toolbar-bg);
+        border-bottom: 1px solid var(--toolbar-border);
+        flex-shrink: 0;
+      }
+      .viewer-toolbar-title {
+        font-size: 13px;
+        font-weight: 600;
+        margin-right: auto;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .viewer-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-family: inherit;
+        border: 1px solid var(--btn-border);
+        border-radius: 4px;
+        background: var(--btn-bg);
+        color: var(--fg);
+        cursor: pointer;
+        transition: background 0.12s;
+        white-space: nowrap;
+      }
+      .viewer-btn:hover { background: var(--btn-hover); }
+      .viewer-btn:active { opacity: 0.8; }
+      .viewer-btn-primary {
+        background: var(--accent);
+        color: #ffffff;
+        border-color: var(--accent);
+      }
+      .viewer-btn-primary:hover { opacity: 0.9; background: var(--accent); }
+      .viewer-btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+      /* ---- Content area (view mode) ---- */
+      #content-area {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+        cursor: grab;
+      }
+      #content-area.grabbing { cursor: grabbing; }
+
+      #drawio-container {
+        display: none;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #drawio-container .mxgraph {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+      }
+
+      #panzoom-container {
+        display: none;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        position: relative;
+      }
+      #panzoom-inner {
+        transform-origin: 0 0;
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+      #panzoom-inner svg { display: block; max-width: none; }
+      #panzoom-inner img {
+        display: block;
+        max-width: none;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+
+      .zoom-controls {
+        position: absolute;
+        bottom: 12px;
+        right: 12px;
+        display: flex;
+        gap: 4px;
+        z-index: 10;
+      }
+      .zoom-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--fg);
+        font-size: 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.12s;
+        opacity: 0.9;
+      }
+      .zoom-btn:hover { background: var(--btn-hover); opacity: 1; }
+
+      /* ---- Editor shell (edit mode) ---- */
+      #editor-shell {
+        display: none;
+        flex-direction: column;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        background: var(--bg);
+      }
+      #editor-topbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 12px;
+        background: var(--toolbar-bg);
+        border-bottom: 1px solid var(--toolbar-border);
+        flex-shrink: 0;
+        min-height: 38px;
+      }
+      #editor-topbar-hint {
+        font-size: 11px;
+        color: var(--fg);
+        opacity: 0.6;
+        flex: 1;
+        font-style: italic;
+      }
+      #drawio-editor {
+        flex: 1;
+        width: 100%;
+        border: none;
+        display: block;
+      }
+
+      /* ---- Common ---- */
+      #loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        font-size: 14px;
+        color: var(--fg);
+        opacity: 0.6;
+      }
+      .spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid var(--toolbar-border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 8px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #error {
+        display: none;
+        padding: 16px;
+        margin: 16px;
+        border: 1px solid #e74c3c;
+        border-radius: 8px;
+        background: #fdf0ef;
+        color: #c0392b;
+        font-size: 13px;
+      }
+      .dark #error {
+        background: #3a1a1a;
+        border-color: #aa3333;
+        color: #ff8888;
+      }
+      .toast {
+        position: fixed;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        background: #333;
+        color: #fff;
+        font-size: 12px;
+        border-radius: 6px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+        z-index: 200;
+      }
+      .toast.show { opacity: 1; }
+    </style>
+  </head>
+  <body>
+
+    <!-- VIEW MODE -->
+    <div id="viewer-shell">
+      <div class="viewer-toolbar">
+        <span class="viewer-toolbar-title" id="title">Expanded View</span>
+        <button class="viewer-btn" id="edit-btn" style="display:none">
+          <svg viewBox="0 0 16 16"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758zm1.414 1.06a.25.25 0 00-.354 0L3.462 11.098a.25.25 0 00-.064.108l-.631 2.208 2.208-.63a.25.25 0 00.108-.064l8.61-8.61a.25.25 0 000-.355z"/></svg>
+          Edit
+        </button>
+        <button class="viewer-btn" id="copy-btn">
+          <svg viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25zM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25z"/></svg>
+          Copy Image
+        </button>
+        <button class="viewer-btn" id="download-btn">
+          <svg viewBox="0 0 16 16"><path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14zM7.25 7.689V2a.75.75 0 011.5 0v5.689l1.97-1.969a.749.749 0 111.06 1.06l-3.25 3.25a.749.749 0 01-1.06 0L4.22 6.78a.749.749 0 111.06-1.06z"/></svg>
+          Download PNG
+        </button>
+        <button class="viewer-btn viewer-btn-primary" id="insert-btn">
+          <svg viewBox="0 0 16 16"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758zm1.414 1.06a.25.25 0 00-.354 0L3.462 11.098a.25.25 0 00-.064.108l-.631 2.208 2.208-.63a.25.25 0 00.108-.064l8.61-8.61a.25.25 0 000-.355z"/></svg>
+          Insert into Document
+        </button>
+        <button class="viewer-btn" id="close-btn">Close</button>
+      </div>
+      <div id="loading"><div class="spinner"></div>Loading...</div>
+      <div id="error"></div>
+      <div id="content-area">
+        <div id="drawio-container"></div>
+        <div id="panzoom-container">
+          <div id="panzoom-inner"></div>
+          <div class="zoom-controls">
+            <button class="zoom-btn" id="zoom-in-btn" title="Zoom in">+</button>
+            <button class="zoom-btn" id="zoom-out-btn" title="Zoom out">&minus;</button>
+            <button class="zoom-btn" id="zoom-fit-btn" title="Fit to view">&#8596;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDIT MODE -->
+    <div id="editor-shell">
+      <div id="editor-topbar">
+        <button class="viewer-btn" id="editor-back-btn">
+          <svg viewBox="0 0 16 16"><path d="M7.78 12.53a.75.75 0 01-1.06 0L2.47 8.28a.75.75 0 010-1.06l4.25-4.25a.751.751 0 011.042.018.751.751 0 01.018 1.042L4.81 7h7.44a.75.75 0 010 1.5H4.81l2.97 2.97a.75.75 0 010 1.06z" fill="currentColor"/></svg>
+          Back to Viewer
+        </button>
+        <span id="editor-topbar-hint">Use Save / Save &amp; Exit in the editor to keep your changes</span>
+      </div>
+      <iframe id="drawio-editor" frameborder="0" allowfullscreen></iframe>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      var STORAGE_KEY = "pi-expand-viewer-data";
+      var EDITOR_ORIGIN = "https://embed.diagrams.net";
+      var viewerMode = null; // "drawio" | "svg" | "image"
+      var currentData = null;
+      var originalData = null;
+      var savedXml = null;
+      var editorActive = false;
+      var UPDATE_STORAGE_KEY = "pi-expand-viewer-update";
+
+      // ---- Pan-zoom state ----
+      var pzScale = 1, pzX = 0, pzY = 0;
+      var pzDragging = false;
+      var pzStartX = 0, pzStartY = 0, pzStartPanX = 0, pzStartPanY = 0;
+      var MIN_SCALE = 0.1, MAX_SCALE = 10;
+
+      function showToast(msg) {
+        var el = document.getElementById("toast");
+        el.textContent = msg;
+        el.classList.add("show");
+        setTimeout(function () { el.classList.remove("show"); }, 2000);
+      }
+
+      function showError(msg) {
+        document.getElementById("loading").style.display = "none";
+        var el = document.getElementById("error");
+        el.style.display = "block";
+        el.textContent = msg;
+      }
+
+      function sendToParent(msg) {
+        try {
+          if (typeof Office !== "undefined" && Office.context && Office.context.ui) {
+            Office.context.ui.messageParent(msg);
+            return;
+          }
+        } catch (_) {}
+        if (window.opener) {
+          window.opener.postMessage({ type: "pi-expand-viewer", payload: msg }, "*");
+        }
+      }
+
+      // ---- Pan-zoom helpers ----
+      function applyTransform() {
+        var inner = document.getElementById("panzoom-inner");
+        inner.style.transform = "translate(" + pzX + "px," + pzY + "px) scale(" + pzScale + ")";
+      }
+
+      function fitToView() {
+        var container = document.getElementById("panzoom-container");
+        var inner = document.getElementById("panzoom-inner");
+        var child = inner.firstElementChild;
+        if (!child) return;
+
+        var cw = container.clientWidth;
+        var ch = container.clientHeight;
+        var naturalW, naturalH;
+
+        if (child.tagName === "IMG") {
+          naturalW = child.naturalWidth || child.width || 800;
+          naturalH = child.naturalHeight || child.height || 600;
+        } else {
+          var bbox = child.getBoundingClientRect();
+          naturalW = bbox.width / pzScale || 800;
+          naturalH = bbox.height / pzScale || 600;
+        }
+
+        var scaleX = (cw - 40) / naturalW;
+        var scaleY = (ch - 40) / naturalH;
+        pzScale = Math.min(scaleX, scaleY, 1);
+        pzScale = Math.max(pzScale, MIN_SCALE);
+        pzX = (cw - naturalW * pzScale) / 2;
+        pzY = (ch - naturalH * pzScale) / 2;
+        applyTransform();
+      }
+
+      function setupPanZoom() {
+        var area = document.getElementById("content-area");
+        var container = document.getElementById("panzoom-container");
+
+        container.addEventListener("mousedown", function (e) {
+          if (e.button !== 0) return;
+          pzDragging = true;
+          pzStartX = e.clientX; pzStartY = e.clientY;
+          pzStartPanX = pzX; pzStartPanY = pzY;
+          area.classList.add("grabbing");
+          e.preventDefault();
+        });
+
+        window.addEventListener("mousemove", function (e) {
+          if (!pzDragging) return;
+          pzX = pzStartPanX + (e.clientX - pzStartX);
+          pzY = pzStartPanY + (e.clientY - pzStartY);
+          applyTransform();
+        });
+
+        window.addEventListener("mouseup", function () {
+          if (pzDragging) { pzDragging = false; area.classList.remove("grabbing"); }
+        });
+
+        container.addEventListener("wheel", function (e) {
+          e.preventDefault();
+          var rect = container.getBoundingClientRect();
+          var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+          var delta = e.deltaY > 0 ? 0.9 : 1.1;
+          var newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, pzScale * delta));
+          pzX = mx - (mx - pzX) * (newScale / pzScale);
+          pzY = my - (my - pzY) * (newScale / pzScale);
+          pzScale = newScale;
+          applyTransform();
+        }, { passive: false });
+
+        document.getElementById("zoom-in-btn").addEventListener("click", function () {
+          var rect = container.getBoundingClientRect();
+          var cx = rect.width / 2, cy = rect.height / 2;
+          var newScale = Math.min(MAX_SCALE, pzScale * 1.25);
+          pzX = cx - (cx - pzX) * (newScale / pzScale);
+          pzY = cy - (cy - pzY) * (newScale / pzScale);
+          pzScale = newScale;
+          applyTransform();
+        });
+
+        document.getElementById("zoom-out-btn").addEventListener("click", function () {
+          var rect = container.getBoundingClientRect();
+          var cx = rect.width / 2, cy = rect.height / 2;
+          var newScale = Math.max(MIN_SCALE, pzScale * 0.8);
+          pzX = cx - (cx - pzX) * (newScale / pzScale);
+          pzY = cy - (cy - pzY) * (newScale / pzScale);
+          pzScale = newScale;
+          applyTransform();
+        });
+
+        document.getElementById("zoom-fit-btn").addEventListener("click", fitToView);
+      }
+
+      // ---- Drawio embed PNG export (uses embed API instead of scraping GraphViewer SVG) ----
+      var DRAWIO_EXPORT_URL = EDITOR_ORIGIN + "/?embed=1&proto=json&spin=0&modified=0&libraries=0&noSaveBtn=1&noExitBtn=1";
+      var exportFrame = null;
+      var exportFrameReady = false;
+      var pendingExportCb = null;
+      var exportTimeoutId = null;
+
+      function ensureExportFrame(onReady) {
+        if (exportFrame && exportFrameReady) { onReady(); return; }
+        if (exportFrame) {
+          var prev = exportFrame._onReady;
+          exportFrame._onReady = function() { if (prev) prev(); onReady(); };
+          return;
+        }
+        var iframe = document.createElement("iframe");
+        iframe.src = DRAWIO_EXPORT_URL;
+        iframe.tabIndex = -1;
+        iframe.setAttribute("aria-hidden", "true");
+        iframe.style.cssText = "position:fixed;left:-99999px;top:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none;";
+        iframe._onReady = onReady;
+        iframe.onerror = function() {
+          exportFrame = null;
+          if (pendingExportCb) { pendingExportCb(null); pendingExportCb = null; }
+        };
+        document.body.appendChild(iframe);
+        exportFrame = iframe;
+      }
+
+      function handleExportFrameMessage(eventName, message) {
+        if (eventName === "init") {
+          exportFrameReady = true;
+          if (exportFrame && exportFrame._onReady) {
+            var cb = exportFrame._onReady;
+            exportFrame._onReady = null;
+            cb();
+          }
+          return;
+        }
+        if (eventName === "export" && pendingExportCb) {
+          clearTimeout(exportTimeoutId);
+          var cb = pendingExportCb;
+          pendingExportCb = null;
+          try {
+            var dataUri = String(message.data || "");
+            var b64 = dataUri.replace(/^data:image\/png;base64,/, "");
+            var byteStr = atob(b64);
+            var bytes = new Uint8Array(byteStr.length);
+            for (var i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+            cb(new Blob([bytes], { type: "image/png" }), b64);
+          } catch (e) {
+            cb(null);
+          }
+        }
+      }
+
+      function exportDrawioToPng(xml, callback) {
+        ensureExportFrame(function() {
+          if (!exportFrame || !exportFrame.contentWindow) { callback(null); return; }
+          pendingExportCb = callback;
+          exportTimeoutId = setTimeout(function() {
+            if (pendingExportCb) { pendingExportCb(null); pendingExportCb = null; }
+          }, 30000);
+          var scale = Math.min(3, window.devicePixelRatio || 2);
+          exportFrame.contentWindow.postMessage(JSON.stringify({
+            action: "export",
+            format: "png",
+            xml: xml,
+            scale: scale,
+            background: "#FFFFFF"
+          }), EDITOR_ORIGIN);
+        });
+      }
+
+      // ---- PNG export ----
+      function exportToPngBlob(callback) {
+        if (viewerMode === "image") {
+          var byteStr = atob(currentData);
+          var bytes = new Uint8Array(byteStr.length);
+          for (var i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+          callback(new Blob([bytes], { type: "image/png" }), currentData);
+          return;
+        }
+
+        if (viewerMode === "drawio") {
+          exportDrawioToPng(currentData, callback);
+          return;
+        }
+
+        var svgEl = document.getElementById("panzoom-inner").querySelector("svg");
+        if (!svgEl) { callback(null); return; }
+
+        var clone = svgEl.cloneNode(true);
+        var bbox = svgEl.getBoundingClientRect();
+        var w = Math.ceil(bbox.width / pzScale) || 800;
+        var h = Math.ceil(bbox.height / pzScale) || 600;
+        var scale = Math.min(2, window.devicePixelRatio || 1);
+
+        clone.setAttribute("width", w);
+        clone.setAttribute("height", h);
+        if (!clone.getAttribute("xmlns")) clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+        var serialized = new XMLSerializer().serializeToString(clone);
+        var svgBlob = new Blob([serialized], { type: "image/svg+xml;charset=utf-8" });
+        var url = URL.createObjectURL(svgBlob);
+        var img = new Image();
+        img.onload = function () {
+          var canvas = document.createElement("canvas");
+          canvas.width = w * scale; canvas.height = h * scale;
+          var ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(scale, scale);
+          ctx.drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(url);
+          var dataUrl = canvas.toDataURL("image/png");
+          var b64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+          canvas.toBlob(function (blob) { callback(blob, b64); }, "image/png");
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); callback(null); };
+        img.src = url;
+      }
+
+      // ---- Toolbar button handlers ----
+      document.getElementById("copy-btn").addEventListener("click", function () {
+        exportToPngBlob(function (blob) {
+          if (!blob) { showToast("Failed to create image"); return; }
+          navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(function () {
+            showToast("Copied to clipboard");
+          }).catch(function () { showToast("Copy failed"); });
+        });
+      });
+
+      document.getElementById("download-btn").addEventListener("click", function () {
+        exportToPngBlob(function (blob) {
+          if (!blob) { showToast("Failed to create image"); return; }
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url; a.download = "diagram-" + Date.now() + ".png"; a.click();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 100);
+        });
+      });
+
+      document.getElementById("insert-btn").addEventListener("click", function () {
+        exportToPngBlob(function (blob, b64) {
+          if (!b64) { showToast("Failed to create image"); return; }
+          sendToParent("insert:" + b64);
+          showToast("Sent to document");
+        });
+      });
+
+      document.getElementById("close-btn").addEventListener("click", function () {
+        if (originalData !== null && currentData !== originalData) {
+          localStorage.setItem(UPDATE_STORAGE_KEY, currentData);
+        }
+        sendToParent("close");
+        try { window.close(); } catch (_) {}
+      });
+
+      // ---- Edit mode ----
+      document.getElementById("edit-btn").addEventListener("click", function () {
+        if (!currentData || viewerMode !== "drawio") return;
+        enterEditMode();
+      });
+
+      document.getElementById("editor-back-btn").addEventListener("click", function () {
+        exitEditMode();
+      });
+
+      function enterEditMode() {
+        editorActive = true;
+        savedXml = null;
+
+        var isDark = document.documentElement.classList.contains("dark");
+        var editorUrl = EDITOR_ORIGIN + "/?embed=1&proto=json&spin=1&libraries=1&saveAndExit=1&dark=" + (isDark ? "1" : "0");
+
+        document.getElementById("drawio-editor").src = editorUrl;
+        document.getElementById("viewer-shell").style.display = "none";
+        document.getElementById("editor-shell").style.display = "flex";
+      }
+
+      function exitEditMode() {
+        editorActive = false;
+
+        document.getElementById("drawio-editor").src = "about:blank";
+        document.getElementById("editor-shell").style.display = "none";
+        document.getElementById("viewer-shell").style.display = "flex";
+
+        if (savedXml && savedXml !== currentData) {
+          currentData = savedXml;
+          var container = document.getElementById("drawio-container");
+          container.style.display = "none";
+          container.innerHTML = "";
+          document.getElementById("error").style.display = "none";
+          document.getElementById("loading").style.display = "flex";
+          renderDrawio(currentData);
+        }
+      }
+
+      // ---- draw.io postMessage handler (routes export frame + editor messages) ----
+      window.addEventListener("message", function (event) {
+        if (event.origin !== EDITOR_ORIGIN || typeof event.data !== "string") return;
+
+        var message;
+        try { message = JSON.parse(event.data); } catch (_) { return; }
+
+        var eventName = String(message.event || "");
+
+        if (exportFrame && event.source === exportFrame.contentWindow) {
+          handleExportFrameMessage(eventName, message);
+          return;
+        }
+
+        if (!editorActive) return;
+
+        if (eventName === "init") {
+          var iframe = document.getElementById("drawio-editor");
+          if (iframe.contentWindow) {
+            iframe.contentWindow.postMessage(JSON.stringify({
+              action: "load",
+              xml: currentData,
+              title: "Diagram"
+            }), EDITOR_ORIGIN);
+          }
+        } else if (eventName === "autosave") {
+          if (message.xml) savedXml = message.xml;
+        } else if (eventName === "save") {
+          if (message.xml) savedXml = message.xml;
+          if (message.exit) {
+            exitEditMode();
+          } else {
+            showToast("Diagram saved");
+          }
+        } else if (eventName === "exit") {
+          exitEditMode();
+        }
+      });
+
+      // ---- Diagram render functions ----
+      function renderDrawio(xml) {
+        if (!document.querySelector('script[src*="viewer-static.min.js"]')) {
+          var script = document.createElement("script");
+          script.src = "https://viewer.diagrams.net/js/viewer-static.min.js";
+          script.async = true;
+          document.head.appendChild(script);
+        }
+
+        var container = document.getElementById("drawio-container");
+        var loading = document.getElementById("loading");
+
+        function waitForViewer(cb) {
+          if (typeof GraphViewer !== "undefined") { cb(); return; }
+          var attempts = 0;
+          var iv = setInterval(function () {
+            attempts++;
+            if (typeof GraphViewer !== "undefined") { clearInterval(iv); cb(); }
+            else if (attempts > 100) { clearInterval(iv); showError("Failed to load draw.io viewer"); }
+          }, 100);
+        }
+
+        waitForViewer(function () {
+          try {
+            container.innerHTML = "";
+            var config = {
+              highlight: "#0000ff",
+              "dark-mode": "auto",
+              nav: true,
+              resize: true,
+              toolbar: "zoom layers tags",
+              xml: xml
+            };
+            var div = document.createElement("div");
+            div.className = "mxgraph";
+            div.setAttribute("data-mxgraph", JSON.stringify(config));
+            container.appendChild(div);
+            loading.style.display = "none";
+            container.style.display = "block";
+            GraphViewer.processElements();
+          } catch (e) {
+            showError("Failed to render diagram: " + e.message);
+          }
+        });
+      }
+
+      function renderSvg(svgHtml) {
+        var loading = document.getElementById("loading");
+        var container = document.getElementById("panzoom-container");
+        var inner = document.getElementById("panzoom-inner");
+
+        inner.innerHTML = svgHtml;
+        loading.style.display = "none";
+        container.style.display = "block";
+        setupPanZoom();
+        requestAnimationFrame(function () { fitToView(); });
+      }
+
+      function renderImage(base64) {
+        var loading = document.getElementById("loading");
+        var container = document.getElementById("panzoom-container");
+        var inner = document.getElementById("panzoom-inner");
+
+        var img = document.createElement("img");
+        img.src = "data:image/png;base64," + base64;
+        img.alt = "Generated image";
+        img.onload = function () {
+          loading.style.display = "none";
+          container.style.display = "block";
+          setupPanZoom();
+          requestAnimationFrame(function () { fitToView(); });
+        };
+        img.onerror = function () { showError("Failed to load image"); };
+        inner.appendChild(img);
+      }
+
+      window.addEventListener("beforeunload", function () {
+        if (originalData !== null && currentData !== originalData) {
+          localStorage.setItem(UPDATE_STORAGE_KEY, currentData);
+        }
+      });
+
+      // ---- Init ----
+      function init() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) { showError("No content data found."); return; }
+          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(UPDATE_STORAGE_KEY);
+
+          var payload = JSON.parse(raw);
+          viewerMode = payload.contentType;
+          currentData = payload.data;
+          originalData = payload.data;
+
+          if (payload.isDark) document.documentElement.classList.add("dark");
+
+          var titleEl = document.getElementById("title");
+          if (viewerMode === "drawio") {
+            titleEl.textContent = "Draw.io Diagram";
+            document.getElementById("edit-btn").style.display = "inline-flex";
+            renderDrawio(currentData);
+          } else if (viewerMode === "svg") {
+            titleEl.textContent = "Diagram";
+            renderSvg(currentData);
+          } else if (viewerMode === "image") {
+            titleEl.textContent = "Generated Image";
+            renderImage(currentData);
+          } else {
+            showError("Unknown content type: " + viewerMode);
+          }
+        } catch (e) {
+          showError("Failed to load content: " + e.message);
+        }
+      }
+
+      if (typeof Office !== "undefined" && Office.onReady) {
+        Office.onReady(function () { init(); });
+      } else {
+        document.addEventListener("DOMContentLoaded", init);
+      }
+    </script>
+  </body>
+</html>

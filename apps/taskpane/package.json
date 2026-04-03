@@ -1,0 +1,34 @@
+{
+  "name": "@pi-office/taskpane",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "pretypecheck": "npm run build --prefix ../../packages/pi-office-pack",
+    "prebuild": "npm run build --prefix ../../packages/pi-office-pack",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pi-office/pi-office-pack": "file:../../packages/pi-office-pack",
+    "jszip": "^3.10.1",
+    "katex": "^0.16.44",
+    "mermaid": "^11.14.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "shiki": "^4.0.2",
+    "simple-icons": "^16.14.0"
+  },
+  "devDependencies": {
+    "@types/office-js": "1.0.586",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "6.0.1",
+    "typescript": "^5.7.3",
+    "vite": "8.0.3"
+  }
+}

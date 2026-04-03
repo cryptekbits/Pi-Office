@@ -1,0 +1,45 @@
+{
+  "name": "pi-office",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:pack dev:companion",
+    "dev:pack": "npm run dev --workspace @pi-office/pi-office-pack",
+    "dev:companion": "npm run dev --workspace @pi-office/companion",
+    "build": "npm-run-all build:pack build:taskpane build:companion",
+    "build:pack": "npm run build --workspace @pi-office/pi-office-pack",
+    "build:taskpane": "npm run build --workspace @pi-office/taskpane",
+    "build:companion": "npm run build --workspace @pi-office/companion",
+    "typecheck": "npm-run-all typecheck:pack typecheck:taskpane typecheck:companion",
+    "typecheck:pack": "npm run typecheck --workspace @pi-office/pi-office-pack",
+    "typecheck:taskpane": "npm run typecheck --workspace @pi-office/taskpane",
+    "typecheck:companion": "npm run typecheck --workspace @pi-office/companion",
+    "test:office": "node ./scripts/run-office-tests.mjs",
+    "smoke:office": "node ./scripts/run-office-smoke.mjs",
+    "smoke:office:word": "node ./scripts/run-office-smoke.mjs --host word",
+    "smoke:office:excel": "node ./scripts/run-office-smoke.mjs --host excel",
+    "smoke:office:powerpoint": "node ./scripts/run-office-smoke.mjs --host powerpoint",
+    "prepare:certs": "node ./scripts/ensure-dev-certs.mjs",
+    "generate:icons": "node ./scripts/generate-brand-icons.mjs",
+    "validate:manifests": "node ./scripts/validate-manifests.mjs",
+    "sideload:word": "office-addin-debugging start manifests/word.xml",
+    "sideload:excel": "office-addin-debugging start manifests/excel.xml",
+    "sideload:powerpoint": "office-addin-debugging start manifests/powerpoint.xml",
+    "sideload:stop": "office-addin-debugging stop"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "npm-run-all": "^4.1.5",
+    "office-addin-debugging": "6.0.6",
+    "office-addin-manifest": "^1.13.3",
+    "typescript": "^5.7.3"
+  }
+}

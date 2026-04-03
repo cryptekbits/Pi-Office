@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pi-Office</title>
+    <meta
+      name="description"
+      content="Pi-powered Office assistant for Word, Excel, and PowerPoint."
+    />
+    <link rel="icon" type="image/svg+xml" href="/brand/icon.svg" />
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
+    <script>
+      delete history.pushState;
+      delete history.replaceState;
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      let isTaskpaneVisible = false;
+
+      Office?.onReady(() => {
+        if (Office?.addin?.onVisibilityModeChanged) {
+          Office.addin.onVisibilityModeChanged((args) => {
+            isTaskpaneVisible = args.visibilityMode === "Taskpane";
+          });
+        }
+
+        if (Office?.actions?.associate) {
+          Office.actions.associate("ShowTaskpane", (event) => {
+            event?.completed?.();
+            isTaskpaneVisible = !isTaskpaneVisible;
+
+            if (isTaskpaneVisible) {
+              return Office.addin?.showAsTaskpane()?.then(() => {
+                window.postMessage({ type: "KEYBOARD_SHORTCUT_TRIGGERED", action: "ShowTaskpane" }, "*");
+              });
+            }
+
+            return Office.addin?.hide()?.then(() => {
+              window.postMessage({ type: "KEYBOARD_SHORTCUT_TRIGGERED", action: "HideTaskpane" }, "*");
+            });
+          });
+        }
+      });
+    </script>
+  </body>
+</html>
