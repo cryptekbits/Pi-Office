@@ -181,9 +181,15 @@ From `OFFICE_TOOL_NAMES` and runtime registration:
 
 ### External Context Tooling Gaps (if intentionally in-scope)
 
-- [ ] `GAP-EXT-01` Decide whether to expose `refresh_mcp_connectors` equivalent.
-- [ ] `GAP-EXT-02` Decide whether to expose `read_skill` equivalent.
-- [ ] `GAP-EXT-03` Decide whether to expose first-class `web_search`/`web_fetch` equivalents.
+- [x] `GAP-EXT-01` Decide whether to expose `refresh_mcp_connectors` equivalent.
+- [x] `GAP-EXT-02` Decide whether to expose `read_skill` equivalent.
+- [x] `GAP-EXT-03` Decide whether to expose first-class `web_search`/`web_fetch` equivalents.
+
+### 6.5 External Context Gap Closure Decisions (Bounded Independent-Taskpane Path)
+
+- `GAP-EXT-01: resolved` - `refresh_mcp_connectors` remains a runtime/UI capability rather than a first-class agent tool. The supported refresh flow is Integrations -> Connected -> **Re-verify**, backed by `POST /v1/connectors/reverify`. Manual validation should execute re-verify during `word-taskpane-stability`, `excel-taskpane-stability`, and `powerpoint-taskpane-stability` scenarios and confirm surfaced status/log feedback.
+- `GAP-EXT-02: resolved` - No first-class `read_skill` tool is exposed. Skill context is provided through packaged skill injection (`office-host.SKILL.md`, `workspace-handoff.SKILL.md`) and runtime prompt guidance. Saved-document gating remains explicit: unsaved documents stay in document-only mode, while saved documents can unlock workspace-scoped capabilities.
+- `GAP-EXT-03: resolved` - No first-class `web_search`/`web_fetch` tools are exposed. Web-grounded context flows through research connectors in the connector catalog under enforced `hard-read-only` policy (`allowPrompts=false` plus read-safe allow/block patterns), without companion-coupled assumptions.
 
 ## 7) Findings: Correctness and Behavior Risks (Our Code)
 
