@@ -220,6 +220,33 @@ const readSectionParams = Type.Object({
   includeStyles: Type.Optional(Type.Boolean({ description: "Include paragraph styles and heading levels. Defaults to true." })),
 });
 
+const verifyDocParams = Type.Object({
+  scope: Type.Optional(
+    Type.String({
+      description: "Verification target for Word context capture (selection or document). Defaults to document-level verification context.",
+    }),
+  ),
+  includeFormatting: Type.Optional(
+    Type.Boolean({
+      description: "Include formatting and review metadata in the structured verification details. Defaults to true.",
+    }),
+  ),
+});
+
+const verifyDocVisualParams = Type.Object({
+  includeFormatting: Type.Optional(
+    Type.Boolean({
+      description: "Include viewport formatting metadata in the structured visual verification details. Defaults to true.",
+    }),
+  ),
+  includeWindowFrame: Type.Optional(
+    Type.Boolean({
+      description:
+        "Reserved for future native capture support. Browser-only runtime acknowledges this flag but cannot capture the full OS window frame.",
+    }),
+  ),
+});
+
 const executeJsParams = Type.Object({
   code: Type.Optional(
     Type.String({
@@ -380,6 +407,38 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       parameters: readSectionParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_read_section", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("verify_doc"))
+    pi.registerTool({
+      name: "verify_doc",
+      label: "Verify Word Document",
+      description:
+        "Collect a non-mutating, structured Word verification context with summary text and detailed anchors/snippets for document checks.",
+      parameters: verifyDocParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("verify_doc", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("verify_doc_visual"))
+    pi.registerTool({
+      name: "verify_doc_visual",
+      label: "Verify Word Visual",
+      description:
+        "Capture non-mutating Word visual verification context through the supported viewport path. Word-only; returns structured visual/details payloads.",
+      parameters: verifyDocVisualParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("verify_doc_visual", params);
         return {
           content: toToolContent(result),
           details: result,

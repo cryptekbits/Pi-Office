@@ -110,6 +110,72 @@ function appendViewportCaptureSummary(payload: unknown, includeWindowFrameReques
   };
 }
 
+function toWordDocumentVerificationPayload(payload: unknown, scope: string | undefined): unknown {
+  if (!isRecord(payload)) {
+    return payload;
+  }
+
+  return {
+    summary: trimString(payload.summary) ?? "Word verification context captured.",
+    details: {
+      kind: "word-document-verification",
+      mutating: false,
+      host: "word",
+      scope: scope ?? "document",
+      context: {
+        state: payload.state,
+        anchors: payload.anchors,
+        snippets: payload.snippets,
+        formatting: payload.formatting,
+      },
+    },
+  };
+}
+
+function toWordVisualVerificationPayload(payload: unknown, includeWindowFrameRequested: boolean): unknown {
+  if (!isRecord(payload)) {
+    return payload;
+  }
+
+  const visuals = Array.isArray(payload.visuals) ? payload.visuals : [];
+  const formatting = isRecord(payload.formatting) ? payload.formatting : {};
+  const viewportCapture = isRecord(formatting.viewportCapture) ? formatting.viewportCapture : {};
+  const state = isRecord(payload.state) ? payload.state : {};
+  const captureMode = trimString(viewportCapture.mode) ?? "officejs-context";
+  const includeWindowFrameCaptured = viewportCapture.includeWindowFrameCaptured === true;
+  const note =
+    trimString(viewportCapture.note) ??
+    (includeWindowFrameRequested
+      ? "Full window-frame capture is unavailable in browser-only runtime."
+      : "Viewport metadata captured from Office.js context.");
+
+  return {
+    summary: trimString(payload.summary) ?? "Visible Word viewport metadata captured.",
+    visual: {
+      kind: "word-viewport",
+      captureMode,
+      imageCount: visuals.length,
+      includeWindowFrameRequested,
+      includeWindowFrameCaptured,
+      note,
+    },
+    details: {
+      kind: "word-visual-verification",
+      mutating: false,
+      host: "word",
+      viewport: formatting.viewport,
+      viewportCapture: {
+        mode: captureMode,
+        includeWindowFrameRequested,
+        includeWindowFrameCaptured,
+        note,
+      },
+      selection: state.selection,
+    },
+    visuals,
+  };
+}
+
 export function summarizeOfficeToolError(error: unknown, toolName: OfficeToolRequest["toolName"]): string {
   const record = getErrorRecord(error);
   const message =
@@ -443,6 +509,63 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
         const includeStyles = request.params.includeStyles !== false;
         const result = await dependencies.readDocumentSection(request.host, startIndex, endIndex, includeStyles);
         return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "verify_doc") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "verify_doc is only available for Word.",
+          };
+        }
+
+        const scope = trimString(request.params.scope);
+        const includeFormatting = request.params.includeFormatting !== false;
+        const rawResult = await dependencies.collectOfficeContext(request.host, {
+          includeFormatting,
+          maxImages: 0,
+          ...(scope ? { scope } : {}),
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: toWordDocumentVerificationPayload(payloadAware.content, scope),
+        };
+      }
+
+      if (request.toolName === "verify_doc_visual") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "verify_doc_visual is only available for Word.",
+          };
+        }
+
+        const includeFormatting = request.params.includeFormatting !== false;
+        const includeWindowFrameRequested = request.params.includeWindowFrame === true;
+        const rawResult = await dependencies.collectOfficeContext(request.host, {
+          includeFormatting,
+          maxImages: 1,
+          scope: "viewport",
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        const viewportPayload = appendViewportCaptureSummary(payloadAware.content, includeWindowFrameRequested);
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: toWordVisualVerificationPayload(viewportPayload, includeWindowFrameRequested),
+        };
       }
 
       if (request.toolName === "office_execute_js") {

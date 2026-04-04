@@ -390,6 +390,119 @@ test("createOfficeToolExecutor captures viewport only for Word and maps viewport
   assert.match(String(excelResult.error), /only available for Word/);
 });
 
+test("createOfficeToolExecutor returns structured payloads for first-class Word verification tools", async () => {
+  const calls: Array<{ host: string; options: unknown }> = [];
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async (host, options) => {
+      calls.push({ host, options });
+      return {
+        summary: "Word context captured",
+        state: {
+          host,
+          selection: { label: "Paragraph 1" },
+        },
+        snippets: {
+          documentStructure: {
+            paragraphs: 3,
+          },
+        },
+        formatting: {
+          viewport: {
+            pagesEnclosingViewport: [{ index: 1 }],
+          },
+          viewportCapture: {
+            mode: "officejs-context",
+          },
+        },
+        visuals: [
+          {
+            kind: "viewport",
+            data: "ZmFrZQ==",
+            mimeType: "image/png",
+          },
+        ],
+      };
+    },
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const verifyResult = await executeOfficeTool({
+    requestId: "verify-1",
+    toolName: "verify_doc" as OfficeToolRequest["toolName"],
+    host: "word",
+    params: {
+      scope: "document",
+    },
+  } as OfficeToolRequest);
+  const verifyVisualResult = await executeOfficeTool({
+    requestId: "verify-visual-1",
+    toolName: "verify_doc_visual" as OfficeToolRequest["toolName"],
+    host: "word",
+    params: {
+      includeFormatting: true,
+      includeWindowFrame: true,
+    },
+  } as OfficeToolRequest);
+  const verifyVisualUnsupported = await executeOfficeTool({
+    requestId: "verify-visual-unsupported",
+    toolName: "verify_doc_visual" as OfficeToolRequest["toolName"],
+    host: "powerpoint",
+    params: {},
+  } as OfficeToolRequest);
+
+  assert.equal(verifyResult.success, true);
+  assert.deepEqual(calls[0], {
+    host: "word",
+    options: {
+      includeFormatting: true,
+      maxImages: 0,
+      scope: "document",
+    },
+  });
+  const verifyPayload = verifyResult.content as {
+    summary: string;
+    details: { kind: string; mutating: boolean; context: { snippets?: { documentStructure?: { paragraphs?: number } } } };
+  };
+  assert.match(verifyPayload.summary, /Word context captured/);
+  assert.equal(verifyPayload.details.kind, "word-document-verification");
+  assert.equal(verifyPayload.details.mutating, false);
+  assert.equal(verifyPayload.details.context.snippets?.documentStructure?.paragraphs, 3);
+
+  assert.equal(verifyVisualResult.success, true);
+  assert.deepEqual(calls[1], {
+    host: "word",
+    options: {
+      includeFormatting: true,
+      maxImages: 1,
+      scope: "viewport",
+    },
+  });
+  const verifyVisualPayload = verifyVisualResult.content as {
+    visual: {
+      kind: string;
+      captureMode: string;
+      includeWindowFrameRequested: boolean;
+      includeWindowFrameCaptured: boolean;
+    };
+    details: { kind: string; mutating: boolean };
+    visuals: unknown[];
+  };
+  assert.equal(verifyVisualPayload.visual.kind, "word-viewport");
+  assert.equal(verifyVisualPayload.visual.captureMode, "officejs-context");
+  assert.equal(verifyVisualPayload.visual.includeWindowFrameRequested, true);
+  assert.equal(verifyVisualPayload.visual.includeWindowFrameCaptured, false);
+  assert.equal(verifyVisualPayload.details.kind, "word-visual-verification");
+  assert.equal(verifyVisualPayload.details.mutating, false);
+  assert.equal(Array.isArray(verifyVisualPayload.visuals), true);
+
+  assert.equal(verifyVisualUnsupported.success, false);
+  assert.match(String(verifyVisualUnsupported.error), /only available for Word/);
+});
+
 test("summarizeOfficeToolError includes code, location, statement, and traces when present", () => {
   const summary = summarizeOfficeToolError(
     {

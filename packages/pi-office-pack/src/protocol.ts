@@ -543,6 +543,33 @@ export interface ConnectorTestResponse {
   conflicts?: ConnectorConflict[] | undefined;
 }
 
+export interface ConnectorOAuthStartRequest {
+  connectorId: string;
+}
+
+export interface ConnectorOAuthStartResponse {
+  ok: true;
+  connectorId: string;
+  url?: string | undefined;
+  state: string;
+  expiresAt: string;
+}
+
+export interface ConnectorOAuthCallbackRequest {
+  connectorId: string;
+  state: string;
+  approved?: boolean | undefined;
+  error?: string | undefined;
+  expiresAt?: string | undefined;
+  expiresInSeconds?: number | undefined;
+}
+
+export interface ConnectorOAuthCallbackResponse {
+  ok: true;
+  status: ConnectorStatus;
+  diagnostics: ConnectorDiagnostic[];
+}
+
 export interface ConnectorScopeUpdateRequest {
   connectorId: string;
   enabled: boolean;
@@ -669,6 +696,8 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   office_read_section: "read",
   office_capture_snapshot: "read",
   office_capture_viewport: "read",
+  verify_doc: "read",
+  verify_doc_visual: "read",
   office_apply_edit: "write-doc",
   office_propose_edits: "write-doc",
   office_navigate: "write-doc",
@@ -883,6 +912,8 @@ export const OFFICE_TOOL_NAMES = [
   "office_capture_snapshot",
   "office_capture_viewport",
   "office_read_section",
+  "verify_doc",
+  "verify_doc_visual",
   "office_execute_js",
   "office_propose_edits",
 ] as const;

@@ -124,6 +124,8 @@ const REGISTERED_AGENT_TOOL_NAMES = [
   "office_capture_snapshot",
   "office_capture_viewport",
   "office_read_section",
+  "verify_doc",
+  "verify_doc_visual",
   "office_execute_js",
   "office_propose_edits",
   "ask_user",
@@ -869,6 +871,8 @@ class BrowserOfficeSession {
         "office_capture_snapshot",
         "office_capture_viewport",
         "office_read_section",
+        "verify_doc",
+        "verify_doc_visual",
         "office_execute_js",
         "office_propose_edits",
         "ask_user",
@@ -1168,6 +1172,33 @@ class BrowserOfficeSession {
       includeStyles: Type.Optional(Type.Boolean({ description: "Include paragraph styles and heading levels. Defaults to true." })),
     });
 
+    const verifyDocParams = Type.Object({
+      scope: Type.Optional(
+        Type.String({
+          description: "Verification target for Word context capture (selection or document). Defaults to document-level verification context.",
+        }),
+      ),
+      includeFormatting: Type.Optional(
+        Type.Boolean({
+          description: "Include formatting and review metadata in the structured verification details. Defaults to true.",
+        }),
+      ),
+    });
+
+    const verifyDocVisualParams = Type.Object({
+      includeFormatting: Type.Optional(
+        Type.Boolean({
+          description: "Include viewport formatting metadata in the structured visual verification details. Defaults to true.",
+        }),
+      ),
+      includeWindowFrame: Type.Optional(
+        Type.Boolean({
+          description:
+            "Reserved for future native capture support. Browser-only runtime acknowledges this flag but cannot capture the full OS window frame.",
+        }),
+      ),
+    });
+
     const executeJsParams = Type.Object({
       code: Type.Optional(
         Type.String({
@@ -1253,6 +1284,18 @@ class BrowserOfficeSession {
         "Read Document Section",
         "Read a paginated range of Word paragraphs by paragraph index.",
         readSectionParams,
+      ),
+      simpleOfficeTool(
+        "verify_doc",
+        "Verify Word Document",
+        "Collect a non-mutating, structured Word verification context with summary text and detailed anchors/snippets for document checks.",
+        verifyDocParams,
+      ),
+      simpleOfficeTool(
+        "verify_doc_visual",
+        "Verify Word Visual",
+        "Capture non-mutating Word visual verification context through the supported viewport path. Word-only; returns structured visual/details payloads.",
+        verifyDocVisualParams,
       ),
       simpleOfficeTool(
         "office_execute_js",
