@@ -322,6 +322,85 @@ const modifySheetStructureParams = Type.Object({
   options: Type.Optional(Type.Any({ description: "Additional structure options forwarded to the host adapter." })),
 }, { additionalProperties: true });
 
+const modifyObjectParams = Type.Object({
+  operation: Type.String({
+    description:
+      "Excel object mutation operation (format_range, create_table, format_table, apply_table_filter, clear_table_filter, clear_table_filters, reapply_table_filters, create_chart, update_chart, create_pivot_table, update_pivot_table, sort_pivot_field, sort_pivot_by_labels, sort_pivot_by_values, refresh_pivot_table, set_worksheet_gridlines, set_worksheet_headings, set_print_area, set_data_validation, clear_data_validation, add_conditional_format, clear_conditional_formats, insert_inline_picture).",
+  }),
+  sheetName: Type.Optional(Type.String({ description: "Worksheet name for range/table/chart/pivot operations." })),
+  address: Type.Optional(Type.String({ description: "A1-style range address when an operation targets a worksheet range." })),
+  tableName: Type.Optional(Type.String({ description: "Target table name for table-oriented operations." })),
+  chartName: Type.Optional(Type.String({ description: "Target chart name for chart-oriented operations." })),
+  pivotTableName: Type.Optional(Type.String({ description: "Target PivotTable name for pivot-oriented operations." })),
+  confirmDestructive: Type.Optional(Type.Boolean({ description: "Set true for destructive operations when required." })),
+  options: Type.Optional(Type.Any({ description: "Additional object-operation options forwarded to the host adapter." })),
+}, { additionalProperties: true });
+
+const getAllObjectsParams = Type.Object({
+  scope: Type.Optional(
+    Type.String({
+      description: "Inventory scope hint: selection, worksheet, or workbook. Defaults to workbook.",
+    }),
+  ),
+  includeFormatting: Type.Optional(
+    Type.Boolean({
+      description: "Include worksheet formatting metadata in addition to object inventory. Defaults to true.",
+    }),
+  ),
+  objectTypes: Type.Optional(
+    Type.Array(Type.String(), {
+      description: "Optional object kinds to include (table, chart, pivotTable, namedItem, worksheet, cell).",
+    }),
+  ),
+}, { additionalProperties: true });
+
+const searchDataParams = Type.Object({
+  query: Type.String({ description: "Case-insensitive query used to search workbook/worksheet objects and cited cells." }),
+  scope: Type.Optional(
+    Type.String({
+      description: "Search scope hint: selection, worksheet, or workbook. Defaults to workbook.",
+    }),
+  ),
+  objectTypes: Type.Optional(
+    Type.Array(Type.String(), {
+      description: "Object kinds to search: table, chart, pivotTable, namedItem, worksheet, or cell.",
+    }),
+  ),
+  limit: Type.Optional(Type.Number({ minimum: 1, maximum: 200, description: "Maximum number of matches to return." })),
+}, { additionalProperties: true });
+
+const getRangeAsCsvParams = Type.Object({
+  sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the source range. Defaults to active worksheet." })),
+  address: Type.Optional(Type.String({ description: "A1-style source range address. Defaults to current selection." })),
+  delimiter: Type.Optional(Type.String({ description: "CSV delimiter. Defaults to comma." })),
+  quoteValues: Type.Optional(Type.Boolean({ description: "Wrap and escape all CSV cells in quotes. Defaults to false." })),
+  includeHeaders: Type.Optional(Type.Boolean({ description: "Include header row. Defaults to true." })),
+  includeFormulas: Type.Optional(
+    Type.Boolean({
+      description: "Export formulas instead of displayed values for auditable formula-first reviews. Defaults to false.",
+    }),
+  ),
+}, { additionalProperties: true });
+
+const readRangeImageParams = Type.Object({
+  sheetName: Type.Optional(Type.String({ description: "Worksheet name hint for the range image capture context." })),
+  address: Type.Optional(Type.String({ description: "A1-style range address hint for the range image capture context." })),
+  scope: Type.Optional(
+    Type.String({
+      description: "Visual capture scope hint. Defaults to selection.",
+    }),
+  ),
+  includeFormatting: Type.Optional(Type.Boolean({ description: "Include formatting metadata in the visual payload. Defaults to true." })),
+  maxImages: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "Maximum number of range images to include." })),
+}, { additionalProperties: true });
+
+const extractChartXmlParams = Type.Object({
+  sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the chart. Defaults to active worksheet." })),
+  chartName: Type.Optional(Type.String({ description: "Chart name to extract. Required when chartId/chartIndex are not provided." })),
+  chartId: Type.Optional(Type.String({ description: "Optional chart id alias when chartName is unknown." })),
+  chartIndex: Type.Optional(Type.Number({ minimum: 1, description: "Optional one-based chart index when chartName is unknown." })),
+}, { additionalProperties: true });
+
 const getPresentationStructureParams = Type.Object({
   maxSlides: Type.Optional(
     Type.Number({
@@ -909,6 +988,102 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       parameters: modifySheetStructureParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("modify_sheet_structure", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("modify_object"))
+    pi.registerTool({
+      name: "modify_object",
+      label: "Modify Excel Object",
+      description:
+        "Excel-only first-class object mutation tool for table/chart/pivot/worksheet object operations through native workbook actions.",
+      parameters: modifyObjectParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("modify_object", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("get_all_objects"))
+    pi.registerTool({
+      name: "get_all_objects",
+      label: "Get Excel Objects",
+      description:
+        "Excel-only first-class object inventory read for workbook/worksheet tables, charts, PivotTables, and named items.",
+      parameters: getAllObjectsParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("get_all_objects", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("search_data"))
+    pi.registerTool({
+      name: "search_data",
+      label: "Search Excel Data",
+      description:
+        "Excel-only first-class workbook/worksheet data search across tables, charts, PivotTables, named items, and cited cells.",
+      parameters: searchDataParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("search_data", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("get_range_as_csv"))
+    pi.registerTool({
+      name: "get_range_as_csv",
+      label: "Export Range as CSV",
+      description:
+        "Excel-only first-class CSV export for auditable range snapshots. Use includeFormulas=true when formula-first verification is required.",
+      parameters: getRangeAsCsvParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("get_range_as_csv", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("read_range_image"))
+    pi.registerTool({
+      name: "read_range_image",
+      label: "Read Range Image",
+      description:
+        "Excel-only first-class range imagery read for visual verification workflows on the active worksheet selection/range.",
+      parameters: readRangeImageParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("read_range_image", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("extract_chart_xml"))
+    pi.registerTool({
+      name: "extract_chart_xml",
+      label: "Extract Chart XML",
+      description:
+        "Excel-only first-class chart XML extraction that returns a runtime-generated chart metadata XML snapshot (not full package OOXML).",
+      parameters: extractChartXmlParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("extract_chart_xml", params);
         return {
           content: toToolContent(result),
           details: result,

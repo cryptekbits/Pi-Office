@@ -373,6 +373,53 @@ The following Word checklist is aligned to `npm run smoke:office -- --list` scen
   - Connector outcomes are surfaced explicitly.
   - Session reconnect remains usable for subsequent prompts/tool calls.
 
+### Excel
+
+The following Excel checklist is aligned to `npm run smoke:office -- --list` scenario IDs.
+
+#### Scenario: `excel-context-citations` — Workbook context and citations
+
+- Steps:
+  1. Open a workbook with multiple worksheets plus at least one table, chart, and PivotTable.
+  2. Run `get_all_objects` with `scope=workbook` to capture workbook object inventory.
+  3. Run `search_data` for one table/chart/pivot name and one cited cell/formula term, then validate returned anchors.
+  4. Run `office_navigate` to one returned `cell`, `range`, and `sheet` anchor.
+- Expected:
+  - Object inventory includes workbook-scoped tables, charts, PivotTables, worksheets, and named items.
+  - Search results include structured anchors that navigate to the expected workbook location.
+
+#### Scenario: `excel-formatting-and-tables` — Range formatting, borders, and table controls
+
+- Steps:
+  1. Select a populated range and run `modify_object` with `operation=format_range` using font/fill/alignment/border options.
+  2. Run `modify_object` with `operation=format_table` (or table-filter operations) against an existing table.
+  3. Run `get_range_as_csv` for the edited range with `includeFormulas=true` to capture a formula-first auditable export snapshot.
+  4. Run `read_range_image` and confirm visual payload plus `visuals` image data are returned.
+- Expected:
+  - Range and table updates remain native Excel object mutations.
+  - CSV export and range imagery provide auditable cell-level evidence for the edited region.
+
+#### Scenario: `excel-charts-and-pivots` — Existing chart and PivotTable editing
+
+- Steps:
+  1. Run `modify_object` with `operation=update_chart` or `operation=create_chart` on a target worksheet chart source.
+  2. Run `extract_chart_xml` for the updated chart and inspect returned XML snapshot metadata.
+  3. Run `modify_object` with `operation=update_pivot_table`, then `operation=sort_pivot_by_values` and `operation=refresh_pivot_table`.
+- Expected:
+  - Chart and PivotTable operations execute through native workbook objects.
+  - `extract_chart_xml` returns a structured chart metadata XML snapshot tied to the targeted chart.
+
+#### Scenario: `excel-taskpane-stability` — Taskpane focus, scroll, prompt, and connector stability
+
+- Steps:
+  1. Send a long prompt from the taskpane while interacting with worksheet selections.
+  2. Scroll chat during streaming output and confirm manual scroll control is preserved.
+  3. Trigger one connector-backed request, reconnect/reopen the taskpane, and submit a follow-up prompt.
+- Expected:
+  - Composer focus and prompt submission remain stable across worksheet interactions.
+  - Chat scrolling remains responsive during streaming.
+  - Reconnected sessions continue to execute prompts and tool calls reliably.
+
 ### PowerPoint
 
 The following PowerPoint checklist is aligned to `npm run smoke:office -- --list` scenario IDs.

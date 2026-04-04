@@ -1156,6 +1156,19 @@ function toExcelClearApplyTo(value: unknown): Excel.ClearApplyTo {
   }
 }
 
+function escapeXmlText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function escapeXmlAttribute(value: string): string {
+  return escapeXmlText(value)
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
 
 export async function applyExcelAction(action: OfficeHostAction): Promise<unknown> {
   return Excel.run(async (context) => {
@@ -1747,6 +1760,74 @@ export async function applyExcelAction(action: OfficeHostAction): Promise<unknow
       chart.load("name,id");
       await context.sync();
       return { ok: true, host: "excel", action: type, chartName: chart.name, chartId: chart.id };
+    }
+
+    if (type === "extractChartXml") {
+      const worksheet = resolveExcelWorksheet(context, action.target, true);
+      const charts = worksheet.charts;
+      charts.load("items/name,items/id");
+      worksheet.load("name");
+      await context.sync();
+
+      const targetChartName = trimString(action.target?.chartName) ?? trimString(options.chartName) ?? trimString(options.name);
+      const targetChartId = trimString(options.chartId) ?? trimString(options.id);
+      const targetChartIndex = toNumber(options.chartIndex);
+
+      let chart: Excel.Chart | undefined;
+      if (targetChartName) {
+        chart = charts.getItem(targetChartName);
+      } else if (targetChartId) {
+        const matched = charts.items.find((candidate) => candidate.id === targetChartId);
+        chart = matched ? charts.getItem(matched.name) : undefined;
+      } else if (typeof targetChartIndex === "number" && Number.isInteger(targetChartIndex) && targetChartIndex > 0) {
+        chart = charts.getItemAt(targetChartIndex - 1);
+      } else if (charts.items.length > 0) {
+        chart = charts.getItemAt(0);
+      }
+
+      if (!chart) {
+        throw new Error("Excel chart XML extraction requires an existing chart target.");
+      }
+
+      chart.load("name,id,chartType,left,top,width,height");
+      chart.title.load("text,visible");
+      chart.legend.load("visible,position");
+      chart.axes.categoryAxis.load("visible");
+      chart.axes.valueAxis.load("visible");
+      chart.series.load("items/name");
+      await context.sync();
+
+      const titleText = chart.title.visible ? trimString(chart.title.text) ?? "" : "";
+      const seriesXml = chart.series.items
+        .map((series, index) => {
+          const name = trimString(series.name) ?? `Series ${index + 1}`;
+          return `<series index="${index + 1}" name="${escapeXmlAttribute(name)}" />`;
+        })
+        .join("");
+
+      const chartXml = [
+        `<chart name="${escapeXmlAttribute(chart.name)}" id="${escapeXmlAttribute(chart.id)}" sheetName="${escapeXmlAttribute(worksheet.name)}" chartType="${escapeXmlAttribute(String(chart.chartType ?? ""))}">`,
+        `<title visible="${chart.title.visible ? "true" : "false"}">${escapeXmlText(titleText)}</title>`,
+        `<legend visible="${chart.legend.visible ? "true" : "false"}" position="${escapeXmlAttribute(String(chart.legend.position ?? ""))}" />`,
+        "<axes>",
+        `<category visible="${chart.axes.categoryAxis.visible ? "true" : "false"}" />`,
+        `<value visible="${chart.axes.valueAxis.visible ? "true" : "false"}" />`,
+        "</axes>",
+        `<position left="${chart.left}" top="${chart.top}" width="${chart.width}" height="${chart.height}" />`,
+        seriesXml ? `<seriesList>${seriesXml}</seriesList>` : "",
+        "</chart>",
+      ].join("");
+
+      return {
+        ok: true,
+        host: "excel",
+        action: type,
+        sheetName: worksheet.name,
+        chartName: chart.name,
+        chartId: chart.id,
+        chartType: chart.chartType,
+        chartXml,
+      };
     }
 
     if (type === "createPivotTable") {

@@ -31,6 +31,11 @@ Prefer targeted edits to the current selection instead of rewriting an entire do
 For direct Word clause/sentence updates, use edit_doc_text first so edits route through native Word actions.
 For Word list rewrites, legal-review-sensitive edits, or tracked-changes-heavy passages, use edit_doc_list (or office_propose_edits) so each change is reviewable before apply.
 When using edit_doc_list or office_propose_edits, keep every searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId or anchor locators whenever available for deterministic targeting.
+For Excel workbook object mutations (tables, charts, PivotTables, worksheet view controls, validations, and conditional formats), use modify_object.
+For Excel workbook/worksheet object inventory and discovery, use get_all_objects and search_data instead of guessing object names.
+For Excel export and visual checks, use get_range_as_csv, read_range_image, and extract_chart_xml.
+In Excel, follow a formula-first, auditable-cell workflow: inspect formulas before mutating dependent cells, and preserve explicit cell/range references in summaries.
+When exporting with get_range_as_csv, set includeFormulas=true whenever formula-level auditability matters.
 For PowerPoint structural verification, use verify_slides; for visual verification, use verify_slide_visual and treat it as Office.js slide/shape snapshots (not slideshow-frame capture).
 For PowerPoint chart workflows, use edit_slide_chart so chart inspect/create/update routes through the supported serialized OOXML chart paths.
 For PowerPoint media workflows, use copy_image_between_slides to copy a source image shape to a destination slide/shape.

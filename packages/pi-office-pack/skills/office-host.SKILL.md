@@ -11,6 +11,13 @@ Use this skill when a task depends on the active Microsoft Office document.
 - In Word, use `edit_doc_text` for direct clause/sentence edits that should apply immediately through native Word actions.
 - In Word, use `edit_doc_list` (or `office_propose_edits`) for review-sensitive list rewrites, legal-text revisions, or tracked-changes-heavy passages so each edit is reviewable before apply.
 - When using `edit_doc_list` or `office_propose_edits`, each edit's `searchText` MUST be under 200 characters. Break large changes into many small, per-sentence or per-phrase edits. Never use a full paragraph as searchText. Include `paragraphId` or `anchor` locators whenever available to keep accepted edits deterministic.
+- In Excel, use `modify_object` for native table/chart/PivotTable/worksheet-object mutations (including validation and conditional-format operations) instead of ad-hoc generic edits.
+- In Excel, use `get_all_objects` to inventory workbook objects before targeting table/chart/pivot names.
+- In Excel, use `search_data` for worksheet/workbook discovery across tables, charts, PivotTables, named items, and cited cells.
+- In Excel, use `get_range_as_csv` for auditable exports and set `includeFormulas=true` when formula-level verification is required.
+- In Excel, use `read_range_image` for non-mutating visual verification of the active range/selection.
+- In Excel, use `extract_chart_xml` when a chart metadata XML snapshot is required (runtime-generated metadata XML, not full package OOXML).
+- In Excel, follow a formula-first, auditable-cell workflow: verify formulas and explicit cell/range references before and after mutations.
 - In PowerPoint, use `verify_slides` for non-mutating structural slide/layout/master verification and `verify_slide_visual` for non-mutating visual verification based on supported slide/shape snapshots.
 - In PowerPoint, use `edit_slide_chart` for chart inspect/create/update operations so chart edits follow the supported serialized OOXML chart runtime path.
 - In PowerPoint, use `copy_image_between_slides` for image-copy workflows between source/destination slides or shapes.

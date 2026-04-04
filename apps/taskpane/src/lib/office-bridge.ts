@@ -233,6 +233,344 @@ function toPowerPointVisualVerificationPayload(payload: unknown, maxImages: numb
   };
 }
 
+type ExcelObjectKind = "table" | "chart" | "pivotTable" | "namedItem" | "worksheet" | "cell";
+
+interface ExcelInventoryEntry {
+  kind: ExcelObjectKind;
+  label: string;
+  name?: string | undefined;
+  sheetName?: string | undefined;
+  address?: string | undefined;
+  id?: string | undefined;
+  type?: string | undefined;
+  text?: string | undefined;
+  formula?: string | undefined;
+  anchor: OfficeAnchor;
+}
+
+function normalizeExcelObjectKind(value: unknown): ExcelObjectKind | undefined {
+  const normalized = trimString(value)?.replace(/[\s_-]/g, "").toLowerCase();
+  switch (normalized) {
+    case "table":
+    case "tables":
+      return "table";
+    case "chart":
+    case "charts":
+      return "chart";
+    case "pivottable":
+    case "pivot":
+    case "pivots":
+    case "pivottables":
+      return "pivotTable";
+    case "nameditem":
+    case "nameditems":
+    case "name":
+    case "names":
+      return "namedItem";
+    case "worksheet":
+    case "worksheets":
+    case "sheet":
+    case "sheets":
+      return "worksheet";
+    case "cell":
+    case "cells":
+    case "range":
+    case "ranges":
+      return "cell";
+    default:
+      return undefined;
+  }
+}
+
+function toExcelObjectKindSet(value: unknown): Set<ExcelObjectKind> | undefined {
+  const entries = Array.isArray(value) ? value : value == null ? [] : [value];
+  const kinds = new Set<ExcelObjectKind>();
+  for (const entry of entries) {
+    const kind = normalizeExcelObjectKind(entry);
+    if (kind) {
+      kinds.add(kind);
+    }
+  }
+  return kinds.size ? kinds : undefined;
+}
+
+function toExcelObjectActionType(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "formatrange":
+      return "formatRange";
+    case "createtable":
+      return "createTable";
+    case "formattable":
+    case "updatetablestyle":
+    case "configuretable":
+    case "settablestyle":
+      return "formatTable";
+    case "applytablefilter":
+    case "filtertable":
+      return "applyTableFilter";
+    case "cleartablefilter":
+      return "clearTableFilter";
+    case "cleartablefilters":
+      return "clearTableFilters";
+    case "reapplytablefilters":
+      return "reapplyTableFilters";
+    case "createchart":
+      return "createChart";
+    case "updatechart":
+    case "formatchart":
+    case "setchartaxes":
+    case "setchartdatalabels":
+      return "updateChart";
+    case "createpivottable":
+      return "createPivotTable";
+    case "updatepivottable":
+    case "configurepivottable":
+    case "applypivotfilter":
+      return "updatePivotTable";
+    case "sortpivotfield":
+      return "sortPivotField";
+    case "sortpivotbylabels":
+      return "sortPivotByLabels";
+    case "sortpivotbyvalues":
+      return "sortPivotByValues";
+    case "refreshpivottable":
+      return "refreshPivotTable";
+    case "setworksheetgridlines":
+      return "setWorksheetGridlines";
+    case "setworksheetheadings":
+      return "setWorksheetHeadings";
+    case "setprintarea":
+      return "setPrintArea";
+    case "setdatavalidation":
+      return "setDataValidation";
+    case "cleardatavalidation":
+      return "clearDataValidation";
+    case "addconditionalformat":
+      return "addConditionalFormat";
+    case "clearconditionalformats":
+      return "clearConditionalFormats";
+    case "insertinlinepicture":
+      return "insertInlinePicture";
+    case "removeduplicates":
+      return "removeDuplicates";
+    default:
+      return undefined;
+  }
+}
+
+function toExcelObjectTarget(params: Record<string, unknown>): OfficeAnchor | undefined {
+  const sheetName = trimString(params.sheetName);
+  const address = trimString(params.address);
+  const tableName = trimString(params.tableName);
+  const chartName = trimString(params.chartName);
+  const pivotTableName = trimString(params.pivotTableName);
+  const namedItemName = trimString(params.namedItemName);
+  const anchor = isRecord(params.anchor) && Object.keys(params.anchor).length > 0 ? params.anchor : undefined;
+
+  if (!sheetName && !address && !tableName && !chartName && !pivotTableName && !namedItemName && !anchor) {
+    return undefined;
+  }
+
+  return toAnchor({
+    ...(anchor ? { anchor } : {}),
+    ...(sheetName ? { sheetName } : {}),
+    ...(address ? { address } : {}),
+    ...(tableName ? { tableName } : {}),
+    ...(chartName ? { chartName } : {}),
+    ...(pivotTableName ? { pivotTableName } : {}),
+    ...(namedItemName ? { namedItemName } : {}),
+    ...(trimString(params.id) ? { id: trimString(params.id) } : {}),
+  });
+}
+
+function pushExcelInventoryEntry(entries: ExcelInventoryEntry[], seen: Set<string>, entry: ExcelInventoryEntry | undefined): void {
+  if (!entry) {
+    return;
+  }
+  const key = `${entry.kind}:${entry.sheetName ?? ""}:${entry.name ?? entry.label}:${entry.address ?? ""}:${entry.id ?? ""}`;
+  if (seen.has(key)) {
+    return;
+  }
+  seen.add(key);
+  entries.push(entry);
+}
+
+function toExcelInventoryEntries(payload: unknown): ExcelInventoryEntry[] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const snippets = isRecord(payload.snippets) ? payload.snippets : {};
+  const workbookObjects = isRecord(snippets.workbookObjects) ? snippets.workbookObjects : {};
+  const entries: ExcelInventoryEntry[] = [];
+  const seen = new Set<string>();
+
+  for (const table of Array.isArray(workbookObjects.tables) ? workbookObjects.tables : []) {
+    if (!isRecord(table)) continue;
+    const name = trimString(table.name) ?? trimString(table.tableName);
+    if (!name) continue;
+    const sheetName = trimString(table.sheetName);
+    pushExcelInventoryEntry(entries, seen, {
+      kind: "table",
+      label: sheetName ? `${sheetName}!${name}` : name,
+      name,
+      sheetName,
+      id: trimString(table.id) ?? trimString(table.tableId),
+      anchor: toAnchor({
+        kind: "table",
+        tableName: name,
+        ...(sheetName ? { sheetName } : {}),
+      }),
+    });
+  }
+
+  for (const chart of Array.isArray(workbookObjects.charts) ? workbookObjects.charts : []) {
+    if (!isRecord(chart)) continue;
+    const name = trimString(chart.name) ?? trimString(chart.chartName);
+    if (!name) continue;
+    const sheetName = trimString(chart.sheetName);
+    pushExcelInventoryEntry(entries, seen, {
+      kind: "chart",
+      label: sheetName ? `${sheetName}!${name}` : name,
+      name,
+      sheetName,
+      id: trimString(chart.id) ?? trimString(chart.chartId),
+      anchor: toAnchor({
+        kind: "chart",
+        chartName: name,
+        ...(sheetName ? { sheetName } : {}),
+      }),
+    });
+  }
+
+  for (const pivotTable of Array.isArray(workbookObjects.pivotTables) ? workbookObjects.pivotTables : []) {
+    if (!isRecord(pivotTable)) continue;
+    const name = trimString(pivotTable.name) ?? trimString(pivotTable.pivotTableName);
+    if (!name) continue;
+    const sheetName = trimString(pivotTable.sheetName);
+    pushExcelInventoryEntry(entries, seen, {
+      kind: "pivotTable",
+      label: sheetName ? `${sheetName}!${name}` : name,
+      name,
+      sheetName,
+      id: trimString(pivotTable.id) ?? trimString(pivotTable.pivotTableId),
+      anchor: toAnchor({
+        kind: "pivotTable",
+        pivotTableName: name,
+        ...(sheetName ? { sheetName } : {}),
+      }),
+    });
+  }
+
+  for (const namedItem of Array.isArray(snippets.namedItems) ? snippets.namedItems : []) {
+    if (!isRecord(namedItem)) continue;
+    const name = trimString(namedItem.name) ?? trimString(namedItem.namedItemName);
+    if (!name) continue;
+    pushExcelInventoryEntry(entries, seen, {
+      kind: "namedItem",
+      label: name,
+      name,
+      type: trimString(namedItem.type),
+      anchor: toAnchor({
+        kind: "namedItem",
+        namedItemName: name,
+        label: name,
+      }),
+    });
+  }
+
+  for (const worksheet of Array.isArray(snippets.workbookSheets) ? snippets.workbookSheets : []) {
+    if (!isRecord(worksheet)) continue;
+    const name = trimString(worksheet.name);
+    if (!name) continue;
+    pushExcelInventoryEntry(entries, seen, {
+      kind: "worksheet",
+      label: name,
+      name,
+      sheetName: name,
+      id: trimString(worksheet.id),
+      anchor: toAnchor({
+        kind: "sheet",
+        sheetName: name,
+        label: name,
+      }),
+    });
+  }
+
+  for (const citation of Array.isArray(snippets.selectionCellCitations) ? snippets.selectionCellCitations : []) {
+    if (!isRecord(citation)) continue;
+    const citationAnchor = isRecord(citation.anchor) ? citation.anchor : undefined;
+    const address = trimString(citationAnchor?.address) ?? trimString(citation.address);
+    const sheetName = trimString(citationAnchor?.sheetName) ?? trimString(citation.sheetName);
+    if (!address && !trimString(citation.label)) {
+      continue;
+    }
+    pushExcelInventoryEntry(entries, seen, {
+      kind: "cell",
+      label: trimString(citation.label) ?? (sheetName && address ? `${sheetName}!${address}` : address ?? "Cell"),
+      sheetName,
+      address,
+      text: trimString(citation.text),
+      formula: trimString(citation.formula),
+      anchor: toAnchor({
+        ...(citationAnchor ? { anchor: citationAnchor } : {}),
+        ...(sheetName ? { sheetName } : {}),
+        ...(address ? { address } : {}),
+      }),
+    });
+  }
+
+  return entries;
+}
+
+function serializeExcelInventoryEntry(entry: ExcelInventoryEntry): Record<string, unknown> {
+  return {
+    kind: entry.kind,
+    label: entry.label,
+    name: entry.name,
+    sheetName: entry.sheetName,
+    address: entry.address,
+    id: entry.id,
+    type: entry.type,
+    text: entry.text,
+    formula: entry.formula,
+    anchor: entry.anchor,
+  };
+}
+
+function toCsvCell(value: unknown, delimiter: string, quoteValues: boolean): string {
+  const text = value == null ? "" : String(value);
+  const escaped = text.replace(/"/g, "\"\"");
+  const shouldQuote =
+    quoteValues || escaped.includes("\"") || escaped.includes("\n") || escaped.includes("\r") || escaped.includes(delimiter);
+  return shouldQuote ? `"${escaped}"` : escaped;
+}
+
+function toCsv(rows: unknown[][], delimiter: string, quoteValues: boolean): string {
+  return rows.map((row) => row.map((cell) => toCsvCell(cell, delimiter, quoteValues)).join(delimiter)).join("\n");
+}
+
+function toExcelMatrixFromPayload(payload: unknown, includeFormulas: boolean): unknown[][] {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const data = isRecord(payload.data) ? payload.data : payload;
+  const values = Array.isArray(data.values) ? data.values : undefined;
+  const text = Array.isArray(data.text) ? data.text : undefined;
+  const formulas = Array.isArray(data.formulas) ? data.formulas : undefined;
+  const selected = includeFormulas ? formulas ?? values ?? text : values ?? text ?? formulas;
+  if (!Array.isArray(selected)) {
+    return [];
+  }
+  return selected.map((row) => (Array.isArray(row) ? row : [row]));
+}
+
 export function summarizeOfficeToolError(error: unknown, toolName: OfficeToolRequest["toolName"]): string {
   const record = getErrorRecord(error);
   const message =
@@ -1153,6 +1491,380 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
           options: toExcelToolOptions(request.params, ["operation", "mode", "type", "sheetName", "sourceSheetName", "anchor"]),
         });
         return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "modify_object") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "modify_object is only available for Excel.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const actionType = toExcelObjectActionType(operation);
+        if (!actionType) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              "modify_object requires a supported operation (format_range, create_table, format_table, apply_table_filter, clear_table_filter, clear_table_filters, reapply_table_filters, create_chart, update_chart, create_pivot_table, update_pivot_table, sort_pivot_field, sort_pivot_by_labels, sort_pivot_by_values, refresh_pivot_table, set_worksheet_gridlines, set_worksheet_headings, set_print_area, set_data_validation, clear_data_validation, add_conditional_format, clear_conditional_formats, insert_inline_picture).",
+          };
+        }
+
+        const target = toExcelObjectTarget(request.params);
+        const content = firstString(
+          request.params.content,
+          request.params.text,
+          request.params.base64,
+          request.params.imageBase64,
+        );
+        const result = await dependencies.applyHostAction(request.host, {
+          type: actionType,
+          ...(target ? { target } : {}),
+          ...(typeof content === "string" ? { content } : {}),
+          options: toExcelToolOptions(request.params, [
+            "operation",
+            "mode",
+            "type",
+            "anchor",
+            "sheetName",
+            "address",
+            "tableName",
+            "chartName",
+            "pivotTableName",
+            "namedItemName",
+            "content",
+            "text",
+            "base64",
+            "imageBase64",
+          ]),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "get_all_objects") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "get_all_objects is only available for Excel.",
+          };
+        }
+
+        const scope = trimString(request.params.scope) ?? "workbook";
+        const includeFormatting = request.params.includeFormatting !== false;
+        const rawResult = await dependencies.collectOfficeContext(request.host, {
+          includeFormatting,
+          maxImages: 0,
+          scope,
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        const requestedKinds = toExcelObjectKindSet(request.params.objectTypes);
+        const entries = toExcelInventoryEntries(payloadAware.content).filter((entry) =>
+          requestedKinds ? requestedKinds.has(entry.kind) : true,
+        );
+        const limit =
+          typeof request.params.limit === "number" && Number.isFinite(request.params.limit)
+            ? Math.max(1, Math.min(200, Math.trunc(request.params.limit)))
+            : entries.length || 200;
+        const limited = entries.slice(0, limit);
+
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: {
+            summary: `Excel object inventory captured (${limited.length} item${limited.length === 1 ? "" : "s"}).`,
+            details: {
+              kind: "excel-object-inventory",
+              mutating: false,
+              scope,
+              requestedObjectTypes: requestedKinds ? Array.from(requestedKinds) : undefined,
+              matchCount: limited.length,
+              totalCount: entries.length,
+              objects: {
+                tables: limited.filter((entry) => entry.kind === "table").map((entry) => serializeExcelInventoryEntry(entry)),
+                charts: limited.filter((entry) => entry.kind === "chart").map((entry) => serializeExcelInventoryEntry(entry)),
+                pivotTables: limited.filter((entry) => entry.kind === "pivotTable").map((entry) => serializeExcelInventoryEntry(entry)),
+                namedItems: limited.filter((entry) => entry.kind === "namedItem").map((entry) => serializeExcelInventoryEntry(entry)),
+                worksheets: limited.filter((entry) => entry.kind === "worksheet").map((entry) => serializeExcelInventoryEntry(entry)),
+                cells: limited.filter((entry) => entry.kind === "cell").map((entry) => serializeExcelInventoryEntry(entry)),
+              },
+            },
+          },
+        };
+      }
+
+      if (request.toolName === "search_data") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "search_data is only available for Excel.",
+          };
+        }
+
+        const query = trimString(request.params.query) ?? trimString(request.params.search) ?? trimString(request.params.text);
+        if (!query) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "search_data requires a non-empty query.",
+          };
+        }
+
+        const scope = trimString(request.params.scope) ?? "workbook";
+        const rawResult = await dependencies.collectOfficeContext(request.host, {
+          includeFormatting: false,
+          maxImages: 0,
+          scope,
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        const requestedKinds = toExcelObjectKindSet(request.params.objectTypes);
+        const queryLower = query.toLowerCase();
+        const matches = toExcelInventoryEntries(payloadAware.content)
+          .filter((entry) => (requestedKinds ? requestedKinds.has(entry.kind) : true))
+          .filter((entry) => {
+            const fields = [entry.label, entry.name, entry.sheetName, entry.address, entry.type, entry.text, entry.formula]
+              .filter((value): value is string => typeof value === "string");
+            return fields.some((value) => value.toLowerCase().includes(queryLower));
+          });
+
+        const limit =
+          typeof request.params.limit === "number" && Number.isFinite(request.params.limit)
+            ? Math.max(1, Math.min(200, Math.trunc(request.params.limit)))
+            : 40;
+        const limited = matches.slice(0, limit);
+
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: {
+            summary: `Excel search found ${limited.length} match${limited.length === 1 ? "" : "es"} for "${query}".`,
+            details: {
+              kind: "excel-data-search",
+              mutating: false,
+              query,
+              scope,
+              requestedObjectTypes: requestedKinds ? Array.from(requestedKinds) : undefined,
+              matchCount: limited.length,
+              totalMatches: matches.length,
+              matches: limited.map((entry) => serializeExcelInventoryEntry(entry)),
+            },
+          },
+        };
+      }
+
+      if (request.toolName === "get_range_as_csv") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "get_range_as_csv is only available for Excel.",
+          };
+        }
+
+        const target = toExcelRangeTarget(request.params);
+        const includeFormulas = request.params.includeFormulas === true;
+        const delimiter = trimString(request.params.delimiter) ?? ",";
+        const quoteValues = request.params.quoteValues === true;
+        const includeHeaders = request.params.includeHeaders !== false;
+        const rawResult = await dependencies.applyHostAction(request.host, {
+          type: "getRangeValues",
+          ...(target ? { target } : {}),
+          options: {
+            ...toExcelToolOptions(request.params, [
+              "anchor",
+              "sheetName",
+              "address",
+              "delimiter",
+              "quoteValues",
+              "includeHeaders",
+              "includeFormulas",
+            ]),
+            includeValues: true,
+            includeText: true,
+            includeFormulas: true,
+          },
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        const matrix = toExcelMatrixFromPayload(payloadAware.content, includeFormulas);
+        const rows = includeHeaders ? matrix : matrix.slice(1);
+        const csv = toCsv(rows, delimiter, quoteValues);
+        const payloadRecord = isRecord(payloadAware.content) ? payloadAware.content : {};
+        const payloadData = isRecord(payloadRecord.data) ? payloadRecord.data : payloadRecord;
+        const sheetName = trimString(payloadData.sheetName) ?? target?.sheetName;
+        const address = trimString(payloadData.address) ?? target?.address;
+        const columnCount = rows.length && Array.isArray(rows[0]) ? rows[0].length : 0;
+
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: {
+            summary: `Exported ${rows.length} row${rows.length === 1 ? "" : "s"} from Excel range as CSV.`,
+            csv,
+            details: {
+              kind: "excel-range-csv-export",
+              mutating: false,
+              sheetName,
+              address,
+              rowCount: rows.length,
+              columnCount,
+              delimiter,
+              includeFormulas,
+            },
+          },
+        };
+      }
+
+      if (request.toolName === "read_range_image") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "read_range_image is only available for Excel.",
+          };
+        }
+
+        const includeFormatting = request.params.includeFormatting !== false;
+        const maxImages =
+          typeof request.params.maxImages === "number" && Number.isFinite(request.params.maxImages)
+            ? Math.max(1, Math.min(4, Math.trunc(request.params.maxImages)))
+            : 1;
+        const scope = trimString(request.params.scope) ?? "selection";
+        const rawResult = await dependencies.collectOfficeContext(request.host, {
+          includeFormatting,
+          maxImages,
+          scope,
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        const payloadRecord = isRecord(payloadAware.content) ? payloadAware.content : {};
+        const visuals = Array.isArray(payloadRecord.visuals) ? payloadRecord.visuals : [];
+        if (!visuals.length) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "read_range_image could not capture a range image in the current Excel selection.",
+          };
+        }
+
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: {
+            summary: trimString(payloadRecord.summary) ?? `Excel range image captured (${visuals.length} image${visuals.length === 1 ? "" : "s"}).`,
+            visual: {
+              kind: "excel-range-image",
+              captureMode: "officejs-selection-snapshot",
+              imageCount: visuals.length,
+              scopeRequested: scope,
+              note: "Range imagery uses Office.js selection capture support.",
+            },
+            details: {
+              kind: "excel-range-image-read",
+              mutating: false,
+              host: "excel",
+              scope,
+              requestedRange: {
+                sheetName: trimString(request.params.sheetName),
+                address: trimString(request.params.address),
+              },
+              selection: isRecord(payloadRecord.state) ? payloadRecord.state.selection : undefined,
+              formatting: payloadRecord.formatting,
+            },
+            visuals,
+          },
+        };
+      }
+
+      if (request.toolName === "extract_chart_xml") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "extract_chart_xml is only available for Excel.",
+          };
+        }
+
+        const chartName = trimString(request.params.chartName) ?? trimString(request.params.name);
+        const chartId = trimString(request.params.chartId) ?? trimString(request.params.id);
+        const chartIndex =
+          typeof request.params.chartIndex === "number" && Number.isFinite(request.params.chartIndex)
+            ? Math.max(1, Math.trunc(request.params.chartIndex))
+            : undefined;
+        const hasAnchor = isRecord(request.params.anchor) && Object.keys(request.params.anchor).length > 0;
+        if (!chartName && !chartId && typeof chartIndex !== "number" && !hasAnchor) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "extract_chart_xml requires chartName, chartId, chartIndex, or a chart anchor.",
+          };
+        }
+
+        const target = toExcelObjectTarget({
+          ...request.params,
+          ...(chartName ? { chartName } : {}),
+          ...(chartId ? { id: chartId } : {}),
+        });
+        const rawResult = await dependencies.applyHostAction(request.host, {
+          type: "extractChartXml",
+          ...(target ? { target } : {}),
+          options: toExcelToolOptions(request.params, ["anchor", "sheetName", "chartName", "chartId", "chartIndex"]),
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        const payloadRecord = isRecord(payloadAware.content) ? payloadAware.content : {};
+        const payloadData = isRecord(payloadRecord.data) ? payloadRecord.data : payloadRecord;
+        const xml = trimString(payloadData.chartXml) ?? trimString(payloadData.xml) ?? trimString(payloadRecord.chartXml);
+        if (!xml) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "extract_chart_xml did not return chart XML content.",
+          };
+        }
+
+        const resolvedChartName = trimString(payloadData.chartName) ?? chartName;
+        const resolvedSheetName = trimString(payloadData.sheetName) ?? trimString(request.params.sheetName) ?? target?.sheetName;
+
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: {
+            summary: trimString(payloadRecord.summary) ?? `Extracted chart XML for ${resolvedChartName ?? "the target chart"}.`,
+            xml,
+            details: {
+              kind: "excel-chart-xml",
+              mutating: false,
+              chartName: resolvedChartName,
+              sheetName: resolvedSheetName,
+              extraction: "runtime-generated-chart-metadata-xml",
+            },
+          },
+        };
       }
 
       if (request.toolName === "get_presentation_structure") {
