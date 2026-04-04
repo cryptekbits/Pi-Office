@@ -378,6 +378,85 @@ const editSlideMasterParams = Type.Object({
   options: Type.Optional(Type.Any({ description: "Additional layout/master options forwarded to the host adapter." })),
 }, { additionalProperties: true });
 
+const editSlideChartParams = Type.Object({
+  operation: Type.Optional(
+    Type.String({
+      description:
+        "PowerPoint chart operation (get_slide_charts, add_slide_chart, update_slide_chart). Defaults to update_slide_chart when omitted.",
+    }),
+  ),
+  slideId: Type.Optional(Type.String({ description: "Target slide ID for chart inspection or mutation." })),
+  slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
+  shapeId: Type.Optional(Type.String({ description: "Optional chart shape ID for precise chart targeting." })),
+  chartIndex: Type.Optional(Type.Number({ minimum: 1, description: "Optional one-based chart index within the target slide package." })),
+  shapeName: Type.Optional(Type.String({ description: "Optional chart shape name used to resolve chart edits." })),
+  title: Type.Optional(Type.String({ description: "Chart title for create/update operations." })),
+  categories: Type.Optional(Type.Any({ description: "Ordered category labels for chart create/update operations." })),
+  series: Type.Optional(Type.Any({ description: "Series payload for chart create/update operations." })),
+  replaceOriginal: Type.Optional(Type.Boolean({ description: "When true (default), replace the source slide after serialized chart updates." })),
+  formatting: Type.Optional(Type.String({ description: "Insert formatting mode when serialized chart updates insert replacement slides." })),
+  options: Type.Optional(Type.Any({ description: "Additional chart operation options forwarded to the host adapter." })),
+}, { additionalProperties: true });
+
+const copyImageBetweenSlidesParams = Type.Object({
+  sourceSlideId: Type.Optional(Type.String({ description: "Source slide ID that contains the image shape to copy." })),
+  sourceSlideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based source slide index when sourceSlideId is unknown." })),
+  sourceShapeId: Type.Optional(Type.String({ description: "Source image shape ID to copy from." })),
+  sourceImageBase64: Type.Optional(Type.String({ description: "Optional image base64 override when source shape export is unavailable." })),
+  targetSlideId: Type.Optional(Type.String({ description: "Destination slide ID for image placement/replacement." })),
+  targetSlideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based destination slide index when targetSlideId is unknown." })),
+  targetShapeId: Type.Optional(Type.String({ description: "Destination shape ID to update. If omitted, inserts a new image shape." })),
+  left: Type.Optional(Type.Number({ description: "Optional destination left position in points for inserted images." })),
+  top: Type.Optional(Type.Number({ description: "Optional destination top position in points for inserted images." })),
+  width: Type.Optional(Type.Number({ description: "Optional destination width in points for inserted images." })),
+  height: Type.Optional(Type.Number({ description: "Optional destination height in points for inserted images." })),
+  options: Type.Optional(Type.Any({ description: "Additional media-copy options forwarded to the host adapter." })),
+}, { additionalProperties: true });
+
+const searchIconsParams = Type.Object({
+  query: Type.String({ description: "Icon search query text." }),
+  maxResults: Type.Optional(Type.Number({ minimum: 1, maximum: 50, description: "Maximum number of icon matches to return." })),
+  style: Type.Optional(Type.String({ description: "Optional style/category hint used by the icon catalog search." })),
+  options: Type.Optional(Type.Any({ description: "Additional icon-search options forwarded to the host adapter." })),
+}, { additionalProperties: true });
+
+const insertIconParams = Type.Object({
+  iconId: Type.Optional(Type.String({ description: "Icon ID returned by search_icons." })),
+  iconName: Type.Optional(Type.String({ description: "Icon name alias when iconId is unknown." })),
+  query: Type.Optional(Type.String({ description: "Fallback query used when selecting an icon by search text." })),
+  slideId: Type.Optional(Type.String({ description: "Target slide ID for icon insertion." })),
+  slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based target slide index when slideId is unknown." })),
+  shapeId: Type.Optional(Type.String({ description: "Optional target shape ID for icon replacement workflows." })),
+  left: Type.Optional(Type.Number({ description: "Optional icon left position in points." })),
+  top: Type.Optional(Type.Number({ description: "Optional icon top position in points." })),
+  width: Type.Optional(Type.Number({ description: "Optional icon width in points." })),
+  height: Type.Optional(Type.Number({ description: "Optional icon height in points." })),
+  fillColor: Type.Optional(Type.String({ description: "Optional icon fill/text color (hex/rgb)." })),
+  lineColor: Type.Optional(Type.String({ description: "Optional icon outline color (hex/rgb)." })),
+  options: Type.Optional(Type.Any({ description: "Additional icon insertion options forwarded to the host adapter." })),
+}, { additionalProperties: true });
+
+const verifySlidesParams = Type.Object({
+  scope: Type.Optional(
+    Type.String({
+      description: "Structural verification scope for PowerPoint slides (presentation or selection). Defaults to presentation structure.",
+    }),
+  ),
+  maxSlides: Type.Optional(Type.Number({ minimum: 1, description: "Maximum number of slide previews to include in verification details." })),
+  includeSlideText: Type.Optional(Type.Boolean({ description: "Include bounded slide text previews in structural verification output." })),
+  includeFormatting: Type.Optional(Type.Boolean({ description: "Include layout/master metadata where supported. Defaults to true." })),
+}, { additionalProperties: true });
+
+const verifySlideVisualParams = Type.Object({
+  scope: Type.Optional(
+    Type.String({
+      description: "Visual verification scope. Defaults to slide selection snapshots.",
+    }),
+  ),
+  includeFormatting: Type.Optional(Type.Boolean({ description: "Include slide/shape formatting metadata in visual verification details. Defaults to true." })),
+  maxImages: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "Maximum number of slide/shape snapshot images to include." })),
+}, { additionalProperties: true });
+
 const executeJsParams = Type.Object({
   code: Type.Optional(
     Type.String({
@@ -819,6 +898,102 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       parameters: editSlideMasterParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("edit_slide_master", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("edit_slide_chart"))
+    pi.registerTool({
+      name: "edit_slide_chart",
+      label: "Edit Slide Chart",
+      description:
+        "PowerPoint-only first-class chart workflow tool for chart inspection and serialized chart create/update paths.",
+      parameters: editSlideChartParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("edit_slide_chart", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("copy_image_between_slides"))
+    pi.registerTool({
+      name: "copy_image_between_slides",
+      label: "Copy Image Between Slides",
+      description:
+        "PowerPoint-only first-class media workflow tool that copies an image from a source slide/shape to a destination slide or shape.",
+      parameters: copyImageBetweenSlidesParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("copy_image_between_slides", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("search_icons"))
+    pi.registerTool({
+      name: "search_icons",
+      label: "Search Slide Icons",
+      description:
+        "PowerPoint-only first-class icon search. Returns icon matches from the supported runtime icon catalog without mutating slides.",
+      parameters: searchIconsParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("search_icons", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("insert_icon"))
+    pi.registerTool({
+      name: "insert_icon",
+      label: "Insert Slide Icon",
+      description:
+        "PowerPoint-only first-class icon insertion tool that inserts or updates an icon-like visual on the target slide.",
+      parameters: insertIconParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("insert_icon", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("verify_slides"))
+    pi.registerTool({
+      name: "verify_slides",
+      label: "Verify Slides",
+      description:
+        "PowerPoint-only first-class structural verification. Returns a non-mutating summary/details payload for slide/layout/master checks.",
+      parameters: verifySlidesParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("verify_slides", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("verify_slide_visual"))
+    pi.registerTool({
+      name: "verify_slide_visual",
+      label: "Verify Slide Visual",
+      description:
+        "PowerPoint-only first-class visual verification using supported Office.js slide/shape snapshot paths (not slideshow-frame capture).",
+      parameters: verifySlideVisualParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("verify_slide_visual", params);
         return {
           content: toToolContent(result),
           details: result,

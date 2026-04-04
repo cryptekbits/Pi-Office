@@ -84,6 +84,76 @@ import {
   applyPowerPointTableCellProperties,
 } from "./powerpoint-helpers";
 
+interface PowerPointIconCatalogEntry {
+  id: string;
+  name: string;
+  keywords: string[];
+  glyph: string;
+}
+
+const POWERPOINT_ICON_CATALOG: PowerPointIconCatalogEntry[] = [
+  { id: "trend-up", name: "Trend Up", keywords: ["growth", "up", "arrow", "chart", "revenue"], glyph: "📈" },
+  { id: "trend-down", name: "Trend Down", keywords: ["decline", "down", "arrow", "chart"], glyph: "📉" },
+  { id: "bar-chart", name: "Bar Chart", keywords: ["chart", "bar", "analytics", "data"], glyph: "📊" },
+  { id: "target", name: "Target", keywords: ["goal", "focus", "objective", "bullseye"], glyph: "🎯" },
+  { id: "rocket", name: "Rocket", keywords: ["launch", "growth", "speed", "startup"], glyph: "🚀" },
+  { id: "shield", name: "Shield", keywords: ["security", "compliance", "guard", "protection"], glyph: "🛡️" },
+  { id: "lock", name: "Lock", keywords: ["security", "privacy", "restricted", "safe"], glyph: "🔒" },
+  { id: "globe", name: "Globe", keywords: ["global", "world", "internet", "web"], glyph: "🌐" },
+  { id: "people", name: "People", keywords: ["team", "users", "audience", "customer"], glyph: "👥" },
+  { id: "calendar", name: "Calendar", keywords: ["schedule", "timeline", "date", "plan"], glyph: "📅" },
+  { id: "gear", name: "Gear", keywords: ["settings", "process", "automation", "system"], glyph: "⚙️" },
+  { id: "lightbulb", name: "Lightbulb", keywords: ["idea", "insight", "innovation", "concept"], glyph: "💡" },
+];
+
+function tokenizeIconQuery(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[\s,.;:|/_-]+/g)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function searchPowerPointIcons(query: string, maxResults: number): PowerPointIconCatalogEntry[] {
+  const tokens = tokenizeIconQuery(query);
+  if (!tokens.length) {
+    return [];
+  }
+
+  const scored = POWERPOINT_ICON_CATALOG.map((icon) => {
+    const haystack = `${icon.id} ${icon.name} ${icon.keywords.join(" ")}`.toLowerCase();
+    let score = 0;
+    for (const token of tokens) {
+      if (icon.id.includes(token)) score += 4;
+      if (icon.name.toLowerCase().includes(token)) score += 3;
+      if (icon.keywords.some((keyword) => keyword.includes(token))) score += 2;
+      if (haystack.includes(token)) score += 1;
+    }
+    return { icon, score };
+  })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  return scored.slice(0, maxResults).map((entry) => entry.icon);
+}
+
+function resolvePowerPointIcon(iconQuery: string): PowerPointIconCatalogEntry | undefined {
+  const normalized = iconQuery.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+
+  const exact =
+    POWERPOINT_ICON_CATALOG.find((icon) => icon.id === normalized) ??
+    POWERPOINT_ICON_CATALOG.find((icon) => icon.name.toLowerCase() === normalized) ??
+    POWERPOINT_ICON_CATALOG.find((icon) => icon.keywords.some((keyword) => keyword === normalized));
+  if (exact) {
+    return exact;
+  }
+
+  return searchPowerPointIcons(iconQuery, 1)[0];
+}
+
 export async function applyPowerPointAction(action: OfficeHostAction): Promise<unknown> {
   const type = trimString(action.type) ?? "insertText";
   const options = getActionOptions(action);
@@ -212,6 +282,260 @@ export async function applyPowerPointAction(action: OfficeHostAction): Promise<u
 
   if (type === "updateSlideChart" || type === "setChartData" || type === "updateChartData" || type === "replaceChartData") {
     return applyPowerPointChartAction(action, type);
+  }
+
+  if (type === "searchIcons") {
+    const query =
+      trimString(action.content) ??
+      trimString(options.query) ??
+      trimString(options.search) ??
+      "";
+    if (!query) {
+      throw new Error("PowerPoint searchIcons requires a non-empty query.");
+    }
+
+    const maxResults = resolvePositiveCount(options.maxResults, 12);
+    const icons = searchPowerPointIcons(query, maxResults).map((icon) => ({
+      id: icon.id,
+      name: icon.name,
+      keywords: icon.keywords,
+      glyph: icon.glyph,
+    }));
+
+    return {
+      ok: true,
+      host: "powerpoint",
+      action: type,
+      query,
+      maxResults,
+      totalMatches: icons.length,
+      icons,
+      catalog: "taskpane-runtime-icon-catalog",
+      note: "Use insertIcon with iconId to place a selected icon on the target slide.",
+    };
+  }
+
+  if (type === "insertIcon") {
+    const iconQuery =
+      trimString(action.content) ??
+      trimString(options.iconId) ??
+      trimString(options.iconName) ??
+      trimString(options.query) ??
+      "";
+    if (!iconQuery) {
+      throw new Error("PowerPoint insertIcon requires iconId, iconName, query, or content.");
+    }
+
+    const icon = resolvePowerPointIcon(iconQuery);
+    if (!icon) {
+      throw new Error(`Could not find an icon for "${iconQuery}". Run search_icons first to discover supported icon IDs.`);
+    }
+
+    const providedBase64 = trimString(options.iconBase64) ?? trimString(options.base64);
+    if (providedBase64) {
+      if (action.target?.shapeId) {
+        const replaced = await applyPowerPointShapeImageAction(action, type, { data: providedBase64, mimeType: "image/png" });
+        return isRecord(replaced)
+          ? {
+              ...replaced,
+              iconId: icon.id,
+              iconName: icon.name,
+              iconGlyph: icon.glyph,
+              iconKeywords: icon.keywords,
+              catalog: "taskpane-runtime-icon-catalog",
+              insertionMode: "shape-image-replace",
+            }
+          : replaced;
+      }
+
+      return PowerPoint.run(async (context) => {
+        const slide = await resolvePowerPointSlide(context, action.target, true);
+        slide.load("id,index");
+        const shapes = slide.shapes as any;
+        if (typeof shapes.addImage !== "function") {
+          throw new Error("PowerPoint insertIcon image mode requires PowerPointApi 1.4 or newer.");
+        }
+        const shape = shapes.addImage(`data:image/png;base64,${providedBase64}`) as PowerPoint.Shape;
+        applyPowerPointShapeProperties(shape, options);
+        shape.load("id,name,type");
+        await context.sync();
+        context.presentation.setSelectedSlides([slide.id]);
+        slide.setSelectedShapes([shape.id]);
+        await context.sync();
+        return {
+          ok: true,
+          host: "powerpoint",
+          action: type,
+          slideId: slide.id,
+          slideIndex: slide.index + 1,
+          shapeId: shape.id,
+          shapeName: shape.name,
+          shapeType: shape.type,
+          iconId: icon.id,
+          iconName: icon.name,
+          iconGlyph: icon.glyph,
+          iconKeywords: icon.keywords,
+          catalog: "taskpane-runtime-icon-catalog",
+          insertionMode: "image-shape",
+        };
+      });
+    }
+
+    return PowerPoint.run(async (context) => {
+      const slide = await resolvePowerPointSlide(context, action.target, true);
+      slide.load("id,index");
+      const textOptions: PowerPoint.ShapeAddOptions = {};
+      const left = toNumber(options.left);
+      const top = toNumber(options.top);
+      const width = toNumber(options.width);
+      const height = toNumber(options.height);
+      if (typeof left === "number") textOptions.left = left;
+      if (typeof top === "number") textOptions.top = top;
+      if (typeof width === "number") textOptions.width = width;
+      if (typeof height === "number") textOptions.height = height;
+      const shape = slide.shapes.addTextBox(icon.glyph, textOptions);
+      applyPowerPointShapeProperties(shape, {
+        ...options,
+        name: trimString(options.name) ?? `Icon ${icon.name}`,
+      });
+      const textFrame = shape.getTextFrameOrNullObject();
+      textFrame.load("isNullObject");
+      shape.load("id,name,type");
+      await context.sync();
+
+      if (!textFrame.isNullObject) {
+        const fontSize = toNumber(options.fontSize) ?? 28;
+        textFrame.textRange.font.size = fontSize;
+        const fontColor = trimString(options.fontColor) ?? trimString(options.fillColor);
+        if (fontColor) {
+          textFrame.textRange.font.color = fontColor;
+        }
+        textFrame.wordWrap = false;
+      }
+      await context.sync();
+
+      context.presentation.setSelectedSlides([slide.id]);
+      slide.setSelectedShapes([shape.id]);
+      await context.sync();
+      return {
+        ok: true,
+        host: "powerpoint",
+        action: type,
+        slideId: slide.id,
+        slideIndex: slide.index + 1,
+        shapeId: shape.id,
+        shapeName: shape.name,
+        shapeType: shape.type,
+        iconId: icon.id,
+        iconName: icon.name,
+        iconGlyph: icon.glyph,
+        iconKeywords: icon.keywords,
+        catalog: "taskpane-runtime-icon-catalog",
+        insertionMode: "glyph-textbox",
+      };
+    });
+  }
+
+  if (type === "copyImageBetweenSlides") {
+    const sourceSlideIndex =
+      parsePositiveInteger(options.sourceSlideIndex) ??
+      parsePositiveInteger(options.fromSlideIndex);
+    const sourceShapeId = trimString(options.sourceShapeId) ?? trimString(options.fromShapeId);
+    const sourceTarget: OfficeAnchor | undefined =
+      sourceShapeId || trimString(options.sourceSlideId) || typeof sourceSlideIndex === "number"
+        ? {
+            kind: "shape",
+            slideId: trimString(options.sourceSlideId) ?? trimString(options.fromSlideId),
+            slideIndex: sourceSlideIndex,
+            shapeId: sourceShapeId,
+          }
+        : undefined;
+
+    const directImageBase64 =
+      trimString(action.content) ??
+      trimString(options.sourceImageBase64) ??
+      trimString(options.base64);
+
+    let imageBase64 = directImageBase64;
+    let sourceSummary: {
+      sourceSlideId?: string;
+      sourceSlideIndex?: number;
+      sourceShapeId?: string;
+      sourceShapeName?: string;
+    } = {};
+
+    if (!imageBase64) {
+      if (!supportsRequirementSet("PowerPointApi", "1.10")) {
+        throw new Error("PowerPoint copyImageBetweenSlides without sourceImageBase64 requires PowerPointApi 1.10 for shape snapshot export.");
+      }
+
+      const extracted = await PowerPoint.run(async (context) => {
+        const resolved = await resolvePowerPointShape(context, sourceTarget, true);
+        resolved.slide.load("id,index");
+        resolved.shape.load("id,name");
+        const exportResult = resolved.shape.getImageAsBase64({ format: "Png", width: 1400 });
+        await context.sync();
+        return {
+          imageBase64: exportResult.value,
+          sourceSlideId: resolved.slide.id,
+          sourceSlideIndex: resolved.slide.index + 1,
+          sourceShapeId: resolved.shape.id,
+          sourceShapeName: resolved.shape.name,
+        };
+      });
+      imageBase64 = extracted.imageBase64;
+      sourceSummary = {
+        sourceSlideId: extracted.sourceSlideId,
+        sourceSlideIndex: extracted.sourceSlideIndex,
+        sourceShapeId: extracted.sourceShapeId,
+        sourceShapeName: extracted.sourceShapeName,
+      };
+    }
+
+    if (!imageBase64) {
+      throw new Error("PowerPoint copyImageBetweenSlides could not resolve an image payload.");
+    }
+
+    if (action.target?.shapeId) {
+      const replaced = await applyPowerPointShapeImageAction(action, type, { data: imageBase64, mimeType: "image/png" });
+      return isRecord(replaced)
+        ? {
+            ...replaced,
+            ...sourceSummary,
+            copiedImageMimeType: "image/png",
+            insertionMode: "shape-image-replace",
+          }
+        : replaced;
+    }
+
+    return PowerPoint.run(async (context) => {
+      const slide = await resolvePowerPointSlide(context, action.target, true);
+      slide.load("id,index");
+      const shapes = slide.shapes as any;
+      if (typeof shapes.addImage !== "function") {
+        throw new Error("PowerPoint copyImageBetweenSlides insertion requires PowerPointApi 1.4 or newer.");
+      }
+      const shape = shapes.addImage(`data:image/png;base64,${imageBase64}`) as PowerPoint.Shape;
+      applyPowerPointShapeProperties(shape, options);
+      shape.load("id,name,type");
+      await context.sync();
+      context.presentation.setSelectedSlides([slide.id]);
+      slide.setSelectedShapes([shape.id]);
+      await context.sync();
+      return {
+        ok: true,
+        host: "powerpoint",
+        action: type,
+        slideId: slide.id,
+        slideIndex: slide.index + 1,
+        shapeId: shape.id,
+        shapeName: shape.name,
+        shapeType: shape.type,
+        ...sourceSummary,
+        copiedImageMimeType: "image/png",
+        insertionMode: "image-shape",
+      };
+    });
   }
 
   return PowerPoint.run(async (context) => {

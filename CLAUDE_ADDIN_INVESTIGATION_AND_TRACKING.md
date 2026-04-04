@@ -373,3 +373,48 @@ The following Word checklist is aligned to `npm run smoke:office -- --list` scen
   - Connector outcomes are surfaced explicitly.
   - Session reconnect remains usable for subsequent prompts/tool calls.
 
+### PowerPoint
+
+The following PowerPoint checklist is aligned to `npm run smoke:office -- --list` scenario IDs.
+
+#### Scenario: `powerpoint-anchor-navigation` — Slide, layout, shape, and notes anchors
+
+- Steps:
+  1. Open a deck with notes and at least one named shape on the selected slide.
+  2. Run `office_get_context` with `includeFormatting=true` and confirm anchors include slide/shape/layout/master/notes targets.
+  3. Run `office_navigate` with one anchor from each anchor family above.
+- Expected:
+  - Slide and shape anchors navigate to the exact target.
+  - Layout/master/notes anchors report explicit fallback behavior when native direct navigation is partial.
+
+#### Scenario: `powerpoint-slide-and-shape-authoring` — Native slide and shape operations
+
+- Steps:
+  1. In a disposable deck copy, run lifecycle operations such as `addAgendaSlide`, `addTransitionSlide`, `duplicateSlide`, `reorderSlides`, `combineSlides`, and `deleteSlide` (with destructive confirmation where required).
+  2. Run text/media operations including `setShapeText`, `updateShapeProperties`, `replaceShapeImage`, and table updates (`setTableValues` or `updateTableCell`).
+  3. Run process-flow style shape generation to confirm editable shapes/connectors are inserted.
+- Expected:
+  - Slide lifecycle operations mutate real slide objects (not flattened fallback output).
+  - Resulting shapes/images/tables remain editable in native PowerPoint after completion.
+
+#### Scenario: `powerpoint-notes-and-charts` — Serialized notes and chart workflows
+
+- Steps:
+  1. Run `getSlideNotes` then `setSlideNotes` for a target slide and confirm updated notes are reflected after reselection.
+  2. Run `inspectPresentationPackage` or `getPresentationTheme` to validate serialized package metadata visibility.
+  3. Run `edit_slide_chart` with inspect/create/update operations (for example `get_slide_charts`, `add_slide_chart`, `update_slide_chart`) on chart-bearing slides.
+- Expected:
+  - Notes operations remain aligned to serialized slide replacement flows with explicit result metadata.
+  - Chart operations return chart metadata and preserve native chart editability with embedded workbook sync.
+
+#### Scenario: `powerpoint-taskpane-stability` — Taskpane focus, scroll, prompt, and connector stability
+
+- Steps:
+  1. Send a long prompt while interacting with slides and confirm taskpane keyboard focus remains stable.
+  2. Scroll chat during streaming output and confirm user-controlled scroll behavior remains intact.
+  3. Trigger one connector-backed request, then reconnect/reopen taskpane and submit another prompt.
+- Expected:
+  - Prompting and scroll behavior stay stable during active slide interaction.
+  - Connector outcomes remain visible and explicit.
+  - Reconnected sessions continue to execute prompts and tools normally.
+

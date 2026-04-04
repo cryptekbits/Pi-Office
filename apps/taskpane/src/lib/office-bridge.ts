@@ -176,6 +176,63 @@ function toWordVisualVerificationPayload(payload: unknown, includeWindowFrameReq
   };
 }
 
+function toPowerPointSlidesVerificationPayload(payload: unknown, scope: string | undefined): unknown {
+  if (!isRecord(payload)) {
+    return payload;
+  }
+
+  return {
+    summary: trimString(payload.summary) ?? "PowerPoint slide verification context captured.",
+    details: {
+      kind: "powerpoint-slide-verification",
+      mutating: false,
+      host: "powerpoint",
+      scope: scope ?? "presentation",
+      structure: {
+        slideCount: payload.slideCount,
+        selectedSlideCount: payload.selectedSlideCount,
+        selectedSlideIds: payload.selectedSlideIds,
+        slides: payload.slides,
+        slidePreviews: payload.slidePreviews,
+        slideMasters: payload.slideMasters,
+      },
+    },
+  };
+}
+
+function toPowerPointVisualVerificationPayload(payload: unknown, maxImages: number): unknown {
+  if (!isRecord(payload)) {
+    return payload;
+  }
+
+  const visuals = Array.isArray(payload.visuals) ? payload.visuals : [];
+  const snippets = isRecord(payload.snippets) ? payload.snippets : {};
+  const formatting = isRecord(payload.formatting) ? payload.formatting : {};
+
+  return {
+    summary: trimString(payload.summary) ?? "PowerPoint visual verification context captured.",
+    visual: {
+      kind: "powerpoint-slide-snapshot",
+      captureMode: "officejs-slide-snapshot",
+      imageCount: visuals.length,
+      maxImagesRequested: maxImages,
+      note: "Visual verification uses supported Office.js slide/shape snapshot paths.",
+    },
+    details: {
+      kind: "powerpoint-slide-visual-verification",
+      mutating: false,
+      host: "powerpoint",
+      selectedSlides: snippets.selectedSlides,
+      selectedShapeDescriptors: snippets.selectedShapeDescriptors,
+      formatting: {
+        selectedSlides: formatting.selectedSlides,
+        selectedShapes: formatting.selectedShapes,
+      },
+    },
+    visuals,
+  };
+}
+
 export function summarizeOfficeToolError(error: unknown, toolName: OfficeToolRequest["toolName"]): string {
   const record = getErrorRecord(error);
   const message =
@@ -537,6 +594,39 @@ function toPowerPointMasterActionType(value: string | undefined): string | undef
     case "setslidemaster":
     case "applymaster":
       return "applyLayout";
+    default:
+      return undefined;
+  }
+}
+
+function toPowerPointChartActionType(value: string | undefined): string | undefined {
+  if (!value) {
+    return "updateSlideChart";
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "getslidecharts":
+    case "inspectslidecharts":
+    case "readslidecharts":
+    case "inspectcharts":
+    case "readcharts":
+    case "listcharts":
+      return "getSlideCharts";
+    case "addslidechart":
+    case "createslidechart":
+    case "addcharttoslide":
+    case "insertslidechart":
+    case "createchart":
+    case "addchart":
+      return "addSlideChart";
+    case "updateslidechart":
+    case "setchartdata":
+    case "updatechartdata":
+    case "replacechartdata":
+    case "editslidechart":
+    case "editchart":
+      return "updateSlideChart";
     default:
       return undefined;
   }
@@ -1096,6 +1186,193 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
           options: toPowerPointStructureOptions(request.params),
         });
         return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "edit_slide_chart") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "edit_slide_chart is only available for PowerPoint.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const actionType = toPowerPointChartActionType(operation);
+        if (!actionType) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              "edit_slide_chart requires a supported operation (get_slide_charts, add_slide_chart, update_slide_chart).",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const content = firstString(request.params.content, request.params.title);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: actionType,
+          ...(target ? { target } : {}),
+          ...(typeof content === "string" ? { content } : {}),
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "copy_image_between_slides") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "copy_image_between_slides is only available for PowerPoint.",
+          };
+        }
+
+        const targetParams: Record<string, unknown> = {
+          ...request.params,
+          slideId: trimString(request.params.targetSlideId) ?? trimString(request.params.slideId),
+          slideIndex:
+            typeof request.params.targetSlideIndex === "number"
+              ? request.params.targetSlideIndex
+              : request.params.slideIndex,
+          shapeId: trimString(request.params.targetShapeId) ?? trimString(request.params.shapeId),
+        };
+        const target = toPowerPointStructureTarget(targetParams);
+        const content = firstString(request.params.sourceImageBase64, request.params.base64, request.params.content);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "copyImageBetweenSlides",
+          ...(target ? { target } : {}),
+          ...(typeof content === "string" ? { content } : {}),
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "search_icons") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "search_icons is only available for PowerPoint.",
+          };
+        }
+
+        const query = firstString(request.params.query, request.params.search, request.params.content);
+        if (!query?.trim()) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "search_icons requires a non-empty query.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "searchIcons",
+          content: query,
+          options: {
+            ...toPowerPointStructureOptions(request.params),
+            query,
+          },
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "insert_icon") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "insert_icon is only available for PowerPoint.",
+          };
+        }
+
+        const iconId = firstString(request.params.iconId, request.params.iconName, request.params.query, request.params.content);
+        if (!iconId?.trim()) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "insert_icon requires iconId, iconName, query, or content.",
+          };
+        }
+
+        const targetParams: Record<string, unknown> = {
+          ...request.params,
+          slideId: trimString(request.params.targetSlideId) ?? trimString(request.params.slideId),
+          slideIndex:
+            typeof request.params.targetSlideIndex === "number"
+              ? request.params.targetSlideIndex
+              : request.params.slideIndex,
+          shapeId: trimString(request.params.targetShapeId) ?? trimString(request.params.shapeId),
+        };
+        const target = toPowerPointStructureTarget(targetParams);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "insertIcon",
+          ...(target ? { target } : {}),
+          content: iconId,
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "verify_slides") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "verify_slides is only available for PowerPoint.",
+          };
+        }
+
+        const scope = trimString(request.params.scope);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "getPresentationStructure",
+          options: toPowerPointStructureOptions(request.params),
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, result);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: toPowerPointSlidesVerificationPayload(payloadAware.content, scope),
+        };
+      }
+
+      if (request.toolName === "verify_slide_visual") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "verify_slide_visual is only available for PowerPoint.",
+          };
+        }
+
+        const includeFormatting = request.params.includeFormatting !== false;
+        const maxImages =
+          typeof request.params.maxImages === "number" && Number.isFinite(request.params.maxImages)
+            ? Math.max(1, Math.min(4, Math.trunc(request.params.maxImages)))
+            : 1;
+        const scope = trimString(request.params.scope) ?? "slide";
+        const rawResult = await dependencies.collectOfficeContext(request.host, {
+          includeFormatting,
+          maxImages,
+          scope,
+        });
+        const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+        if (!payloadAware.success) {
+          return payloadAware;
+        }
+
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: toPowerPointVisualVerificationPayload(payloadAware.content, maxImages),
+        };
       }
 
       if (request.toolName === "office_execute_js") {
