@@ -50,6 +50,50 @@ const smokeScenarios = {
           "Action results return touched objects matching the edited comment, revision, field, or content control.",
         ],
       },
+      {
+        id: "word-visual-verification",
+        title: "Word document + visual verification",
+        covers: [
+          "structured Word verification context",
+          "viewport/visual verification payload",
+          "Word-only visual verification constraints",
+        ],
+        setup: "Open a document where the current visible viewport includes at least one heading, one list block, and one paragraph with tracked changes.",
+        steps: [
+          "Run `verify_doc` with `scope=document` and confirm it returns summary text plus a structured `details` payload containing host/context snippets.",
+          "Run `verify_doc_visual` with `includeFormatting=true` and confirm it returns `visual`, `details`, and `visuals` payloads sourced from the viewport path.",
+          "From a non-Word host session, run `verify_doc_visual` and confirm it reports the Word-only availability constraint.",
+        ],
+        expected: [
+          "`verify_doc` remains non-mutating and returns structured verification context for review workflows.",
+          "`verify_doc_visual` returns viewport-oriented visual metadata with explicit window-frame limitations.",
+          "Word-only constraints are explicit and do not silently fall through on non-Word hosts.",
+        ],
+      },
+      {
+        id: "word-taskpane-stability",
+        title: "Taskpane focus, scroll, prompt, and connector stability",
+        covers: [
+          "taskpane keyboard focus",
+          "chat vertical scroll behavior",
+          "prompt + streaming stability",
+          "connector action execution",
+          "session reconnect behavior",
+        ],
+        setup: "Keep the taskpane open with an active model and at least one connected connector.",
+        steps: [
+          "Type a long prompt in the composer and confirm keyboard input remains in the taskpane (not Word document body).",
+          "Send the prompt, stream a long response, manually scroll up mid-stream, then verify auto-scroll does not fight manual scroll.",
+          "Trigger one connector-backed request and verify success/error feedback appears inline in chat/settings.",
+          "Close and reopen Word (or force taskpane reconnect), then verify session reconnects and a new prompt can complete.",
+        ],
+        expected: [
+          "Composer focus remains stable while typing and after sending prompts.",
+          "Chat scroll stays user-controlled and resumes normally at the bottom.",
+          "Connector calls surface clear success/failure outcomes without silent drops.",
+          "Reconnected session remains usable for subsequent prompts and tool calls.",
+        ],
+      },
     ],
   },
   excel: {

@@ -120,6 +120,8 @@ const BROWSER_UNSUPPORTED_PROVIDERS = new Set<string>(["amazon-bedrock"]);
 const REGISTERED_AGENT_TOOL_NAMES = [
   "office_get_context",
   "office_apply_edit",
+  "edit_doc_text",
+  "edit_doc_list",
   "office_navigate",
   "office_capture_snapshot",
   "office_capture_viewport",
@@ -867,6 +869,8 @@ class BrowserOfficeSession {
         "mcp",
         "office_get_context",
         "office_apply_edit",
+        "edit_doc_text",
+        "edit_doc_list",
         "office_navigate",
         "office_capture_snapshot",
         "office_capture_viewport",
@@ -1248,6 +1252,79 @@ class BrowserOfficeSession {
       },
     });
 
+    const reviewableWordEditTool = (
+      toolName: "office_propose_edits" | "edit_doc_list",
+      label: string,
+      description: string,
+    ): AgentTool => ({
+      name: toolName,
+      label,
+      description,
+      parameters: proposeEditsParams,
+      execute: async (_toolCallId, params) => {
+        const result = await this.invokeOfficeTool(toolName, normalizeToolParams(params));
+        const resultObj = result as JsonRecord | undefined;
+        if (!resultObj || !Array.isArray(resultObj.edits) || typeof resultObj.summary !== "string") {
+          return {
+            content: toToolContent(result),
+            details: result,
+          };
+        }
+
+        const proposal: OfficeEditProposal = {
+          requestId: crypto.randomUUID(),
+          edits: resultObj.edits as OfficeEditProposal["edits"],
+          summary: resultObj.summary,
+        };
+
+        const decision = await this.invokeEditProposal(proposal);
+        const accepted = decision.decisions.filter((entry) => entry.accepted);
+        const rejected = decision.decisions.filter((entry) => !entry.accepted);
+
+        const lines: string[] = [
+          `Edit proposal reviewed: ${accepted.length} accepted, ${rejected.length} rejected out of ${proposal.edits.length} edits.`,
+        ];
+
+        if (decision.applicationResult) {
+          const resultSummary = decision.applicationResult;
+          if (resultSummary.failed > 0) {
+            lines.push(
+              `Application result: ${resultSummary.applied} applied, ${resultSummary.failed} failed. Errors: ${resultSummary.errors.join("; ")}`,
+            );
+          } else if (resultSummary.applied > 0) {
+            lines.push(`All ${resultSummary.applied} accepted edit${resultSummary.applied === 1 ? "" : "s"} applied successfully.`);
+          } else {
+            lines.push("No edits were applied.");
+          }
+        } else {
+          lines.push(accepted.length ? "Accepted edits were applied to the document." : "No edits were applied.");
+        }
+
+        if (rejected.length) {
+          lines.push("", "Rejected edits:");
+          for (const rejectedEdit of rejected) {
+            const reason = rejectedEdit.rejectReason
+              ? EDIT_REJECT_REASON_LABELS[rejectedEdit.rejectReason]
+              : "No reason given";
+            lines.push(`- ${rejectedEdit.editId}: ${reason}${rejectedEdit.rejectNote ? ` (note: ${rejectedEdit.rejectNote})` : ""}`);
+          }
+        }
+
+        if (decision.globalFeedback) {
+          lines.push("", `User feedback: "${decision.globalFeedback}"`);
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          details: {
+            proposalId: proposal.requestId,
+            decisions: decision.decisions,
+            applicationResult: decision.applicationResult,
+          },
+        };
+      },
+    });
+
     const tools: AgentTool[] = [
       simpleOfficeTool(
         "office_get_context",
@@ -1259,6 +1336,12 @@ class BrowserOfficeSession {
         "office_apply_edit",
         "Office Edit",
         "Apply native edits to the active Office document, worksheet, or slide. Prefer action.type/action.content; legacy operation/text params are also supported.",
+        applyEditParams,
+      ),
+      simpleOfficeTool(
+        "edit_doc_text",
+        "Edit Word Text",
+        "Word-only first-class text editing. Use for direct clause/sentence updates through native Word actions when no per-edit review card is required.",
         applyEditParams,
       ),
       simpleOfficeTool(
@@ -1303,77 +1386,18 @@ class BrowserOfficeSession {
         "Execute Office.js code as an escape hatch when structured tools are insufficient. This tool is a best-effort restricted subset enforced by regex checks (not an isolated sandbox) and blocks network, storage, eval, and system-access patterns.",
         executeJsParams,
       ),
-      {
-        name: "office_propose_edits",
-        label: "Propose Document Edits",
-        description:
-          `Propose a batch of text edits for user review before applying changes. ` +
+      reviewableWordEditTool(
+        "edit_doc_list",
+        "Edit Word List",
+        `Word-only first-class reviewable list editing. Keep each searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId/anchor locators when available.`,
+      ),
+      reviewableWordEditTool(
+        "office_propose_edits",
+        "Propose Document Edits",
+        `Propose a batch of text edits for user review before applying changes. ` +
           `CRITICAL: each edit's searchText MUST be under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters. ` +
           "Split large paragraph rewrites into multiple small, targeted edits.",
-        parameters: proposeEditsParams,
-        execute: async (_toolCallId, params) => {
-          const result = await this.invokeOfficeTool("office_propose_edits", normalizeToolParams(params));
-          const resultObj = result as JsonRecord | undefined;
-          if (!resultObj || !Array.isArray(resultObj.edits) || typeof resultObj.summary !== "string") {
-            return {
-              content: toToolContent(result),
-              details: result,
-            };
-          }
-
-          const proposal: OfficeEditProposal = {
-            requestId: crypto.randomUUID(),
-            edits: resultObj.edits as OfficeEditProposal["edits"],
-            summary: resultObj.summary,
-          };
-
-          const decision = await this.invokeEditProposal(proposal);
-          const accepted = decision.decisions.filter((entry) => entry.accepted);
-          const rejected = decision.decisions.filter((entry) => !entry.accepted);
-
-          const lines: string[] = [
-            `Edit proposal reviewed: ${accepted.length} accepted, ${rejected.length} rejected out of ${proposal.edits.length} edits.`,
-          ];
-
-          if (decision.applicationResult) {
-            const resultSummary = decision.applicationResult;
-            if (resultSummary.failed > 0) {
-              lines.push(
-                `Application result: ${resultSummary.applied} applied, ${resultSummary.failed} failed. Errors: ${resultSummary.errors.join("; ")}`,
-              );
-            } else if (resultSummary.applied > 0) {
-              lines.push(`All ${resultSummary.applied} accepted edit${resultSummary.applied === 1 ? "" : "s"} applied successfully.`);
-            } else {
-              lines.push("No edits were applied.");
-            }
-          } else {
-            lines.push(accepted.length ? "Accepted edits were applied to the document." : "No edits were applied.");
-          }
-
-          if (rejected.length) {
-            lines.push("", "Rejected edits:");
-            for (const rejectedEdit of rejected) {
-              const reason = rejectedEdit.rejectReason
-                ? EDIT_REJECT_REASON_LABELS[rejectedEdit.rejectReason]
-                : "No reason given";
-              lines.push(`- ${rejectedEdit.editId}: ${reason}${rejectedEdit.rejectNote ? ` (note: ${rejectedEdit.rejectNote})` : ""}`);
-            }
-          }
-
-          if (decision.globalFeedback) {
-            lines.push("", `User feedback: "${decision.globalFeedback}"`);
-          }
-
-          return {
-            content: [{ type: "text", text: lines.join("\n") }],
-            details: {
-              proposalId: proposal.requestId,
-              decisions: decision.decisions,
-              applicationResult: decision.applicationResult,
-            },
-          };
-        },
-      },
+      ),
       {
         name: "ask_user",
         label: "Ask User",

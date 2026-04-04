@@ -321,6 +321,79 @@ export function getOfficeSkillPaths(): string[] {
 export function createOfficeExtension(options: OfficeExtensionOptions): ExtensionFactory {
   return (pi) => {
     const isDisabled = options.isToolDisabled ?? (() => false);
+    const executeReviewableWordEdits = async (
+      toolName: "office_propose_edits" | "edit_doc_list",
+      params: Record<string, unknown>,
+    ) => {
+      const result = await options.invokeTool(toolName, params);
+      const resultObj = result as Record<string, unknown> | undefined;
+      if (!resultObj || resultObj.error || !Array.isArray(resultObj.edits) || !options.invokeEditProposal) {
+        return { content: toToolContent(result), details: result };
+      }
+
+      const proposal: import("./protocol.js").OfficeEditProposal = {
+        requestId: crypto.randomUUID(),
+        edits: resultObj.edits as import("./protocol.js").OfficeProposedEdit[],
+        summary: String(resultObj.summary ?? "Proposed edits"),
+      };
+
+      const decision = await options.invokeEditProposal(proposal);
+      const accepted = decision.decisions.filter((d) => d.accepted);
+      const rejected = decision.decisions.filter((d) => !d.accepted);
+
+      const reasonLabels: Record<string, string> = {
+        keep_original: "Keep original",
+        rewrite_differently: "Rewrite differently",
+        not_relevant: "Not relevant",
+      };
+
+      const appResult = decision.applicationResult;
+      let applicationLine: string;
+      if (appResult) {
+        if (appResult.failed > 0) {
+          applicationLine = `Application result: ${appResult.applied} applied, ${appResult.failed} failed. Errors: ${appResult.errors.join("; ")}`;
+        } else if (appResult.applied > 0) {
+          applicationLine = `All ${appResult.applied} accepted edit${appResult.applied !== 1 ? "s" : ""} applied successfully.`;
+        } else {
+          applicationLine = "No edits were applied.";
+        }
+      } else {
+        applicationLine = accepted.length ? "Accepted edits were applied to the document." : "No edits were applied.";
+      }
+
+      const lines: string[] = [
+        `Edit proposal reviewed: ${accepted.length} accepted, ${rejected.length} rejected out of ${proposal.edits.length} edits.`,
+        applicationLine,
+      ];
+
+      if (rejected.length) {
+        lines.push("", "Rejected edits:");
+        for (const d of rejected) {
+          const edit = proposal.edits.find((e) => e.id === d.editId);
+          const preview = (edit?.searchText ?? edit?.oldText ?? "").slice(0, 60);
+          const reason = d.rejectReason ? reasonLabels[d.rejectReason] ?? d.rejectReason : "No reason given";
+          const note = d.rejectNote ? ` (note: "${d.rejectNote}")` : "";
+          lines.push(`- "${preview}${preview.length >= 60 ? "..." : ""}": ${reason}${note}`);
+        }
+      }
+
+      if (decision.globalFeedback) {
+        lines.push("", `User feedback: "${decision.globalFeedback}"`);
+      }
+
+      return {
+        content: [{ type: "text" as const, text: lines.join("\n") }],
+        details: {
+          proposalId: proposal.requestId,
+          summary: proposal.summary,
+          totalEdits: proposal.edits.length,
+          accepted: accepted.length,
+          rejected: rejected.length,
+          decisions: decision.decisions,
+          globalFeedback: decision.globalFeedback,
+        },
+      };
+    };
 
     if (!isDisabled("office_get_context"))
     pi.registerTool({
@@ -345,6 +418,22 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       parameters: applyEditParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_apply_edit", params as OfficeApplyEditParams as Record<string, unknown>);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("edit_doc_text"))
+    pi.registerTool({
+      name: "edit_doc_text",
+      label: "Edit Word Text",
+      description:
+        "Word-only first-class text editing. Use this for direct clause/sentence updates through native Word actions when no per-edit review card is required.",
+      parameters: applyEditParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("edit_doc_text", params as OfficeApplyEditParams as Record<string, unknown>);
         return {
           content: toToolContent(result),
           details: result,
@@ -462,6 +551,16 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       },
     });
 
+    if (!isDisabled("edit_doc_list"))
+    pi.registerTool({
+      name: "edit_doc_list",
+      label: "Edit Word List",
+      description:
+        `Word-only first-class reviewable list editing. Use for list-like rewrites or multi-item legal edits that should be reviewed before apply. Keep each searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId/anchor locators when available.`,
+      parameters: proposeEditsParams,
+      execute: async (_toolCallId, params) => executeReviewableWordEdits("edit_doc_list", params),
+    });
+
     if (!isDisabled("office_propose_edits"))
     pi.registerTool({
       name: "office_propose_edits",
@@ -469,76 +568,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       description:
         `Propose a batch of text edits to the active Word document for the user to review before applying. Each edit specifies a kind (insert/replace/delete), the text to find (searchText), and the replacement. The user sees a reviewable card for each edit and can accept, modify, or reject individually. CRITICAL: each edit's searchText MUST be under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters. Break large paragraph rewrites into multiple small, targeted edits — one per sentence or distinct phrase. Never use a full paragraph as searchText. For example, instead of one edit replacing a 3-sentence paragraph, create 3 separate edits each targeting one sentence. Use this instead of office_apply_edit when making multi-paragraph changes or when the user should verify changes first.`,
       parameters: proposeEditsParams,
-      execute: async (_toolCallId, params) => {
-        const result = await options.invokeTool("office_propose_edits", params);
-        const resultObj = result as Record<string, unknown> | undefined;
-        if (!resultObj || resultObj.error || !Array.isArray(resultObj.edits) || !options.invokeEditProposal) {
-          return { content: toToolContent(result), details: result };
-        }
-
-        const proposal: import("./protocol.js").OfficeEditProposal = {
-          requestId: crypto.randomUUID(),
-          edits: resultObj.edits as import("./protocol.js").OfficeProposedEdit[],
-          summary: String(resultObj.summary ?? "Proposed edits"),
-        };
-
-        const decision = await options.invokeEditProposal(proposal);
-        const accepted = decision.decisions.filter((d) => d.accepted);
-        const rejected = decision.decisions.filter((d) => !d.accepted);
-
-        const reasonLabels: Record<string, string> = {
-          keep_original: "Keep original",
-          rewrite_differently: "Rewrite differently",
-          not_relevant: "Not relevant",
-        };
-
-        const appResult = decision.applicationResult;
-        let applicationLine: string;
-        if (appResult) {
-          if (appResult.failed > 0) {
-            applicationLine = `Application result: ${appResult.applied} applied, ${appResult.failed} failed. Errors: ${appResult.errors.join("; ")}`;
-          } else if (appResult.applied > 0) {
-            applicationLine = `All ${appResult.applied} accepted edit${appResult.applied !== 1 ? "s" : ""} applied successfully.`;
-          } else {
-            applicationLine = "No edits were applied.";
-          }
-        } else {
-          applicationLine = accepted.length ? "Accepted edits were applied to the document." : "No edits were applied.";
-        }
-
-        const lines: string[] = [
-          `Edit proposal reviewed: ${accepted.length} accepted, ${rejected.length} rejected out of ${proposal.edits.length} edits.`,
-          applicationLine,
-        ];
-
-        if (rejected.length) {
-          lines.push("", "Rejected edits:");
-          for (const d of rejected) {
-            const edit = proposal.edits.find((e) => e.id === d.editId);
-            const preview = (edit?.searchText ?? edit?.oldText ?? "").slice(0, 60);
-            const reason = d.rejectReason ? reasonLabels[d.rejectReason] ?? d.rejectReason : "No reason given";
-            const note = d.rejectNote ? ` (note: "${d.rejectNote}")` : "";
-            lines.push(`- "${preview}${preview.length >= 60 ? "..." : ""}": ${reason}${note}`);
-          }
-        }
-
-        if (decision.globalFeedback) {
-          lines.push("", `User feedback: "${decision.globalFeedback}"`);
-        }
-
-        return {
-          content: [{ type: "text" as const, text: lines.join("\n") }],
-          details: {
-            proposalId: proposal.requestId,
-            summary: proposal.summary,
-            totalEdits: proposal.edits.length,
-            accepted: accepted.length,
-            rejected: rejected.length,
-            decisions: decision.decisions,
-            globalFeedback: decision.globalFeedback,
-          },
-        };
-      },
+      execute: async (_toolCallId, params) => executeReviewableWordEdits("office_propose_edits", params),
     });
 
     if (!isDisabled("ask_user"))

@@ -699,6 +699,8 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   verify_doc: "read",
   verify_doc_visual: "read",
   office_apply_edit: "write-doc",
+  edit_doc_text: "write-doc",
+  edit_doc_list: "write-doc",
   office_propose_edits: "write-doc",
   office_navigate: "write-doc",
   office_execute_js: "write-doc",
@@ -908,6 +910,8 @@ export interface OfficeEditProposalDecision {
 export const OFFICE_TOOL_NAMES = [
   "office_get_context",
   "office_apply_edit",
+  "edit_doc_text",
+  "edit_doc_list",
   "office_navigate",
   "office_capture_snapshot",
   "office_capture_viewport",

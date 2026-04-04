@@ -446,6 +446,36 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
         };
       }
 
+      if (request.toolName === "edit_doc_text") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "edit_doc_text is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, toHostAction(request.params));
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: result,
+        };
+      }
+
+      if (request.toolName === "edit_doc_list") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "edit_doc_list is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.proposeEdits(request.host, request.params);
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
       if (request.toolName === "office_navigate") {
         const result = await dependencies.navigateOfficeAnchor(request.host, toAnchor(request.params));
         return {

@@ -1,5 +1,12 @@
 import type { OfficeHost, OfficeMode, OfficeStateUpdate, UserPreferences, ToolCategory } from "./protocol.js";
-import { AUTONOMY_LEVEL_AUTO_APPROVE, AUTONOMY_LEVEL_LABELS, TOOL_CATEGORY_MAP, OFFICE_TOOL_NAMES, type AutonomyLevel } from "./protocol.js";
+import {
+  AUTONOMY_LEVEL_AUTO_APPROVE,
+  AUTONOMY_LEVEL_LABELS,
+  TOOL_CATEGORY_MAP,
+  OFFICE_TOOL_NAMES,
+  OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH,
+  type AutonomyLevel,
+} from "./protocol.js";
 
 export const DEFAULT_COMPANION_PORT = 3443;
 export const DEFAULT_COMPANION_HOST = "localhost";
@@ -21,6 +28,9 @@ If visual layout, images, charts, spacing, margins, tabs, ruler-level formatting
 If the user is asking about what is currently visible in Word, or about alignment, page breaks, wrapping, clipping, margins, header/footer placement, page position, or any other viewport-dependent issue, call office_capture_viewport proactively.
 Use office_capture_viewport only for Word. It returns Office.js viewport metadata and context-derived visuals; it is not a pixel-perfect OS/window screenshot and does not capture off-screen pages.
 Prefer targeted edits to the current selection instead of rewriting an entire document unless the user clearly wants that.
+For direct Word clause/sentence updates, use edit_doc_text first so edits route through native Word actions.
+For Word list rewrites, legal-review-sensitive edits, or tracked-changes-heavy passages, use edit_doc_list (or office_propose_edits) so each change is reviewable before apply.
+When using edit_doc_list or office_propose_edits, keep every searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId or anchor locators whenever available for deterministic targeting.
 office_execute_js is a best-effort restricted subset enforced with regex checks (not an isolated sandbox). It blocks network, storage, eval, and system-access patterns and should only be used as an escape hatch when structured tools are insufficient.
 When a task involves subjective choices (tone, audience, format, scope, style) or the request is ambiguous enough that different interpretations would produce materially different results, use ask_user to clarify before proceeding. Do not guess — ask. After receiving the user's answers from ask_user, immediately carry out the full task using those answers in the same turn. Never stop after merely acknowledging the user's choices.
 The taskpane chat renders Mermaid and Draw.io diagrams inline. When the user asks for a diagram, flowchart, sequence diagram, or visual aid, prefer returning a fenced code block tagged with mermaid or drawio so the taskpane can render it and offer insertion into the document.
