@@ -25,6 +25,38 @@ export interface DocumentSnapshotData {
   presentationBase64?: string;
 }
 
+function encodePowerPointSliceChunk(raw: unknown): string | undefined {
+  if (typeof raw === "string") {
+    return raw;
+  }
+  if (raw == null) {
+    return undefined;
+  }
+
+  let bytes: Uint8Array;
+  if (raw instanceof Uint8Array) {
+    bytes = raw;
+  } else if (ArrayBuffer.isView(raw)) {
+    bytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+  } else if (raw instanceof ArrayBuffer) {
+    bytes = new Uint8Array(raw);
+  } else if (Array.isArray(raw)) {
+    if (!raw.every((entry) => typeof entry === "number" && Number.isInteger(entry) && entry >= 0 && entry <= 255)) {
+      return undefined;
+    }
+    bytes = Uint8Array.from(raw);
+  } else {
+    return undefined;
+  }
+
+  let binary = "";
+  const CHUNK_SIZE = 32768;
+  for (let offset = 0; offset < bytes.length; offset += CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + CHUNK_SIZE));
+  }
+  return btoa(binary);
+}
+
 export async function captureDocumentSnapshot(host: OfficeHost): Promise<DocumentSnapshotData> {
   if (host === "word") {
     return Word.run(async (context) => {
@@ -70,20 +102,60 @@ export async function captureDocumentSnapshot(host: OfficeHost): Promise<Documen
           }
           const file = result.value;
           const sliceCount = file.sliceCount;
-          const chunks: string[] = [];
+          const chunks = new Array<string | undefined>(sliceCount);
           let received = 0;
+          let settled = false;
+
+          const finalize = (error?: Error) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            file.closeAsync(() => {
+              if (error) {
+                reject(error);
+                return;
+              }
+              resolve({ presentationBase64: chunks.join("") });
+            });
+          };
+
+          if (sliceCount <= 0) {
+            finalize(new Error("PowerPoint snapshot did not return any slices."));
+            return;
+          }
+
           for (let i = 0; i < sliceCount; i++) {
             file.getSliceAsync(i, (sliceResult) => {
-              if (sliceResult.status === Office.AsyncResultStatus.Succeeded) {
-                const raw = sliceResult.value.data;
-                const bytes = typeof raw === "string" ? raw : btoa(String.fromCharCode(...new Uint8Array(raw)));
-                chunks[i] = bytes;
+              if (settled) {
+                return;
               }
-              received++;
-              if (received === sliceCount) {
-                file.closeAsync();
-                resolve({ presentationBase64: chunks.join("") });
+
+              if (sliceResult.status !== Office.AsyncResultStatus.Succeeded) {
+                const errorMessage = sliceResult.error?.message ?? "unknown error";
+                finalize(new Error(`Failed to read PowerPoint slice ${i}: ${errorMessage}`));
+                return;
               }
+
+              const chunk = encodePowerPointSliceChunk(sliceResult.value?.data);
+              if (typeof chunk !== "string") {
+                finalize(new Error(`PowerPoint snapshot is missing data for slice ${i}.`));
+                return;
+              }
+
+              chunks[i] = chunk;
+              received += 1;
+              if (received !== sliceCount) {
+                return;
+              }
+
+              const missingChunkIndex = chunks.findIndex((entry) => typeof entry !== "string");
+              if (missingChunkIndex !== -1) {
+                finalize(new Error(`PowerPoint snapshot is missing chunk ${missingChunkIndex}.`));
+                return;
+              }
+
+              finalize();
             });
           }
         },
