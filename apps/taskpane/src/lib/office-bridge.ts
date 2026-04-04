@@ -410,6 +410,138 @@ function toPowerPointStructureActionType(value: string | undefined): string | un
   }
 }
 
+function toPowerPointElementInsertActionType(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "addtextbox":
+    case "inserttextbox":
+      return "addTextBox";
+    case "addgeometricshape":
+    case "insertgeometricshape":
+    case "addshape":
+      return "addGeometricShape";
+    case "addtable":
+    case "inserttable":
+      return "addTable";
+    case "addline":
+    case "insertline":
+      return "addLine";
+    case "addprocessflow":
+      return "addProcessFlow";
+    case "addsimplediagram":
+      return "addSimpleDiagram";
+    case "insertinlinepicture":
+    case "insertimage":
+    case "addimage":
+      return "insertInlinePicture";
+    default:
+      return undefined;
+  }
+}
+
+function toPowerPointElementRemoveActionType(value: string | undefined): string | undefined {
+  if (!value) {
+    return "deleteShape";
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "removeshape":
+    case "deleteshape":
+      return "deleteShape";
+    case "removeshapes":
+    case "deleteshapes":
+      return "deleteShapes";
+    case "clearshapetext":
+      return "clearShapeText";
+    default:
+      return undefined;
+  }
+}
+
+function toPowerPointTextAction(
+  value: string | undefined,
+  params: Record<string, unknown>,
+): { type: string; placement?: string | undefined } | undefined {
+  if (!value) {
+    return trimString(params.shapeId) ? { type: "setShapeText" } : { type: "insertText" };
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "setshapetext":
+    case "editshapetext":
+    case "replaceshapetext":
+      return { type: "setShapeText" };
+    case "appendshapetext":
+    case "appendtext":
+      return { type: "setShapeText", placement: "after" };
+    case "clearshapetext":
+      return { type: "clearShapeText" };
+    case "inserttext":
+    case "editselectedtext":
+    case "setselectedtext":
+      return { type: "insertText" };
+    default:
+      return undefined;
+  }
+}
+
+function toPowerPointXmlActionType(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "inspectpresentationpackage":
+    case "readpresentationpackage":
+      return "inspectPresentationPackage";
+    case "getpresentationtheme":
+    case "inspecttheme":
+      return "getPresentationTheme";
+    case "getslidenotes":
+    case "readslidenotes":
+    case "inspectslidenotes":
+      return "getSlideNotes";
+    case "setslidenotes":
+    case "editslidenotes":
+      return "setSlideNotes";
+    case "replaceslidenotes":
+      return "replaceSlideNotes";
+    case "importslidesfrombase64":
+      return "importSlidesFromBase64";
+    case "mergepresentationfrombase64":
+      return "mergePresentationFromBase64";
+    case "exportslidesasbase64":
+      return "exportSlidesAsBase64";
+    default:
+      return undefined;
+  }
+}
+
+function toPowerPointMasterActionType(value: string | undefined): string | undefined {
+  if (!value) {
+    return "applyLayout";
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "applylayout":
+    case "setlayout":
+    case "editslidelayout":
+    case "setslidemaster":
+    case "applymaster":
+      return "applyLayout";
+    default:
+      return undefined;
+  }
+}
+
 function toPowerPointStructureOptions(params: Record<string, unknown>): Record<string, unknown> {
   const next: Record<string, unknown> = {
     ...(isRecord(params.options) ? params.options : {}),
@@ -791,6 +923,177 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
             ...toPowerPointStructureOptions(request.params),
             ...(slideIds.length ? { slideIds } : {}),
           },
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "insert_slide_element") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "insert_slide_element is only available for PowerPoint.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const actionType = toPowerPointElementInsertActionType(operation);
+        if (!actionType) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              "insert_slide_element requires a supported operation (add_text_box, add_geometric_shape, add_table, add_line, add_process_flow, add_simple_diagram, insert_inline_picture).",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const content = firstString(request.params.content, request.params.text, request.params.base64);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: actionType,
+          ...(target ? { target } : {}),
+          ...(typeof content === "string" ? { content } : {}),
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "remove_slide_element") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "remove_slide_element is only available for PowerPoint.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const actionType = toPowerPointElementRemoveActionType(operation);
+        if (!actionType) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              "remove_slide_element requires a supported operation (remove_shape, remove_shapes, clear_shape_text).",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: actionType,
+          ...(target ? { target } : {}),
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "edit_slide_text") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "edit_slide_text is only available for PowerPoint.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const textAction = toPowerPointTextAction(operation, request.params);
+        if (!textAction) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              "edit_slide_text requires a supported operation (set_shape_text, append_shape_text, clear_shape_text, insert_text).",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const content = firstString(request.params.content, request.params.text, request.params.newText) ?? "";
+        const actionOptions = toPowerPointStructureOptions(request.params);
+        const placement = trimString(request.params.placement) ?? textAction.placement;
+        if (placement && !("placement" in actionOptions)) {
+          actionOptions.placement = placement;
+        }
+        const result = await dependencies.applyHostAction(request.host, {
+          type: textAction.type,
+          ...(target ? { target } : {}),
+          ...(textAction.type !== "clearShapeText" ? { content } : {}),
+          ...(placement ? { placement } : {}),
+          options: actionOptions,
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "edit_slide_xml") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "edit_slide_xml is only available for PowerPoint.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const actionType = toPowerPointXmlActionType(operation);
+        if (!actionType) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              "edit_slide_xml requires a supported operation (inspect_presentation_package, get_presentation_theme, get_slide_notes, set_slide_notes, replace_slide_notes, import_slides_from_base64, merge_presentation_from_base64, export_slides_as_base64).",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const content = firstString(request.params.content, request.params.text, request.params.base64);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: actionType,
+          ...(target ? { target } : {}),
+          ...(typeof content === "string" ? { content } : {}),
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "edit_slide_master") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "edit_slide_master is only available for PowerPoint.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const actionType = toPowerPointMasterActionType(operation);
+        if (!actionType) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "edit_slide_master currently supports apply_layout operations.",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: actionType,
+          ...(target ? { target } : {}),
+          options: toPowerPointStructureOptions(request.params),
         });
         return toPayloadAwareResult(request.requestId, result);
       }

@@ -133,6 +133,11 @@ const REGISTERED_AGENT_TOOL_NAMES = [
   "list_slide_shapes",
   "modify_presentation_structure",
   "duplicate_slide",
+  "insert_slide_element",
+  "remove_slide_element",
+  "edit_slide_text",
+  "edit_slide_xml",
+  "edit_slide_master",
   "office_execute_js",
   "office_propose_edits",
   "ask_user",
@@ -887,6 +892,11 @@ class BrowserOfficeSession {
         "list_slide_shapes",
         "modify_presentation_structure",
         "duplicate_slide",
+        "insert_slide_element",
+        "remove_slide_element",
+        "edit_slide_text",
+        "edit_slide_xml",
+        "edit_slide_master",
         "office_execute_js",
         "office_propose_edits",
         "ask_user",
@@ -1268,6 +1278,82 @@ class BrowserOfficeSession {
       options: Type.Optional(Type.Any({ description: "Additional duplication options forwarded to the host adapter." })),
     }, { additionalProperties: true });
 
+    const insertSlideElementParams = Type.Object({
+      operation: Type.String({
+        description:
+          "PowerPoint element insertion operation (add_text_box, add_geometric_shape, add_table, add_line, add_process_flow, add_simple_diagram, insert_inline_picture).",
+      }),
+      slideId: Type.Optional(Type.String({ description: "Target slide ID for inserting the new element." })),
+      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
+      shapeId: Type.Optional(Type.String({ description: "Optional shape target for grouped operations." })),
+      content: Type.Optional(Type.String({ description: "Primary text payload (or base64 image payload for insert_inline_picture)." })),
+      text: Type.Optional(Type.String({ description: "Alias for content when inserting text." })),
+      values: Type.Optional(Type.Any({ description: "Matrix payload for table insertion when applicable." })),
+      options: Type.Optional(Type.Any({ description: "Additional insertion options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
+    const removeSlideElementParams = Type.Object({
+      operation: Type.String({
+        description:
+          "PowerPoint element removal operation (remove_shape, remove_shapes, clear_shape_text).",
+      }),
+      slideId: Type.Optional(Type.String({ description: "Target slide ID for the removal operation." })),
+      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
+      shapeId: Type.Optional(Type.String({ description: "Primary shape ID to remove or clear." })),
+      shapeIds: Type.Optional(Type.Array(Type.String(), { description: "One or more shape IDs for multi-shape removal." })),
+      confirmDestructive: Type.Optional(
+        Type.Boolean({
+          description: "Required for destructive operations such as remove_shape/remove_shapes.",
+        }),
+      ),
+      options: Type.Optional(Type.Any({ description: "Additional removal options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
+    const editSlideTextParams = Type.Object({
+      operation: Type.Optional(
+        Type.String({
+          description:
+            "PowerPoint text-edit operation (set_shape_text, append_shape_text, clear_shape_text, insert_text). Defaults to set_shape_text when shapeId is provided, otherwise insert_text.",
+        }),
+      ),
+      slideId: Type.Optional(Type.String({ description: "Target slide ID for text updates." })),
+      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
+      shapeId: Type.Optional(Type.String({ description: "Shape ID whose text should be updated." })),
+      content: Type.Optional(Type.String({ description: "Text payload to apply." })),
+      text: Type.Optional(Type.String({ description: "Alias for content." })),
+      placement: Type.Optional(Type.String({ description: "Optional placement hint (replace or after)." })),
+      options: Type.Optional(Type.Any({ description: "Additional text-edit options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
+    const editSlideXmlParams = Type.Object({
+      operation: Type.String({
+        description:
+          "PowerPoint XML/serialized operation (inspect_presentation_package, get_presentation_theme, get_slide_notes, set_slide_notes, replace_slide_notes, import_slides_from_base64, merge_presentation_from_base64, export_slides_as_base64).",
+      }),
+      slideId: Type.Optional(Type.String({ description: "Target slide ID for slide-scoped XML operations." })),
+      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
+      content: Type.Optional(Type.String({ description: "Text or base64 payload used by mutating XML operations." })),
+      base64: Type.Optional(Type.String({ description: "Alias for content when providing serialized PPTX payloads." })),
+      formatting: Type.Optional(Type.String({ description: "Insert formatting mode for base64 import operations when supported." })),
+      options: Type.Optional(Type.Any({ description: "Additional XML operation options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
+    const editSlideMasterParams = Type.Object({
+      operation: Type.Optional(
+        Type.String({
+          description:
+            "PowerPoint layout/master operation. Currently supports apply_layout (default), with layout/master selectors routed through native layout resolution.",
+        }),
+      ),
+      slideId: Type.Optional(Type.String({ description: "Target slide ID whose layout/master mapping should be updated." })),
+      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
+      layoutId: Type.Optional(Type.String({ description: "Layout ID to apply." })),
+      layoutName: Type.Optional(Type.String({ description: "Layout name to apply." })),
+      slideMasterId: Type.Optional(Type.String({ description: "Optional slide master ID used for layout resolution." })),
+      slideMasterName: Type.Optional(Type.String({ description: "Optional slide master name used for layout resolution." })),
+      options: Type.Optional(Type.Any({ description: "Additional layout/master options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
     const executeJsParams = Type.Object({
       code: Type.Optional(
         Type.String({
@@ -1474,6 +1560,36 @@ class BrowserOfficeSession {
         "Duplicate Slide",
         "PowerPoint-only first-class slide duplication tool supporting one or multiple source slides and optional insertion target/formatting controls.",
         duplicateSlideParams,
+      ),
+      simpleOfficeTool(
+        "insert_slide_element",
+        "Insert Slide Element",
+        "PowerPoint-only first-class element insertion tool for explicit shape/table/diagram/picture authoring through native actions.",
+        insertSlideElementParams,
+      ),
+      simpleOfficeTool(
+        "remove_slide_element",
+        "Remove Slide Element",
+        "PowerPoint-only first-class element removal tool for explicit shape/text removal operations with destructive-action policy support.",
+        removeSlideElementParams,
+      ),
+      simpleOfficeTool(
+        "edit_slide_text",
+        "Edit Slide Text",
+        "PowerPoint-only first-class text editing for slide shapes/selection. Use this instead of generic office_apply_edit when the intent is text-focused slide authoring.",
+        editSlideTextParams,
+      ),
+      simpleOfficeTool(
+        "edit_slide_xml",
+        "Edit Slide XML",
+        "PowerPoint-only first-class serialized/XML editing tool for slide notes and package-level OOXML workflows, including base64 import/export paths.",
+        editSlideXmlParams,
+      ),
+      simpleOfficeTool(
+        "edit_slide_master",
+        "Edit Slide Layout/Master",
+        "PowerPoint-only first-class layout/master editing tool that applies slide layouts via native layout/master resolution.",
+        editSlideMasterParams,
       ),
       simpleOfficeTool(
         "office_execute_js",
