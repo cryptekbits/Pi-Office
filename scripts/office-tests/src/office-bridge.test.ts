@@ -50,6 +50,39 @@ test("toHostAction creates Excel matrix actions from legacy params", () => {
   ]);
 });
 
+test("toHostAction supports operation/text/html aliases from model-generated params", () => {
+  const textAction = toHostAction({
+    operation: "insertText",
+    text: "Hello from alias",
+  });
+  assert.equal(textAction.type, "insertText");
+  assert.equal(textAction.content, "Hello from alias");
+  assert.equal(textAction.placement, "replace");
+
+  const htmlAction = toHostAction({
+    operation: "insertHtml",
+    html: "<b>Hello</b>",
+    mode: "insert_after_selection",
+  });
+  assert.equal(htmlAction.type, "insertHtml");
+  assert.equal(htmlAction.content, "<b>Hello</b>");
+  assert.equal(htmlAction.placement, "after");
+});
+
+test("toHostAction supports direct matrix values payload", () => {
+  const action = toHostAction({
+    operation: "setRangeValues",
+    values: [["A", "B"]],
+    sheetName: "Sheet1",
+    address: "A1:B1",
+  });
+
+  assert.equal(action.type, "setRangeValues");
+  assert.deepEqual(action.values, [["A", "B"]]);
+  assert.equal(action.target?.sheetName, "Sheet1");
+  assert.equal(action.target?.address, "A1:B1");
+});
+
 test("toHostAction preserves structured PowerPoint actions and normalizes the target anchor", () => {
   const action = toHostAction({
     action: {
@@ -169,6 +202,104 @@ test("createOfficeToolExecutor dispatches Word navigation and formats Office run
   assert.equal(logEntries.length, 1);
 });
 
+test("createOfficeToolExecutor accepts legacy aliases for read-section and execute-js tools", async () => {
+  const calls: Array<{ name: string; payload: unknown }> = [];
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({ ok: true }),
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async (_host, startIndex, endIndex, includeStyles) => {
+      calls.push({ name: "readDocumentSection", payload: { startIndex, endIndex, includeStyles } });
+      return { ok: true };
+    },
+    executeOfficeJs: async (_host, code) => {
+      calls.push({ name: "executeOfficeJs", payload: { code } });
+      return { ok: true };
+    },
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const readResult = await executeOfficeTool({
+    requestId: "read-1",
+    toolName: "office_read_section",
+    host: "word",
+    params: {
+      start: 4,
+      end: 9,
+      includeStyles: false,
+    },
+  });
+  const executeResult = await executeOfficeTool({
+    requestId: "js-1",
+    toolName: "office_execute_js",
+    host: "excel",
+    params: {
+      script: "return 1 + 1;",
+    },
+  });
+
+  assert.equal(readResult.success, true);
+  assert.equal(executeResult.success, true);
+  assert.deepEqual(calls[0], {
+    name: "readDocumentSection",
+    payload: { startIndex: 4, endIndex: 9, includeStyles: false },
+  });
+  assert.deepEqual(calls[1], {
+    name: "executeOfficeJs",
+    payload: { code: "return 1 + 1;" },
+  });
+});
+
+test("createOfficeToolExecutor normalizes payload-aware failures for read-section, execute-js, and propose-edits", async () => {
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({ ok: true }),
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ error: "office_read_section is only supported for Word documents." }),
+    executeOfficeJs: async () => ({ ok: false, error: "Code blocked: contains disallowed pattern." }),
+    proposeEdits: async () => ({ error: "office_propose_edits is only supported for Word documents." }),
+  });
+
+  const readResult = await executeOfficeTool({
+    requestId: "read-unsupported",
+    toolName: "office_read_section",
+    host: "excel",
+    params: {},
+  });
+  const executeResult = await executeOfficeTool({
+    requestId: "execute-blocked",
+    toolName: "office_execute_js",
+    host: "word",
+    params: {
+      code: "fetch('https://example.com')",
+    },
+  });
+  const proposeResult = await executeOfficeTool({
+    requestId: "propose-unsupported",
+    toolName: "office_propose_edits",
+    host: "powerpoint",
+    params: {
+      edits: [{ searchText: "A", newText: "B" }],
+    },
+  });
+
+  assert.deepEqual(readResult, {
+    requestId: "read-unsupported",
+    success: false,
+    error: "office_read_section is only supported for Word documents.",
+  });
+  assert.deepEqual(executeResult, {
+    requestId: "execute-blocked",
+    success: false,
+    error: "Code blocked: contains disallowed pattern.",
+  });
+  assert.deepEqual(proposeResult, {
+    requestId: "propose-unsupported",
+    success: false,
+    error: "office_propose_edits is only supported for Word documents.",
+  });
+});
+
 test("createOfficeToolExecutor forwards get-context scope to the host adapter", async () => {
   const calls: Array<{ name: string; payload: unknown }> = [];
   const executeOfficeTool = createOfficeToolExecutor({
@@ -199,6 +330,64 @@ test("createOfficeToolExecutor forwards get-context scope to the host adapter", 
     maxImages: 0,
     scope: "workbook",
   });
+});
+
+test("createOfficeToolExecutor captures viewport only for Word and maps viewport options", async () => {
+  const calls: Array<{ host: string; options: unknown }> = [];
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async (host, options) => {
+      calls.push({ host, options });
+      return { summary: "Base summary", formatting: { existing: true }, state: { host } };
+    },
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const wordResult = await executeOfficeTool({
+    requestId: "vp-1",
+    toolName: "office_capture_viewport",
+    host: "word",
+    params: {
+      includeFormatting: true,
+      includeWindowFrame: true,
+    },
+  });
+
+  const excelResult = await executeOfficeTool({
+    requestId: "vp-2",
+    toolName: "office_capture_viewport",
+    host: "excel",
+    params: {},
+  });
+
+  assert.equal(wordResult.success, true);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    host: "word",
+    options: {
+      includeFormatting: true,
+      maxImages: 1,
+      scope: "viewport",
+    },
+  });
+
+  const payload = wordResult.content as { summary: string; formatting?: Record<string, unknown> };
+  assert.match(payload.summary, /Visible Word viewport metadata captured/);
+  assert.match(payload.summary, /Full window-frame capture is unavailable in browser-only runtime/);
+  assert.equal(
+    (payload.formatting?.viewportCapture as Record<string, unknown> | undefined)?.includeWindowFrameRequested,
+    true,
+  );
+  assert.equal(
+    (payload.formatting?.viewportCapture as Record<string, unknown> | undefined)?.includeWindowFrameCaptured,
+    false,
+  );
+  assert.ok((payload.formatting?.viewportCapture as Record<string, unknown> | undefined)?.mode);
+  assert.equal(excelResult.success, false);
+  assert.match(String(excelResult.error), /only available for Word/);
 });
 
 test("summarizeOfficeToolError includes code, location, statement, and traces when present", () => {
