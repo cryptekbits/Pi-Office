@@ -247,6 +247,61 @@ const verifyDocVisualParams = Type.Object({
   ),
 });
 
+const getPresentationStructureParams = Type.Object({
+  maxSlides: Type.Optional(
+    Type.Number({
+      minimum: 1,
+      description: "Optional maximum number of slide previews to include. Defaults to a bounded preview size.",
+    }),
+  ),
+  includeSlideText: Type.Optional(
+    Type.Boolean({
+      description: "Include per-slide title/body text previews when available. Defaults to true.",
+    }),
+  ),
+}, { additionalProperties: true });
+
+const getSlideParams = Type.Object({
+  slideId: Type.Optional(Type.String({ description: "PowerPoint slide ID to read." })),
+  slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index to read." })),
+  includeShapes: Type.Optional(Type.Boolean({ description: "Include shape summaries for the resolved slide. Defaults to true." })),
+  includeSlideText: Type.Optional(Type.Boolean({ description: "Include title/body text previews for the resolved slide. Defaults to true." })),
+}, { additionalProperties: true });
+
+const listSlideShapesParams = Type.Object({
+  slideId: Type.Optional(Type.String({ description: "PowerPoint slide ID whose shapes should be listed." })),
+  slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index whose shapes should be listed." })),
+  maxShapes: Type.Optional(Type.Number({ minimum: 1, description: "Optional maximum number of shapes to return." })),
+}, { additionalProperties: true });
+
+const modifyPresentationStructureParams = Type.Object({
+  operation: Type.String({
+    description:
+      "Presentation structure operation (add_slide, move_slide, reorder_slides, delete_slide, apply_layout, select_slides, add_agenda_slide, add_transition_slide, combine_slides, import_slides_from_base64).",
+  }),
+  slideId: Type.Optional(Type.String({ description: "Target slide ID for the operation." })),
+  slideIds: Type.Optional(Type.Array(Type.String(), { description: "Ordered list of slide IDs for multi-slide operations." })),
+  slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target." })),
+  targetSlideId: Type.Optional(Type.String({ description: "Insertion target slide ID where applicable." })),
+  formatting: Type.Optional(Type.String({ description: "PowerPoint insert formatting mode when supported." })),
+  confirmDestructive: Type.Optional(
+    Type.Boolean({
+      description: "Required for destructive operations such as delete_slide/delete_slides.",
+    }),
+  ),
+  content: Type.Optional(Type.String({ description: "Optional text payload used by supported slide-creation helpers." })),
+  options: Type.Optional(Type.Any({ description: "Additional operation-specific options forwarded to the host adapter." })),
+}, { additionalProperties: true });
+
+const duplicateSlideParams = Type.Object({
+  slideId: Type.Optional(Type.String({ description: "Single source slide ID to duplicate." })),
+  slideIds: Type.Optional(Type.Array(Type.String(), { description: "One or more source slide IDs to duplicate in order." })),
+  slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based source slide index when slideId is not known." })),
+  targetSlideId: Type.Optional(Type.String({ description: "Slide ID to insert duplicates after." })),
+  formatting: Type.Optional(Type.String({ description: "PowerPoint insert formatting mode when supported." })),
+  options: Type.Optional(Type.Any({ description: "Additional duplication options forwarded to the host adapter." })),
+}, { additionalProperties: true });
+
 const executeJsParams = Type.Object({
   code: Type.Optional(
     Type.String({
@@ -528,6 +583,86 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       parameters: verifyDocVisualParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("verify_doc_visual", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("get_presentation_structure"))
+    pi.registerTool({
+      name: "get_presentation_structure",
+      label: "Read Presentation Structure",
+      description:
+        "PowerPoint-only first-class presentation structure read. Returns slide order plus layout/master structure metadata and bounded slide previews.",
+      parameters: getPresentationStructureParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("get_presentation_structure", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("get_slide"))
+    pi.registerTool({
+      name: "get_slide",
+      label: "Read Slide",
+      description:
+        "PowerPoint-only first-class per-slide read. Resolve a slide by slideId/slideIndex (or selection) and return structured slide details.",
+      parameters: getSlideParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("get_slide", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("list_slide_shapes"))
+    pi.registerTool({
+      name: "list_slide_shapes",
+      label: "List Slide Shapes",
+      description:
+        "PowerPoint-only first-class shape inventory read. Returns structured shape summaries for the resolved slide.",
+      parameters: listSlideShapesParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("list_slide_shapes", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("modify_presentation_structure"))
+    pi.registerTool({
+      name: "modify_presentation_structure",
+      label: "Modify Presentation Structure",
+      description:
+        "PowerPoint-only first-class structure mutation tool for slide create/move/reorder/delete/layout operations through native host actions.",
+      parameters: modifyPresentationStructureParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("modify_presentation_structure", params);
+        return {
+          content: toToolContent(result),
+          details: result,
+        };
+      },
+    });
+
+    if (!isDisabled("duplicate_slide"))
+    pi.registerTool({
+      name: "duplicate_slide",
+      label: "Duplicate Slide",
+      description:
+        "PowerPoint-only first-class slide duplication tool supporting one or multiple source slides and optional insertion target/formatting controls.",
+      parameters: duplicateSlideParams,
+      execute: async (_toolCallId, params) => {
+        const result = await options.invokeTool("duplicate_slide", params);
         return {
           content: toToolContent(result),
           details: result,

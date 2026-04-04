@@ -363,6 +363,90 @@ function normalizeFormat(value: string | undefined): string | undefined {
   return normalized;
 }
 
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => trimString(entry))
+      .filter((entry): entry is string => Boolean(entry));
+  }
+
+  const single = trimString(value);
+  return single ? [single] : [];
+}
+
+function toPowerPointStructureActionType(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "addslide":
+      return "addSlide";
+    case "moveslide":
+      return "moveSlide";
+    case "reorderslides":
+    case "reorderstoryline":
+      return "reorderSlides";
+    case "deleteslide":
+      return "deleteSlide";
+    case "deleteslides":
+      return "deleteSlides";
+    case "applylayout":
+      return "applyLayout";
+    case "selectslides":
+      return "selectSlides";
+    case "addagendaslide":
+      return "addAgendaSlide";
+    case "addtransitionslide":
+      return "addTransitionSlide";
+    case "combineslides":
+      return "combineSlides";
+    case "importslidesfrombase64":
+    case "mergepresentationfrombase64":
+      return "importSlidesFromBase64";
+    default:
+      return undefined;
+  }
+}
+
+function toPowerPointStructureOptions(params: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = {
+    ...(isRecord(params.options) ? params.options : {}),
+  };
+
+  for (const [key, value] of Object.entries(params)) {
+    if (
+      key === "options" ||
+      key === "operation" ||
+      key === "mode" ||
+      key === "type" ||
+      key === "anchor" ||
+      key === "target" ||
+      key === "content"
+    ) {
+      continue;
+    }
+    next[key] = value;
+  }
+
+  return next;
+}
+
+function toPowerPointStructureTarget(params: Record<string, unknown>): OfficeAnchor | undefined {
+  const hasSlideTarget = Boolean(trimString(params.slideId)) || typeof params.slideIndex === "number";
+  const hasShapeTarget = Boolean(trimString(params.shapeId));
+  const hasLayoutTarget = Boolean(trimString(params.layoutId) || trimString(params.layoutName));
+  const hasMasterTarget = Boolean(trimString(params.slideMasterId) || trimString(params.slideMasterName));
+  const hasExplicitAnchor = isRecord(params.anchor) && Object.keys(params.anchor).length > 0;
+
+  if (!hasSlideTarget && !hasShapeTarget && !hasLayoutTarget && !hasMasterTarget && !hasExplicitAnchor) {
+    return undefined;
+  }
+
+  return toAnchor(params);
+}
+
 export function toHostAction(params: Record<string, unknown>): OfficeHostAction {
   if (isRecord(params.action) && typeof params.action.type === "string") {
     const action = { ...(params.action as Record<string, unknown>) } as OfficeHostAction;
@@ -596,6 +680,119 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
           success: true,
           content: toWordVisualVerificationPayload(viewportPayload, includeWindowFrameRequested),
         };
+      }
+
+      if (request.toolName === "get_presentation_structure") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "get_presentation_structure is only available for PowerPoint.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "getPresentationStructure",
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "get_slide") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "get_slide is only available for PowerPoint.",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "getSlide",
+          ...(target ? { target } : {}),
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "list_slide_shapes") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "list_slide_shapes is only available for PowerPoint.",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "listSlideShapes",
+          ...(target ? { target } : {}),
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "modify_presentation_structure") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "modify_presentation_structure is only available for PowerPoint.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const actionType = toPowerPointStructureActionType(operation);
+        if (!actionType) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              "modify_presentation_structure requires a supported operation (add_slide, move_slide, reorder_slides, delete_slide, apply_layout, select_slides, add_agenda_slide, add_transition_slide, combine_slides, import_slides_from_base64).",
+          };
+        }
+
+        const target = toPowerPointStructureTarget(request.params);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: actionType,
+          ...(target ? { target } : {}),
+          ...(typeof request.params.content === "string" ? { content: request.params.content } : {}),
+          options: toPowerPointStructureOptions(request.params),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "duplicate_slide") {
+        if (request.host !== "powerpoint") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "duplicate_slide is only available for PowerPoint.",
+          };
+        }
+
+        const requestedSlideIds = toStringArray(request.params.slideIds);
+        const fallbackSlideId = trimString(request.params.slideId);
+        const slideIds = requestedSlideIds.length ? requestedSlideIds : fallbackSlideId ? [fallbackSlideId] : [];
+        const targetParams =
+          slideIds.length && !fallbackSlideId && typeof request.params.slideIndex !== "number"
+            ? { ...request.params, slideId: slideIds[0] }
+            : request.params;
+        const target = toPowerPointStructureTarget(targetParams);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "duplicateSlide",
+          ...(target ? { target } : {}),
+          options: {
+            ...toPowerPointStructureOptions(request.params),
+            ...(slideIds.length ? { slideIds } : {}),
+          },
+        });
+        return toPayloadAwareResult(request.requestId, result);
       }
 
       if (request.toolName === "office_execute_js") {

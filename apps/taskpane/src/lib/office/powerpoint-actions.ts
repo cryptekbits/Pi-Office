@@ -217,6 +217,129 @@ export async function applyPowerPointAction(action: OfficeHostAction): Promise<u
   return PowerPoint.run(async (context) => {
     const actionOptions = { ...options, ...action };
 
+    if (type === "getPresentationStructure" || type === "readPresentationStructure") {
+      const maxSlides = resolvePositiveCount(actionOptions.maxSlides, 20);
+      const includeSlideText = actionOptions.includeSlideText !== false;
+      const slides = await loadPowerPointSlideSummaries(context);
+      const selectedSlides = context.presentation.getSelectedSlides();
+      selectedSlides.load("items/id,items/index");
+      await context.sync();
+
+      const slideContent = await loadPowerPointSlideContentSummaries(context, slides.slice(0, maxSlides));
+      const supportsLayoutMetadata = supportsRequirementSet("PowerPointApi", "1.3");
+      const slideMasters = supportsLayoutMetadata ? await loadPowerPointMastersWithLayouts(context) : [];
+
+      return {
+        ok: true,
+        host: "powerpoint",
+        action: type,
+        slideCount: slides.length,
+        selectedSlideCount: selectedSlides.items.length,
+        selectedSlideIds: selectedSlides.items.map((slide) => slide.id),
+        slides,
+        slidePreviews: slideContent.map((slide) => ({
+          slideId: slide.slideId,
+          slideIndex: slide.slideIndex,
+          label: slide.label,
+          title: slide.title,
+          shapeCount: slide.shapeCount,
+          textPreview: includeSlideText ? truncateText(slide.combinedText, 400) : undefined,
+        })),
+        slideMasters: slideMasters.map((slideMaster) => ({
+          id: slideMaster.id,
+          name: slideMaster.name,
+          layoutCount: slideMaster.layouts.items.length,
+          layouts: slideMaster.layouts.items.map((layout) => ({
+            id: layout.id,
+            name: layout.name,
+            type: layout.type,
+          })),
+        })),
+      };
+    }
+
+    if (type === "getSlide" || type === "readSlide") {
+      const includeShapes = actionOptions.includeShapes !== false;
+      const includeSlideText = actionOptions.includeSlideText !== false;
+      const slide = await resolvePowerPointSlide(context, action.target, true);
+      slide.load("id,index");
+      const supportsLayoutMetadata = supportsRequirementSet("PowerPointApi", "1.3");
+      if (supportsLayoutMetadata) {
+        slide.layout.load("id,name,type");
+        slide.slideMaster.load("id,name");
+      }
+      const shapes = slide.shapes;
+      if (includeShapes) {
+        shapes.load("items/id,items/name,items/type,items/left,items/top,items/width,items/height,items/rotation");
+      }
+      await context.sync();
+
+      const slideSummary = summarizePowerPointSlide(slide);
+      const contentSummary = includeSlideText
+        ? (await loadPowerPointSlideContentSummaries(context, [slideSummary]))[0]
+        : undefined;
+      const listedShapes = includeShapes
+        ? shapes.items.map((shape) => ({
+            ...summarizePowerPointShape(slide, shape),
+            contentKind: getPowerPointShapeContentKind(String(shape.type ?? "shape")),
+            left: formatPoints(shape.left),
+            top: formatPoints(shape.top),
+            width: formatPoints(shape.width),
+            height: formatPoints(shape.height),
+            rotation: shape.rotation,
+          }))
+        : undefined;
+
+      return {
+        ok: true,
+        host: "powerpoint",
+        action: type,
+        slideId: slide.id,
+        slideIndex: slide.index + 1,
+        label: slideSummary.label,
+        layoutId: supportsLayoutMetadata ? slide.layout.id : undefined,
+        layoutName: supportsLayoutMetadata ? slide.layout.name : undefined,
+        layoutType: supportsLayoutMetadata ? slide.layout.type : undefined,
+        slideMasterId: supportsLayoutMetadata ? slide.slideMaster.id : undefined,
+        slideMasterName: supportsLayoutMetadata ? slide.slideMaster.name : undefined,
+        title: contentSummary?.title,
+        textPreview: includeSlideText ? truncateText(contentSummary?.combinedText, 500) : undefined,
+        shapeCount: includeShapes ? shapes.items.length : contentSummary?.shapeCount,
+        shapes: listedShapes,
+      };
+    }
+
+    if (type === "listSlideShapes" || type === "getSlideShapes") {
+      const maxShapes = resolvePositiveCount(actionOptions.maxShapes, 200);
+      const slide = await resolvePowerPointSlide(context, action.target, true);
+      const shapes = slide.shapes;
+      slide.load("id,index");
+      shapes.load("items/id,items/name,items/type,items/left,items/top,items/width,items/height,items/rotation");
+      await context.sync();
+
+      const listedShapes = shapes.items.slice(0, maxShapes).map((shape) => ({
+        ...summarizePowerPointShape(slide, shape),
+        contentKind: getPowerPointShapeContentKind(String(shape.type ?? "shape")),
+        left: formatPoints(shape.left),
+        top: formatPoints(shape.top),
+        width: formatPoints(shape.width),
+        height: formatPoints(shape.height),
+        rotation: shape.rotation,
+      }));
+
+      return {
+        ok: true,
+        host: "powerpoint",
+        action: type,
+        slideId: slide.id,
+        slideIndex: slide.index + 1,
+        shapeCount: shapes.items.length,
+        returnedShapeCount: listedShapes.length,
+        maxShapes,
+        shapes: listedShapes,
+      };
+    }
+
     if ((type === "insertText" && action.target?.shapeId) || type === "setShapeText" || type === "clearShapeText") {
       const { slide, shape } = await resolvePowerPointShape(context, action.target, true);
       const textFrame = shape.getTextFrameOrNullObject();
