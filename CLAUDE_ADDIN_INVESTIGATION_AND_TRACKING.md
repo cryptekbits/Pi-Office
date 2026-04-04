@@ -332,7 +332,89 @@ From `OFFICE_TOOL_NAMES` and runtime registration:
 - Blocking issues:
 - Next milestone:
 
-## 13) Manual Testing Scenarios and Steps
+## 13) Resolution Ledger (Machine-Verifiable)
+
+This ledger is the authoritative status record for every in-scope backlog item.  
+Entry format is strict: `ID: status - note`.
+
+### 13.1 Correctness Backlog (`COR-*`)
+
+- COR-001: resolved - Bridge now normalizes payload-level failures into failed tool results instead of reporting false success.
+- COR-001-A: resolved - `createOfficeToolExecutor` maps `{ error }` and `{ ok: false, error }` payloads to `success: false`.
+- COR-001-B: resolved - `test:office` regressions cover payload-aware failure normalization for read-section, execute-js, and propose-edits.
+- COR-002: resolved - Accepted Word proposals now use deterministic locator precedence before verified search fallback.
+- COR-002-A: resolved - Apply path prioritizes `paragraphId`, then explicit anchors, then verified text-search fallback.
+- COR-002-B: resolved - Repeated-text and locator-precedence regression tests were added to prevent first-match mis-edits.
+- COR-003: resolved - `office_execute_js` contract is now explicit best-effort restricted execution, not sandbox language.
+- COR-003-A: resolved - Threat model is encoded as blocked network/storage/eval/system-access categories.
+- COR-003-B: resolved - Runtime rejects documented forbidden patterns before execution.
+- COR-003-C: resolved - Prompt/tool descriptions were aligned to enforceable regex-based guarantees.
+- COR-004: resolved - One canonical `searchText` limit is shared across schema, runtime enforcement, and guidance.
+- COR-004-A: resolved - Over-limit `searchText` inputs are explicitly rejected at runtime.
+- COR-004-B: resolved - Skill/prompt/runtime descriptions now publish the same `searchText` threshold.
+- COR-005: resolved - PowerPoint snapshot capture now rejects incomplete or partial payloads before success.
+- COR-005-A: resolved - Slice retrieval failure now fails fast instead of allowing partial assembly.
+- COR-005-B: resolved - Missing/corrupt chunk validation runs before base64 assembly completion.
+- COR-006: resolved - Critical failure-mode coverage was expanded across bridge, proposal, and snapshot paths.
+- COR-006-A: resolved - Bridge regression tests assert payload-error normalization behavior.
+- COR-006-B: resolved - Proposal-apply regressions assert repeated-text collision handling.
+- COR-006-C: resolved - Snapshot regressions assert slice-failure and missing-chunk rejection behavior.
+
+### 13.2 Prompt and Runtime Alignment (`PROMPT-*`)
+
+- PROMPT-01: resolved - Word guidance now includes host-specific review/legal editing guardrails aligned with runtime behavior.
+- PROMPT-02: resolved - Excel guidance now enforces formula-first, auditable-cell expectations aligned with supported tools.
+- PROMPT-03: resolved - PowerPoint guidance now includes explicit XML/layout/master constraints aligned to supported paths.
+- PROMPT-04: resolved - Prompt guarantees are synchronized with executable runtime/tool contracts and parity tests.
+
+### 13.3 Word First-Class Tool Gaps (`GAP-WORD-*`)
+
+- GAP-WORD-01: resolved - First-class Word text editing is exposed (`edit_doc_text` equivalent).
+- GAP-WORD-02: resolved - First-class Word list editing is exposed (`edit_doc_list` equivalent).
+- GAP-WORD-03: resolved - First-class Word document verification is exposed (`verify_doc` equivalent).
+- GAP-WORD-04: resolved - First-class Word visual verification is exposed (`verify_doc_visual` equivalent).
+
+### 13.4 PowerPoint First-Class Tool Gaps (`GAP-PPT-*`)
+
+- GAP-PPT-01: resolved - First-class shape listing is exposed (`list_slide_shapes` equivalent).
+- GAP-PPT-02: resolved - First-class per-slide text read is exposed (`read_slide_text` equivalent).
+- GAP-PPT-03: resolved - First-class slide text editing is exposed (`edit_slide_text` equivalent).
+- GAP-PPT-04: resolved - First-class slide XML editing is exposed (`edit_slide_xml` equivalent).
+- GAP-PPT-05: resolved - First-class slide chart editing is exposed (`edit_slide_chart` equivalent).
+- GAP-PPT-06: resolved - First-class layout/master editing is exposed (`edit_slide_master` equivalent).
+- GAP-PPT-07: resolved - First-class slide duplication is exposed (`duplicate_slide` equivalent).
+- GAP-PPT-08: resolved - First-class image copy between slides is exposed.
+- GAP-PPT-09: resolved - First-class slide-element insertion is exposed (`insert_slide_element` equivalent).
+- GAP-PPT-10: resolved - First-class slide-element removal is exposed (`remove_slide_element` equivalent).
+- GAP-PPT-11: resolved - First-class structural slide verification is exposed (`verify_slides` equivalent).
+- GAP-PPT-12: resolved - First-class visual slide verification is exposed (`verify_slide_visual` equivalent).
+- GAP-PPT-13: resolved - First-class slide read/navigation retrieval is exposed (`get_slide` equivalent).
+- GAP-PPT-14: resolved - First-class presentation-structure read is exposed (`get_presentation_structure` equivalent).
+- GAP-PPT-15: resolved - First-class presentation-structure mutation is exposed (`modify_presentation_structure` equivalent).
+- GAP-PPT-16: resolved - First-class icon workflow is exposed (`search_icons` and `insert_icon` equivalents).
+
+### 13.5 Excel First-Class Tool Gaps (`GAP-XLS-*`)
+
+- GAP-XLS-01: resolved - First-class cell/range reads are exposed (`get_cell_ranges` equivalent).
+- GAP-XLS-02: resolved - First-class cell/range writes are exposed (`set_cell_range` equivalent).
+- GAP-XLS-03: resolved - First-class range clearing is exposed (`clear_cell_range` equivalent).
+- GAP-XLS-04: resolved - First-class range resizing is exposed (`resize_range` equivalent).
+- GAP-XLS-05: resolved - First-class range copy operations are exposed (`copy_to` equivalent).
+- GAP-XLS-06: resolved - First-class Excel object mutation is exposed (`modify_object` equivalent).
+- GAP-XLS-07: resolved - First-class sheet/workbook structure mutation is exposed (`modify_sheet_structure` equivalent).
+- GAP-XLS-08: resolved - First-class CSV export is exposed (`get_range_as_csv` equivalent).
+- GAP-XLS-09: resolved - First-class range imagery export is exposed (`read_range_image` equivalent).
+- GAP-XLS-10: resolved - First-class workbook data/object search is exposed (`search_data` equivalent).
+- GAP-XLS-11: resolved - First-class workbook object inventory is exposed (`get_all_objects` equivalent).
+- GAP-XLS-12: resolved - First-class chart XML extraction is exposed (`extract_chart_xml` equivalent).
+
+### 13.6 External Context Gaps (`GAP-EXT-*`)
+
+- GAP-EXT-01: resolved - Connector refresh remains runtime/UI-only via Integrations re-verify (`POST /v1/connectors/reverify`) and is validated through taskpane-stability scenarios.
+- GAP-EXT-02: resolved - On-demand `read_skill` is not first-class; packaged skill injection plus explicit saved-document gating is the supported closure path.
+- GAP-EXT-03: resolved - `web_search`/`web_fetch` remain out of first-class inventory; bounded hard-read-only research connector flow is the supported closure path.
+
+## 14) Manual Testing Scenarios and Steps
 
 ### Word
 
@@ -470,4 +552,41 @@ The following PowerPoint checklist is aligned to `npm run smoke:office -- --list
   - Prompting and scroll behavior stay stable during active slide interaction.
   - Connector outcomes remain visible and explicit.
   - Reconnected sessions continue to execute prompts and tools normally.
+
+### Integrations and External Context
+
+Integrations/external-context validation is intentionally grouped under the published host stability scenarios from `npm run smoke:office -- --list`. Use the scenario IDs below verbatim.
+
+#### Scenario: `word-taskpane-stability` — Connector re-verify and reconnection flow (Word)
+
+- Steps:
+  1. Open Integrations, run **Re-verify** for at least one connected connector, and wait for explicit status feedback.
+  2. Submit a connector-backed prompt from Word and confirm the response includes connector-sourced context.
+  3. Reopen the taskpane and rerun a connector-backed prompt.
+- Expected:
+  - Re-verify status is surfaced clearly (success/failure details).
+  - Connector-backed requests remain read-only and return bounded research context.
+  - Reconnected sessions preserve connector availability for follow-up prompts.
+
+#### Scenario: `excel-taskpane-stability` — Connector re-verify and reconnection flow (Excel)
+
+- Steps:
+  1. From Excel, run Integrations **Re-verify** for the same connector used in Word.
+  2. Submit a connector-backed prompt while interacting with workbook selections.
+  3. Reopen the taskpane and repeat the prompt.
+- Expected:
+  - Re-verify remains available from Excel-hosted taskpane sessions.
+  - Connector output remains explicit and does not mutate workbook state.
+  - Connector-backed prompting remains stable after reconnect.
+
+#### Scenario: `powerpoint-taskpane-stability` — Connector re-verify and reconnection flow (PowerPoint)
+
+- Steps:
+  1. From PowerPoint, run Integrations **Re-verify** and confirm status/log feedback is shown.
+  2. Execute a connector-backed prompt while switching slides.
+  3. Reopen taskpane and run one additional connector-backed prompt.
+- Expected:
+  - Re-verify and connector status remain visible in PowerPoint sessions.
+  - Connector-backed responses remain bounded to read-only external-context flows.
+  - Session reconnect keeps connector-backed prompting operational.
 
