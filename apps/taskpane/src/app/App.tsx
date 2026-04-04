@@ -632,13 +632,17 @@ export function App() {
           .map((d) => {
             const edit = proposal.edits.find((e) => e.id === d.editId);
             if (!edit) return null;
+            const resolvedSearchText = edit.searchText ?? edit.oldText ?? "";
             return {
-              searchText: edit.searchText ?? edit.oldText ?? "",
+              searchText: resolvedSearchText,
+              oldText: edit.oldText,
               newText: d.modifiedText ?? edit.newText ?? "",
               kind: edit.kind,
+              paragraphId: edit.paragraphId,
+              anchor: edit.anchor,
             };
           })
-          .filter((e): e is NonNullable<typeof e> => e !== null && Boolean(e.searchText));
+          .filter((e): e is NonNullable<typeof e> => e !== null && Boolean(e.searchText || e.paragraphId || e.anchor));
 
         try {
           const result = await applyAcceptedEdits(editsToApply);

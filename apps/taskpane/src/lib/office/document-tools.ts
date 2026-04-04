@@ -2,6 +2,13 @@ import type { OfficeHost } from "@pi-office/pi-office-pack/protocol";
 import {
   supportsRequirementSet,
 } from "./shared";
+import {
+  buildParagraphContextPreview,
+  formatParagraphAnchor,
+  resolveAcceptedEditParagraphIndex,
+  resolveProposalParagraphIndex,
+  type WordParagraphLocator,
+} from "./word-proposal-resolution";
 
 export interface DocumentSnapshotData {
   ooxml?: string;
@@ -243,80 +250,138 @@ export async function executeOfficeJs(_host: OfficeHost, code: string): Promise<
 
 export async function applyAcceptedEdits(
   edits: Array<{
-    searchText: string;
+    searchText?: string | undefined;
+    oldText?: string | undefined;
     newText: string;
     kind: string;
+    paragraphId?: string | undefined;
+    anchor?: string | undefined;
   }>,
 ): Promise<{ applied: number; failed: number; errors: string[] }> {
   if (!edits.length) return { applied: 0, failed: 0, errors: [] };
 
   return Word.run(async (context) => {
+    const body = context.document.body;
+    const supportsParagraphIds = supportsRequirementSet("WordApi", "1.6");
+    const paragraphs = body.paragraphs;
+    paragraphs.load(
+      supportsParagraphIds
+        ? "items/text,items/uniqueLocalId"
+        : "items/text",
+    );
+    await context.sync();
+
+    const paragraphSnapshots: WordParagraphLocator[] = paragraphs.items.map((paragraph, index) => ({
+      index,
+      text: paragraph.text,
+      paragraphId: supportsParagraphIds ? paragraph.uniqueLocalId : undefined,
+    }));
+
+    const updateParagraphSnapshot = (
+      paragraphIndex: number,
+      searchText: string,
+      replacementText: string,
+    ) => {
+      const paragraph = paragraphSnapshots[paragraphIndex];
+      if (!paragraph) {
+        return;
+      }
+      paragraph.text = paragraph.text.replace(searchText, replacementText);
+    };
+
+    const tryApplyAtIndex = async (
+      paragraphIndex: number | undefined,
+      searchText: string,
+      edit: { kind: string; newText: string },
+    ): Promise<boolean> => {
+      if (typeof paragraphIndex !== "number" || paragraphIndex < 0) {
+        return false;
+      }
+
+      const paragraph = paragraphs.items[paragraphIndex];
+      const paragraphSnapshot = paragraphSnapshots[paragraphIndex];
+      if (!paragraph || !paragraphSnapshot) {
+        return false;
+      }
+
+      if (searchText.length > 255 && !paragraphSnapshot.text.includes(searchText)) {
+        return false;
+      }
+
+      const searchToken = searchText.length > 255 ? searchText.slice(0, 255) : searchText;
+      const matches = paragraph.search(searchToken, { matchCase: true, matchWholeWord: false });
+      matches.load("items");
+      await context.sync();
+
+      const target = matches.items[0];
+      if (!target) {
+        return false;
+      }
+
+      if (edit.kind === "delete") {
+        target.delete();
+        updateParagraphSnapshot(paragraphIndex, searchText, "");
+      } else {
+        target.insertText(edit.newText, "Replace");
+        updateParagraphSnapshot(paragraphIndex, searchText, edit.newText);
+      }
+      await context.sync();
+      return true;
+    };
+
     let applied = 0;
     let failed = 0;
     const errors: string[] = [];
 
     for (const edit of edits) {
       try {
-        const searchText = edit.searchText;
+        const searchText = typeof edit.searchText === "string"
+          ? edit.searchText
+          : typeof edit.oldText === "string"
+            ? edit.oldText
+            : "";
         if (!searchText) {
-          errors.push(`Edit missing searchText, skipped.`);
+          errors.push("Edit missing searchText, skipped.");
           failed++;
           continue;
         }
 
-        if (searchText.length <= 255) {
-          const results = context.document.body.search(searchText, { matchCase: true, matchWholeWord: false });
-          results.load("items");
-          await context.sync();
+        const resolvedTarget = resolveAcceptedEditParagraphIndex(paragraphSnapshots, {
+          kind: edit.kind,
+          searchText,
+          oldText: edit.oldText,
+          paragraphId: edit.paragraphId,
+          anchor: edit.anchor,
+        });
 
-          if (!results.items.length) {
-            errors.push(`Text not found: "${searchText.slice(0, 60)}..."`);
-            failed++;
-            continue;
-          }
+        let matched = await tryApplyAtIndex(
+          resolvedTarget.index,
+          searchText,
+          { kind: edit.kind, newText: edit.newText },
+        );
 
-          const target = results.items[0]!;
-          if (edit.kind === "delete") {
-            target.delete();
-          } else {
-            target.insertText(edit.newText, "Replace");
-          }
-          await context.sync();
-          applied++;
-        } else {
-          // Fallback for long searchText: search a short prefix, then verify full match via paragraph text
-          const prefix = searchText.slice(0, 200);
-          const results = context.document.body.search(prefix, { matchCase: true, matchWholeWord: false });
-          results.load("items/text,items/paragraphs/items/text");
-          await context.sync();
-
-          let matched = false;
-          for (const candidate of results.items) {
-            const para = candidate.paragraphs.getFirst();
-            para.load("text");
-            await context.sync();
-            if (para.text.includes(searchText)) {
-              const fullRange = para.search(searchText.slice(0, 255), { matchCase: true });
-              fullRange.load("items");
-              await context.sync();
-              if (fullRange.items.length) {
-                if (edit.kind === "delete") {
-                  fullRange.items[0]!.delete();
-                } else {
-                  fullRange.items[0]!.insertText(edit.newText, "Replace");
-                }
-                await context.sync();
-                applied++;
-                matched = true;
-                break;
-              }
-            }
-          }
-          if (!matched) {
-            errors.push(`Long text not found: "${searchText.slice(0, 60)}..."`);
-            failed++;
+        if (!matched && resolvedTarget.via !== "searchText") {
+          const searchFallback = resolveAcceptedEditParagraphIndex(paragraphSnapshots, {
+            kind: edit.kind,
+            searchText,
+            oldText: edit.oldText,
+          });
+          if (searchFallback.index !== resolvedTarget.index) {
+            matched = await tryApplyAtIndex(
+              searchFallback.index,
+              searchText,
+              { kind: edit.kind, newText: edit.newText },
+            );
           }
         }
+
+        if (!matched) {
+          errors.push(`Text not found: "${searchText.slice(0, 60)}..."`);
+          failed++;
+          continue;
+        }
+
+        applied++;
       } catch (err) {
         failed++;
         errors.push(`Failed to apply edit: ${err instanceof Error ? err.message : String(err)}`);
@@ -344,11 +409,21 @@ export async function proposeDocumentEdits(
 
   return Word.run(async (context) => {
     const body = context.document.body;
+    const supportsParagraphIds = supportsRequirementSet("WordApi", "1.6");
     const paragraphs = body.paragraphs;
-    paragraphs.load("items/text");
+    paragraphs.load(
+      supportsParagraphIds
+        ? "items/text,items/uniqueLocalId"
+        : "items/text",
+    );
     await context.sync();
 
-    const docText = paragraphs.items.map((p) => p.text).join("\n");
+    const paragraphSnapshots: WordParagraphLocator[] = paragraphs.items.map((paragraph, index) => ({
+      index,
+      text: paragraph.text,
+      paragraphId: supportsParagraphIds ? paragraph.uniqueLocalId : undefined,
+    }));
+    const allocations = new Map<string, Set<number>>();
     const verified: Array<Record<string, unknown>> = [];
 
     for (const edit of edits) {
@@ -357,22 +432,56 @@ export async function proposeDocumentEdits(
       const searchText = typeof record.searchText === "string" ? record.searchText : undefined;
       const oldText = typeof record.oldText === "string" ? record.oldText : searchText;
       const newText = typeof record.newText === "string" ? record.newText : "";
+      const anchor = typeof record.anchor === "string" ? record.anchor : undefined;
+      const paragraphId = typeof record.paragraphId === "string" ? record.paragraphId : undefined;
       const explanation = typeof record.explanation === "string" ? record.explanation : undefined;
       const id = typeof record.id === "string" ? record.id : crypto.randomUUID();
+      const verificationText = oldText ?? searchText;
+
+      const resolvedTarget = resolveProposalParagraphIndex(
+        paragraphSnapshots,
+        {
+          kind,
+          searchText,
+          oldText,
+          anchor,
+          paragraphId,
+        },
+        allocations,
+      );
+      const targetParagraph = typeof resolvedTarget.index === "number"
+        ? paragraphSnapshots[resolvedTarget.index]
+        : undefined;
+      const resolvedAnchor = anchor ?? (
+        typeof resolvedTarget.index === "number"
+          ? formatParagraphAnchor(resolvedTarget.index)
+          : undefined
+      );
+      const resolvedParagraphId = paragraphId ?? targetParagraph?.paragraphId;
 
       let found = false;
       let contextPreview: string | undefined;
-      if (oldText && docText.includes(oldText)) {
+      if (verificationText) {
+        if (targetParagraph?.text.includes(verificationText)) {
+          found = true;
+          contextPreview = buildParagraphContextPreview(targetParagraph.text, verificationText);
+        } else {
+          const fallbackParagraph = paragraphSnapshots.find((paragraph) => paragraph.text.includes(verificationText));
+          if (fallbackParagraph) {
+            found = true;
+            contextPreview = buildParagraphContextPreview(fallbackParagraph.text, verificationText);
+          }
+        }
+      } else if (targetParagraph) {
         found = true;
-        const idx = docText.indexOf(oldText);
-        const start = Math.max(0, idx - 40);
-        const end = Math.min(docText.length, idx + oldText.length + 40);
-        contextPreview = docText.slice(start, end);
+        contextPreview = buildParagraphContextPreview(targetParagraph.text, undefined);
       }
 
       verified.push({
         id,
         kind,
+        anchor: resolvedAnchor,
+        paragraphId: resolvedParagraphId,
         searchText: searchText ?? oldText,
         oldText,
         newText: kind === "delete" ? "" : newText,
@@ -387,7 +496,7 @@ export async function proposeDocumentEdits(
       summary,
       editCount: verified.length,
       edits: verified,
-      instruction: "Present these proposed edits to the user for review. Each edit shows the text to find, the proposed change, and whether the target text was found in the document.",
+      instruction: "Present these proposed edits to the user for review. Each edit shows the proposed change, target verification details, and paragraph/anchor locators when available.",
     };
   });
 }
