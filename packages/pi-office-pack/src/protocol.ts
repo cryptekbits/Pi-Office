@@ -829,6 +829,8 @@ export interface OfficeContextPayload {
   visuals?: OfficeVisualSnapshot[] | undefined;
 }
 
+export const OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH = 200;
+
 export interface OfficeProposedEdit {
   id: string;
   kind: "insert" | "replace" | "delete";

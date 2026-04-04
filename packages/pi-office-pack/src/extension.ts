@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HOST_LABELS } from "./defaults.js";
+import { OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH } from "./protocol.js";
 import type {
   AskUserQuestion,
   AskUserQuestionAnswer,
@@ -233,7 +234,11 @@ const proposeEditsParams = Type.Object({
   edits: Type.Array(
     Type.Object({
       kind: Type.String({ description: "insert, replace, or delete." }),
-      searchText: Type.Optional(Type.String({ description: "Text to locate in the document for replace/delete." })),
+      searchText: Type.Optional(Type.String({
+        maxLength: OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH,
+        description:
+          `Text to locate in the document for replace/delete. Must be under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters.`,
+      })),
       oldText: Type.Optional(Type.String({ description: "Expected existing text (for replace/delete verification)." })),
       newText: Type.Optional(Type.String({ description: "Replacement text (for insert/replace)." })),
       anchor: Type.Optional(Type.String({ description: "Heading or paragraph label to scope the search." })),
@@ -403,7 +408,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       name: "office_propose_edits",
       label: "Propose Document Edits",
       description:
-        "Propose a batch of text edits to the active Word document for the user to review before applying. Each edit specifies a kind (insert/replace/delete), the text to find (searchText), and the replacement. The user sees a reviewable card for each edit and can accept, modify, or reject individually. CRITICAL: each edit's searchText MUST be under 200 characters. Break large paragraph rewrites into multiple small, targeted edits — one per sentence or distinct phrase. Never use a full paragraph as searchText. For example, instead of one edit replacing a 3-sentence paragraph, create 3 separate edits each targeting one sentence. Use this instead of office_apply_edit when making multi-paragraph changes or when the user should verify changes first.",
+        `Propose a batch of text edits to the active Word document for the user to review before applying. Each edit specifies a kind (insert/replace/delete), the text to find (searchText), and the replacement. The user sees a reviewable card for each edit and can accept, modify, or reject individually. CRITICAL: each edit's searchText MUST be under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters. Break large paragraph rewrites into multiple small, targeted edits — one per sentence or distinct phrase. Never use a full paragraph as searchText. For example, instead of one edit replacing a 3-sentence paragraph, create 3 separate edits each targeting one sentence. Use this instead of office_apply_edit when making multi-paragraph changes or when the user should verify changes first.`,
       parameters: proposeEditsParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_propose_edits", params);

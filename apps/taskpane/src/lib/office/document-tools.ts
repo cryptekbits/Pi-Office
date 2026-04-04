@@ -1,4 +1,7 @@
-import type { OfficeHost } from "@pi-office/pi-office-pack/protocol";
+import {
+  OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH,
+  type OfficeHost,
+} from "@pi-office/pi-office-pack/protocol";
 import {
   supportsRequirementSet,
 } from "./shared";
@@ -281,6 +284,41 @@ export async function executeOfficeJs(_host: OfficeHost, code: string): Promise<
 // propose_edits — batch edit proposals for user review
 // ---------------------------------------------------------------------------
 
+type SearchTextCandidate = {
+  searchText?: unknown;
+  oldText?: unknown;
+};
+
+function resolveSearchTextCandidate(edit: SearchTextCandidate): string {
+  if (typeof edit.searchText === "string") {
+    return edit.searchText;
+  }
+  if (typeof edit.oldText === "string") {
+    return edit.oldText;
+  }
+  return "";
+}
+
+function collectSearchTextLimitViolations(
+  edits: SearchTextCandidate[],
+): Array<{ index: number; length: number }> {
+  const violations: Array<{ index: number; length: number }> = [];
+  for (let index = 0; index < edits.length; index += 1) {
+    const searchText = resolveSearchTextCandidate(edits[index] ?? {});
+    if (searchText.length > OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH) {
+      violations.push({ index, length: searchText.length });
+    }
+  }
+  return violations;
+}
+
+function formatSearchTextLimitError(index: number, length: number): string {
+  return (
+    `Edit ${index + 1} searchText exceeds ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters ` +
+    `(received ${length}). Split large changes into smaller, targeted edits.`
+  );
+}
+
 export async function applyAcceptedEdits(
   edits: Array<{
     searchText?: string | undefined;
@@ -292,6 +330,20 @@ export async function applyAcceptedEdits(
   }>,
 ): Promise<{ applied: number; failed: number; errors: string[] }> {
   if (!edits.length) return { applied: 0, failed: 0, errors: [] };
+  const searchTextLimitViolations = collectSearchTextLimitViolations(edits);
+  const preValidationErrors = searchTextLimitViolations.map((violation) =>
+    formatSearchTextLimitError(violation.index, violation.length)
+  );
+  const invalidEditIndexes = new Set(searchTextLimitViolations.map((violation) => violation.index));
+  const editsToApply = edits.filter((_edit, index) => !invalidEditIndexes.has(index));
+
+  if (!editsToApply.length) {
+    return {
+      applied: 0,
+      failed: preValidationErrors.length,
+      errors: preValidationErrors,
+    };
+  }
 
   return Word.run(async (context) => {
     const body = context.document.body;
@@ -337,12 +389,7 @@ export async function applyAcceptedEdits(
         return false;
       }
 
-      if (searchText.length > 255 && !paragraphSnapshot.text.includes(searchText)) {
-        return false;
-      }
-
-      const searchToken = searchText.length > 255 ? searchText.slice(0, 255) : searchText;
-      const matches = paragraph.search(searchToken, { matchCase: true, matchWholeWord: false });
+      const matches = paragraph.search(searchText, { matchCase: true, matchWholeWord: false });
       matches.load("items");
       await context.sync();
 
@@ -363,16 +410,12 @@ export async function applyAcceptedEdits(
     };
 
     let applied = 0;
-    let failed = 0;
-    const errors: string[] = [];
+    let failed = preValidationErrors.length;
+    const errors: string[] = [...preValidationErrors];
 
-    for (const edit of edits) {
+    for (const edit of editsToApply) {
       try {
-        const searchText = typeof edit.searchText === "string"
-          ? edit.searchText
-          : typeof edit.oldText === "string"
-            ? edit.oldText
-            : "";
+        const searchText = resolveSearchTextCandidate(edit);
         if (!searchText) {
           errors.push("Edit missing searchText, skipped.");
           failed++;
@@ -438,6 +481,11 @@ export async function proposeDocumentEdits(
 
   if (!edits.length) {
     return { error: "No edits provided." };
+  }
+  const searchTextLimitViolations = collectSearchTextLimitViolations(edits as SearchTextCandidate[]);
+  if (searchTextLimitViolations.length) {
+    const violation = searchTextLimitViolations[0]!;
+    return { error: formatSearchTextLimitError(violation.index, violation.length) };
   }
 
   return Word.run(async (context) => {
