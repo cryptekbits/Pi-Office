@@ -148,13 +148,23 @@ function toToolContent(result: unknown) {
 }
 
 const getContextParams = Type.Object({
-  scope: Type.Optional(Type.String({ description: "selection, document, worksheet, workbook, slide, or presentation" }))
+  scope: Type.Optional(
+    Type.String({
+      description:
+        "Optional context hint (selection, document, worksheet, workbook, slide, presentation). Scope filtering is currently strongest for Excel and may be treated as a hint for Word/PowerPoint.",
+    }),
+  )
 });
 
 const applyEditParams = Type.Object({
   mode: Type.Optional(Type.String({ description: "Legacy edit mode such as replaceSelection, insertAfterSelection, or setRangeValues." })),
   content: Type.Optional(Type.String({ description: "Legacy text, HTML, or JSON matrix payload to insert into Office." })),
+  text: Type.Optional(Type.String({ description: "Alias for legacy text content. Use when operation/type is insertText." })),
+  html: Type.Optional(Type.String({ description: "Alias for legacy HTML content. Use when operation/type is insertHtml." })),
   format: Type.Optional(Type.String({ description: "Legacy content format such as text, html, or matrix." })),
+  operation: Type.Optional(Type.String({ description: "Top-level action type alias, e.g., insertText, insertHtml, setRangeValues." })),
+  type: Type.Optional(Type.String({ description: "Top-level action type alias when not wrapping with action.type." })),
+  values: Type.Optional(Type.Any({ description: "2D array of values for setRangeValues actions." })),
   action: Type.Optional(
     Type.Any({
       description:
@@ -179,7 +189,12 @@ const navigateParams = Type.Object({
 });
 
 const captureSnapshotParams = Type.Object({
-  scope: Type.Optional(Type.String({ description: "selection, document, worksheet, workbook, slide, or shape" })),
+  scope: Type.Optional(
+    Type.String({
+      description:
+        "Optional context hint (selection, document, worksheet, workbook, slide, shape). Scope is currently most effective for Excel and may be treated as a hint in Word/PowerPoint.",
+    }),
+  ),
   includeFormatting: Type.Optional(Type.Boolean({ description: "Include formatting and layout metadata alongside the visuals." })),
   maxImages: Type.Optional(Type.Number({ minimum: 0, maximum: 4, description: "Maximum number of visual snapshots to include." })),
 });
@@ -189,19 +204,29 @@ const captureViewportParams = Type.Object({
     Type.Boolean({ description: "Include Word viewport metadata such as visible pages, scroll position, and view mode." }),
   ),
   includeWindowFrame: Type.Optional(
-    Type.Boolean({ description: "Also attach the full Word window capture in addition to the cropped document viewport." }),
+    Type.Boolean({
+      description:
+        "Reserved for future native capture support. In browser-only runtime this is acknowledged but cannot capture the full OS window frame.",
+    }),
   ),
 });
 
 const readSectionParams = Type.Object({
-  startIndex: Type.Number({ description: "Zero-based paragraph start index (inclusive)." }),
+  startIndex: Type.Optional(Type.Number({ description: "Zero-based paragraph start index (inclusive)." })),
   endIndex: Type.Optional(Type.Number({ description: "Zero-based paragraph end index (exclusive). Defaults to startIndex + 20." })),
+  start: Type.Optional(Type.Number({ description: "Alias for startIndex." })),
+  end: Type.Optional(Type.Number({ description: "Alias for endIndex." })),
   includeStyles: Type.Optional(Type.Boolean({ description: "Include paragraph styles and heading levels. Defaults to true." })),
 });
 
 const executeJsParams = Type.Object({
-  code: Type.String({ description: "Office.js code to execute. Must use the host-appropriate run function (Word.run, Excel.run, or PowerPoint.run). Return a JSON-serializable value from the callback." }),
-  host: Type.Optional(Type.String({ description: "Override host: word, excel, or powerpoint. Defaults to current host." })),
+  code: Type.Optional(
+    Type.String({
+      description:
+        "Office.js code to execute. Must use the active host run function (Word.run, Excel.run, or PowerPoint.run) and return a JSON-serializable value. The runtime enforces a best-effort restricted subset (regex checks only, not an isolated sandbox) and blocks network, storage, eval, and system-access patterns.",
+    }),
+  ),
+  script: Type.Optional(Type.String({ description: "Alias for code." })),
 });
 
 const proposeEditsParams = Type.Object({
@@ -330,7 +355,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       name: "office_capture_viewport",
       label: "Office Viewport",
       description:
-        "Capture the current visible Word desktop viewport exactly as it appears on screen, along with viewport metadata such as visible pages and scroll position. Use this when alignment, page placement, page breaks, margins, wrapping, or what the user is currently seeing matters. It captures only the visible Word viewport, not off-screen document content.",
+        "Capture Word viewport metadata (visible pages, scroll position, and view state) from Office.js context. Use this for layout-sensitive troubleshooting. This is not a pixel-perfect OS window screenshot and does not capture off-screen document content.",
       parameters: captureViewportParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_capture_viewport", params);
@@ -362,7 +387,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       name: "office_execute_js",
       label: "Execute Office.js",
       description:
-        "Execute arbitrary Office.js code directly in the active host. Use as an escape hatch when structured tools cannot achieve the desired result. The code MUST use the host-appropriate run function (Word.run, Excel.run, or PowerPoint.run) and return a JSON-serializable result. Do not use for simple edits that office_apply_edit can handle. Never execute code that accesses external network resources, local storage outside the document, or modifies system settings.",
+        "Execute Office.js code directly in the active host as an escape hatch when structured tools cannot achieve the desired result. The code MUST use Word.run, Excel.run, or PowerPoint.run and return a JSON-serializable result. This tool is a best-effort restricted subset enforced by regex checks (not an isolated sandbox) and blocks network, storage, eval, and system-access patterns. Do not use it for simple edits that office_apply_edit can handle.",
       parameters: executeJsParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_execute_js", params);

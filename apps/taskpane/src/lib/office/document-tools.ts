@@ -198,26 +198,59 @@ export async function readDocumentSection(
 // execute_office_js — arbitrary Office.js code execution
 // ---------------------------------------------------------------------------
 
-const BLOCKED_JS_PATTERNS = [
-  /\bfetch\s*\(/i,
-  /\bXMLHttpRequest\b/i,
-  /\blocalStorage\b/i,
-  /\bsessionStorage\b/i,
-  /\bindexedDB\b/i,
-  /\bWebSocket\b/i,
-  /\beval\s*\(/i,
-  /\bFunction\s*\(/i,
-  /\bimport\s*\(/i,
-  /\bnavigator\b/i,
-  /\bdocument\.cookie\b/i,
+const BLOCKED_JS_PATTERN_CATEGORIES: Array<{ category: string; patterns: RegExp[] }> = [
+  {
+    category: "network",
+    patterns: [
+      /\bfetch\s*\(/i,
+      /\bXMLHttpRequest\b/i,
+      /\bWebSocket\b/i,
+      /\bEventSource\b/i,
+      /\bnavigator\.sendBeacon\b/i,
+    ],
+  },
+  {
+    category: "storage",
+    patterns: [
+      /\blocalStorage\b/i,
+      /\bsessionStorage\b/i,
+      /\bindexedDB\b/i,
+      /\bcaches\b/i,
+      /\bdocument\.cookie\b/i,
+    ],
+  },
+  {
+    category: "eval",
+    patterns: [
+      /\beval\s*\(/i,
+      /\bFunction\s*\(/i,
+      /\bimport\s*\(/i,
+    ],
+  },
+  {
+    category: "system-access",
+    patterns: [
+      /\bprocess\s*\./i,
+      /\bglobalThis\.process\b/i,
+      /\brequire\s*\(/i,
+      /\bwindow\.open\b/i,
+      /\bDeno\b/i,
+      /\bBun\b/i,
+    ],
+  },
 ];
 
 export async function executeOfficeJs(_host: OfficeHost, code: string): Promise<unknown> {
-  for (const pattern of BLOCKED_JS_PATTERNS) {
-    if (pattern.test(code)) {
-      return {
-        error: `Code blocked: contains disallowed pattern "${pattern.source}". office_execute_js must not access network, storage, or eval.`,
-      };
+  for (const { category, patterns } of BLOCKED_JS_PATTERN_CATEGORIES) {
+    for (const pattern of patterns) {
+      if (pattern.test(code)) {
+        return {
+          error:
+            `Code blocked: disallowed ${category} pattern "${pattern.source}". ` +
+            "office_execute_js only supports a best-effort restricted subset enforced with regex checks (not an isolated sandbox). " +
+            "Forbidden categories are network, storage, eval, and system-access.",
+        };
+      }
     }
   }
 

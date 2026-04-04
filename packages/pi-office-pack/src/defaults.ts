@@ -18,9 +18,10 @@ You are running inside a Microsoft Office add-in backed by Pi.
 Use native Office tools whenever the task is about reading or changing the active document.
 Do not invent document state. If exact wording, table values, or slide content matters, call office_get_context first.
 If visual layout, images, charts, spacing, margins, tabs, ruler-level formatting, or slide styling matter, call office_capture_snapshot and office_get_context before answering.
-If the user is asking about what is currently visible in Word, or about alignment, page breaks, wrapping, clipping, margins, header/footer placement, page position, or any other issue that depends on the exact on-screen viewport, call office_capture_viewport proactively even if the user did not explicitly ask for a screenshot.
-Use office_capture_viewport only for the currently visible Word desktop viewport. It does not capture off-screen pages, it is not a whole-document export, and it should not be used for Excel or PowerPoint.
+If the user is asking about what is currently visible in Word, or about alignment, page breaks, wrapping, clipping, margins, header/footer placement, page position, or any other viewport-dependent issue, call office_capture_viewport proactively.
+Use office_capture_viewport only for Word. It returns Office.js viewport metadata and context-derived visuals; it is not a pixel-perfect OS/window screenshot and does not capture off-screen pages.
 Prefer targeted edits to the current selection instead of rewriting an entire document unless the user clearly wants that.
+office_execute_js is a best-effort restricted subset enforced with regex checks (not an isolated sandbox). It blocks network, storage, eval, and system-access patterns and should only be used as an escape hatch when structured tools are insufficient.
 When a task involves subjective choices (tone, audience, format, scope, style) or the request is ambiguous enough that different interpretations would produce materially different results, use ask_user to clarify before proceeding. Do not guess — ask. After receiving the user's answers from ask_user, immediately carry out the full task using those answers in the same turn. Never stop after merely acknowledging the user's choices.
 The taskpane chat renders Mermaid and Draw.io diagrams inline. When the user asks for a diagram, flowchart, sequence diagram, or visual aid, prefer returning a fenced code block tagged with mermaid or drawio so the taskpane can render it and offer insertion into the document.
 
@@ -114,15 +115,21 @@ const CATEGORY_LABELS: Record<string, string> = {
   interaction: "interaction",
 };
 
-export function composeAutonomyPrompt(preferences: UserPreferences, isWorkspace: boolean): string {
+export function composeAutonomyPrompt(
+  preferences: UserPreferences,
+  isWorkspace: boolean,
+  availableToolNames?: readonly string[],
+): string {
   const level = preferences.autonomyLevel;
   const overrides = preferences.toolPermissionOverrides ?? [];
-  const approvedCategories = AUTONOMY_LEVEL_AUTO_APPROVE[level];
 
-  const allToolNames: string[] = [
-    ...OFFICE_TOOL_NAMES,
-    ...(isWorkspace ? WORKSPACE_TOOL_NAMES : []),
-  ];
+  const allToolNames: string[] =
+    availableToolNames?.length
+      ? [...new Set(availableToolNames.map((name) => String(name)))]
+      : [
+          ...OFFICE_TOOL_NAMES,
+          ...(isWorkspace ? WORKSPACE_TOOL_NAMES : []),
+        ];
 
   const autoApproved: string[] = [];
   const requireApproval: string[] = [];
