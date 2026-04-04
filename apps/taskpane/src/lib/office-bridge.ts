@@ -431,6 +431,81 @@ function toStringArray(value: unknown): string[] {
   return single ? [single] : [];
 }
 
+function toExcelRangeTarget(
+  params: Record<string, unknown>,
+  keys: { sheetNameKey?: string; addressKey?: string; anchorKey?: string } = {},
+): OfficeAnchor | undefined {
+  const sheetName = trimString(params[keys.sheetNameKey ?? "sheetName"]);
+  const address = trimString(params[keys.addressKey ?? "address"]);
+  const anchorCandidate = params[keys.anchorKey ?? "anchor"];
+  const explicitAnchor = isRecord(anchorCandidate) && Object.keys(anchorCandidate).length > 0
+    ? (anchorCandidate as Record<string, unknown>)
+    : undefined;
+
+  if (!sheetName && !address && !explicitAnchor) {
+    return undefined;
+  }
+
+  const next: Record<string, unknown> = {};
+  if (explicitAnchor) {
+    next.anchor = explicitAnchor;
+  }
+  if (sheetName) {
+    next.sheetName = sheetName;
+  }
+  if (address) {
+    next.address = address;
+  }
+
+  return toAnchor(next);
+}
+
+function toExcelToolOptions(params: Record<string, unknown>, excludedKeys: string[]): Record<string, unknown> {
+  const next: Record<string, unknown> = {
+    ...(isRecord(params.options) ? params.options : {}),
+  };
+  const excluded = new Set<string>(["options", ...excludedKeys]);
+
+  for (const [key, value] of Object.entries(params)) {
+    if (excluded.has(key)) {
+      continue;
+    }
+    next[key] = value;
+  }
+
+  return next;
+}
+
+function toExcelSheetStructureActionType(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "createworksheet":
+    case "addworksheet":
+    case "createsheet":
+    case "addsheet":
+      return "createWorksheet";
+    case "renameworksheet":
+    case "renamesheet":
+      return "renameWorksheet";
+    case "duplicateworksheet":
+    case "duplicatesheet":
+    case "copyworksheet":
+    case "copysheet":
+      return "duplicateWorksheet";
+    case "deleteworksheet":
+    case "deletesheet":
+    case "removeworksheet":
+    case "removesheet":
+      return "deleteWorksheet";
+    default:
+      return undefined;
+  }
+}
+
 function toPowerPointStructureActionType(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
@@ -902,6 +977,182 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
           success: true,
           content: toWordVisualVerificationPayload(viewportPayload, includeWindowFrameRequested),
         };
+      }
+
+      if (request.toolName === "get_cell_ranges") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "get_cell_ranges is only available for Excel.",
+          };
+        }
+
+        const target = toExcelRangeTarget(request.params);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "getRangeValues",
+          ...(target ? { target } : {}),
+          options: toExcelToolOptions(request.params, ["anchor", "sheetName", "address"]),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "set_cell_range") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "set_cell_range is only available for Excel.",
+          };
+        }
+
+        const action = toHostAction({
+          ...request.params,
+          operation: "setRangeValues",
+          mode: "setRangeValues",
+          format: "matrix",
+        });
+        const result = await dependencies.applyHostAction(request.host, {
+          ...action,
+          type: "setRangeValues",
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "clear_cell_range") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "clear_cell_range is only available for Excel.",
+          };
+        }
+
+        const target = toExcelRangeTarget(request.params);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "clearRange",
+          ...(target ? { target } : {}),
+          options: toExcelToolOptions(request.params, ["anchor", "sheetName", "address"]),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "resize_range") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "resize_range is only available for Excel.",
+          };
+        }
+
+        const target = toExcelRangeTarget(request.params);
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "resizeRange",
+          ...(target ? { target } : {}),
+          options: toExcelToolOptions(request.params, ["anchor", "sheetName", "address"]),
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "copy_to") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "copy_to is only available for Excel.",
+          };
+        }
+
+        const sourceTarget =
+          toExcelRangeTarget(request.params, {
+            sheetNameKey: "sourceSheetName",
+            addressKey: "sourceAddress",
+            anchorKey: "sourceAnchor",
+          }) ?? toExcelRangeTarget(request.params);
+        const destinationTarget = toExcelRangeTarget(request.params, {
+          sheetNameKey: "destinationSheetName",
+          addressKey: "destinationAddress",
+          anchorKey: "destinationAnchor",
+        });
+        if (!destinationTarget?.address) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "copy_to requires destinationAddress (and optional destinationSheetName).",
+          };
+        }
+
+        const options = toExcelToolOptions(request.params, [
+          "anchor",
+          "sheetName",
+          "address",
+          "sourceAnchor",
+          "sourceSheetName",
+          "sourceAddress",
+          "destinationAnchor",
+          "destinationSheetName",
+          "destinationAddress",
+        ]);
+        options.destinationAddress = destinationTarget.address;
+        if (destinationTarget.sheetName) {
+          options.destinationSheetName = destinationTarget.sheetName;
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "copyRange",
+          ...(sourceTarget ? { target: sourceTarget } : {}),
+          options,
+        });
+        return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "modify_sheet_structure") {
+        if (request.host !== "excel") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "modify_sheet_structure is only available for Excel.",
+          };
+        }
+
+        const operation =
+          trimString(request.params.operation) ??
+          trimString(request.params.mode) ??
+          trimString(request.params.type);
+        const actionType = toExcelSheetStructureActionType(operation);
+        if (!actionType) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              "modify_sheet_structure requires a supported operation (create_worksheet, rename_worksheet, duplicate_worksheet, delete_worksheet).",
+          };
+        }
+
+        const sheetName = trimString(request.params.sheetName) ?? trimString(request.params.sourceSheetName);
+        const anchor = isRecord(request.params.anchor) && Object.keys(request.params.anchor).length > 0
+          ? request.params.anchor
+          : undefined;
+        const target = sheetName || anchor ? toAnchor({
+          ...(anchor ? { anchor } : {}),
+          ...(sheetName ? { sheetName } : {}),
+        }) : undefined;
+
+        if (actionType !== "createWorksheet" && !target) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "modify_sheet_structure requires sheetName or anchor for rename, duplicate, and delete operations.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: actionType,
+          ...(target ? { target } : {}),
+          options: toExcelToolOptions(request.params, ["operation", "mode", "type", "sheetName", "sourceSheetName", "anchor"]),
+        });
+        return toPayloadAwareResult(request.requestId, result);
       }
 
       if (request.toolName === "get_presentation_structure") {

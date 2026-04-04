@@ -1135,6 +1135,27 @@ function buildExcelConditionalIconCriterion(value: Record<string, unknown>): Exc
   return criterion;
 }
 
+function toExcelClearApplyTo(value: unknown): Excel.ClearApplyTo {
+  const normalized = trimString(value)?.replace(/[\s_-]/g, "").toLowerCase();
+  switch (normalized) {
+    case "contents":
+    case "content":
+      return Excel.ClearApplyTo.contents;
+    case "formats":
+    case "format":
+      return Excel.ClearApplyTo.formats;
+    case "hyperlinks":
+    case "hyperlink":
+      return Excel.ClearApplyTo.hyperlinks;
+    case "removehyperlinks":
+    case "removehyperlink":
+      return Excel.ClearApplyTo.removeHyperlinks;
+    case "all":
+    default:
+      return Excel.ClearApplyTo.all;
+  }
+}
+
 
 export async function applyExcelAction(action: OfficeHostAction): Promise<unknown> {
   return Excel.run(async (context) => {
@@ -1171,6 +1192,144 @@ export async function applyExcelAction(action: OfficeHostAction): Promise<unknow
       range.load("address");
       await context.sync();
       return { ok: true, host: "excel", action: type, address: range.address };
+    }
+
+    if (type === "getRangeValues") {
+      const range = resolveExcelRange(context, action.target, true);
+      const includeValues = toBoolean(options.includeValues) ?? true;
+      const includeText = toBoolean(options.includeText) ?? true;
+      const includeFormulas = toBoolean(options.includeFormulas) ?? true;
+      const includeNumberFormat = toBoolean(options.includeNumberFormat) ?? true;
+      range.load(["address", "rowCount", "columnCount", "values", "text", "formulas", "numberFormat"]);
+      range.worksheet.load("name");
+      await context.sync();
+      return {
+        ok: true,
+        host: "excel",
+        action: type,
+        sheetName: range.worksheet.name,
+        address: range.address,
+        rowCount: range.rowCount,
+        columnCount: range.columnCount,
+        ...(includeValues ? { values: range.values } : {}),
+        ...(includeText ? { text: range.text } : {}),
+        ...(includeFormulas ? { formulas: range.formulas } : {}),
+        ...(includeNumberFormat ? { numberFormat: range.numberFormat } : {}),
+      };
+    }
+
+    if (type === "clearRange") {
+      const range = resolveExcelRange(context, action.target, false);
+      range.load("address,rowCount,columnCount");
+      range.worksheet.load("name");
+      await context.sync();
+      const applyTo = toExcelClearApplyTo(options.applyTo ?? options.clearApplyTo ?? options.clearType);
+      range.clear(applyTo);
+      await context.sync();
+      return {
+        ok: true,
+        host: "excel",
+        action: type,
+        sheetName: range.worksheet.name,
+        address: range.address,
+        rowCount: range.rowCount,
+        columnCount: range.columnCount,
+        applyTo,
+      };
+    }
+
+    if (type === "resizeRange") {
+      const sourceRange = resolveExcelRange(context, action.target, false);
+      sourceRange.load("address,rowCount,columnCount");
+      sourceRange.worksheet.load("name");
+      await context.sync();
+
+      const requestedRowCount = toNumber(options.rowCount ?? options.rows ?? options.targetRowCount);
+      const requestedColumnCount = toNumber(options.columnCount ?? options.columns ?? options.targetColumnCount);
+      const requestedRowDelta = toNumber(options.rowDelta ?? options.rowsDelta ?? options.deltaRows);
+      const requestedColumnDelta = toNumber(options.columnDelta ?? options.columnsDelta ?? options.deltaColumns);
+
+      const rowDelta =
+        typeof requestedRowCount === "number"
+          ? Math.trunc(requestedRowCount) - sourceRange.rowCount
+          : Math.trunc(requestedRowDelta ?? 0);
+      const columnDelta =
+        typeof requestedColumnCount === "number"
+          ? Math.trunc(requestedColumnCount) - sourceRange.columnCount
+          : Math.trunc(requestedColumnDelta ?? 0);
+
+      if (sourceRange.rowCount + rowDelta < 1 || sourceRange.columnCount + columnDelta < 1) {
+        throw new Error("Excel resizeRange cannot produce a range smaller than 1x1.");
+      }
+
+      const resizedRange = sourceRange.getResizedRange(rowDelta, columnDelta);
+      resizedRange.load("address,rowCount,columnCount");
+      resizedRange.worksheet.load("name");
+      if (toBoolean(options.activate ?? options.select) ?? false) {
+        resizedRange.select();
+      }
+      await context.sync();
+
+      return {
+        ok: true,
+        host: "excel",
+        action: type,
+        sourceSheetName: sourceRange.worksheet.name,
+        sourceAddress: sourceRange.address,
+        sheetName: resizedRange.worksheet.name,
+        address: resizedRange.address,
+        rowCount: resizedRange.rowCount,
+        columnCount: resizedRange.columnCount,
+      };
+    }
+
+    if (type === "copyRange") {
+      const sourceRange = resolveExcelRange(context, action.target, true);
+      sourceRange.load("address");
+      sourceRange.worksheet.load("name");
+
+      const destinationAddressInput =
+        trimString(options.destinationAddress) ??
+        trimString(options.targetAddress) ??
+        trimString(options.address);
+      if (!destinationAddressInput) {
+        throw new Error("Excel copyRange requires destinationAddress.");
+      }
+      const destinationSheetInput =
+        trimString(options.destinationSheetName) ??
+        trimString(options.targetSheetName) ??
+        trimString(options.sheetName);
+      const parsedDestination = splitSheetAddress(destinationAddressInput, destinationSheetInput);
+      const destinationWorksheet = parsedDestination.sheetName
+        ? resolveExcelWorksheet(context, { kind: "sheet", sheetName: parsedDestination.sheetName }, false)
+        : sourceRange.worksheet;
+      const destinationAddress = parsedDestination.address ?? destinationAddressInput;
+      const destinationRange = destinationWorksheet.getRange(destinationAddress);
+      destinationRange.load("address");
+      destinationWorksheet.load("name");
+      await context.sync();
+
+      const copyType = trimString(options.copyType) as Excel.RangeCopyType | undefined;
+      const skipBlanks = toBoolean(options.skipBlanks) ?? false;
+      const transpose = toBoolean(options.transpose) ?? false;
+      destinationRange.copyFrom(sourceRange, copyType, skipBlanks, transpose);
+      if (toBoolean(options.selectDestination) ?? false) {
+        destinationRange.select();
+      }
+      await context.sync();
+
+      return {
+        ok: true,
+        host: "excel",
+        action: type,
+        sourceSheetName: sourceRange.worksheet.name,
+        sourceAddress: sourceRange.address,
+        destinationSheetName: destinationWorksheet.name,
+        destinationAddress: destinationRange.address,
+        copyType: copyType ?? "All",
+        skipBlanks,
+        transpose,
+      };
     }
 
     if (type === "formatRange") {

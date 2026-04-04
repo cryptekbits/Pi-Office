@@ -122,6 +122,12 @@ const REGISTERED_AGENT_TOOL_NAMES = [
   "office_apply_edit",
   "edit_doc_text",
   "edit_doc_list",
+  "get_cell_ranges",
+  "set_cell_range",
+  "clear_cell_range",
+  "resize_range",
+  "copy_to",
+  "modify_sheet_structure",
   "office_navigate",
   "office_capture_snapshot",
   "office_capture_viewport",
@@ -887,6 +893,12 @@ class BrowserOfficeSession {
         "office_apply_edit",
         "edit_doc_text",
         "edit_doc_list",
+        "get_cell_ranges",
+        "set_cell_range",
+        "clear_cell_range",
+        "resize_range",
+        "copy_to",
+        "modify_sheet_structure",
         "office_navigate",
         "office_capture_snapshot",
         "office_capture_viewport",
@@ -1234,6 +1246,81 @@ class BrowserOfficeSession {
         }),
       ),
     });
+
+    const getCellRangesParams = Type.Object({
+      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the range. Defaults to the active worksheet." })),
+      address: Type.Optional(Type.String({ description: "A1-style cell/range address. Defaults to the current selection." })),
+      includeValues: Type.Optional(Type.Boolean({ description: "Include range values in the response. Defaults to true." })),
+      includeText: Type.Optional(Type.Boolean({ description: "Include rendered text values in the response. Defaults to true." })),
+      includeFormulas: Type.Optional(Type.Boolean({ description: "Include range formulas in the response. Defaults to true." })),
+      includeNumberFormat: Type.Optional(Type.Boolean({ description: "Include number formats in the response. Defaults to true." })),
+    }, { additionalProperties: true });
+
+    const setCellRangeParams = Type.Object({
+      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the destination range. Defaults to active worksheet." })),
+      address: Type.Optional(Type.String({ description: "A1-style destination address. Defaults to current selection." })),
+      values: Type.Optional(Type.Any({ description: "2D matrix values to write into the target range." })),
+      content: Type.Optional(Type.String({ description: "JSON matrix alias when values is omitted." })),
+      options: Type.Optional(Type.Any({ description: "Additional write options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
+    const clearCellRangeParams = Type.Object({
+      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the range to clear." })),
+      address: Type.Optional(Type.String({ description: "A1-style address to clear. Defaults to current selection." })),
+      applyTo: Type.Optional(
+        Type.String({
+          description: "Clear mode: all, contents, formats, hyperlinks, removeHyperlinks. Defaults to all.",
+        }),
+      ),
+      confirmDestructive: Type.Optional(
+        Type.Boolean({
+          description: "Set true to acknowledge this destructive clear operation.",
+        }),
+      ),
+      options: Type.Optional(Type.Any({ description: "Additional clear options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
+    const resizeRangeParams = Type.Object({
+      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the source range." })),
+      address: Type.Optional(Type.String({ description: "A1-style source range address. Defaults to current selection." })),
+      rowCount: Type.Optional(Type.Number({ minimum: 1, description: "Final row count for the resized range." })),
+      columnCount: Type.Optional(Type.Number({ minimum: 1, description: "Final column count for the resized range." })),
+      rowDelta: Type.Optional(Type.Number({ description: "Relative row delta when rowCount is not provided." })),
+      columnDelta: Type.Optional(Type.Number({ description: "Relative column delta when columnCount is not provided." })),
+      activate: Type.Optional(Type.Boolean({ description: "Activate/select the resized range after resolving it." })),
+      options: Type.Optional(Type.Any({ description: "Additional resize options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
+    const copyToParams = Type.Object({
+      sourceSheetName: Type.Optional(Type.String({ description: "Worksheet name for the source range. Defaults to active worksheet." })),
+      sourceAddress: Type.Optional(Type.String({ description: "A1-style source range address. Defaults to current selection." })),
+      destinationSheetName: Type.Optional(Type.String({ description: "Worksheet name for the destination range." })),
+      destinationAddress: Type.String({ description: "A1-style destination range address." }),
+      copyType: Type.Optional(
+        Type.String({
+          description: "Excel copy type: All, Formats, Formulas, Values, or Link.",
+        }),
+      ),
+      skipBlanks: Type.Optional(Type.Boolean({ description: "Skip blank cells while copying. Defaults to false." })),
+      transpose: Type.Optional(Type.Boolean({ description: "Transpose copied rows/columns. Defaults to false." })),
+      options: Type.Optional(Type.Any({ description: "Additional copy options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
+
+    const modifySheetStructureParams = Type.Object({
+      operation: Type.String({
+        description: "Worksheet structure operation: create_worksheet, rename_worksheet, duplicate_worksheet, or delete_worksheet.",
+      }),
+      sheetName: Type.Optional(Type.String({ description: "Worksheet name targeted by rename/duplicate/delete operations." })),
+      name: Type.Optional(Type.String({ description: "Worksheet name for create/rename/duplicate operations." })),
+      relativeTo: Type.Optional(Type.String({ description: "Worksheet name used as placement anchor for duplication." })),
+      positionType: Type.Optional(Type.String({ description: "Worksheet copy placement type when duplicating (before/after)." })),
+      confirmDestructive: Type.Optional(
+        Type.Boolean({
+          description: "Set true when performing destructive operations such as delete_worksheet.",
+        }),
+      ),
+      options: Type.Optional(Type.Any({ description: "Additional structure options forwarded to the host adapter." })),
+    }, { additionalProperties: true });
 
     const getPresentationStructureParams = Type.Object({
       maxSlides: Type.Optional(
@@ -1621,6 +1708,42 @@ class BrowserOfficeSession {
         "Verify Word Visual",
         "Capture non-mutating Word visual verification context through the supported viewport path. Word-only; returns structured visual/details payloads.",
         verifyDocVisualParams,
+      ),
+      simpleOfficeTool(
+        "get_cell_ranges",
+        "Get Cell Ranges",
+        "Excel-only first-class range read tool for cell/range values, text, formulas, and number formats.",
+        getCellRangesParams,
+      ),
+      simpleOfficeTool(
+        "set_cell_range",
+        "Set Cell Range",
+        "Excel-only first-class range write tool for setting values in a target cell/range.",
+        setCellRangeParams,
+      ),
+      simpleOfficeTool(
+        "clear_cell_range",
+        "Clear Cell Range",
+        "Excel-only first-class range clear tool. Destructive clears should set confirmDestructive=true.",
+        clearCellRangeParams,
+      ),
+      simpleOfficeTool(
+        "resize_range",
+        "Resize Range",
+        "Excel-only first-class range layout tool for computing/activating resized ranges by count or delta.",
+        resizeRangeParams,
+      ),
+      simpleOfficeTool(
+        "copy_to",
+        "Copy To Range",
+        "Excel-only first-class range copy tool that copies a source range into a destination range.",
+        copyToParams,
+      ),
+      simpleOfficeTool(
+        "modify_sheet_structure",
+        "Modify Sheet Structure",
+        "Excel-only first-class worksheet structure tool for create, rename, duplicate, and delete operations.",
+        modifySheetStructureParams,
       ),
       simpleOfficeTool(
         "get_presentation_structure",
