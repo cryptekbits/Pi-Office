@@ -995,17 +995,17 @@ export const CONNECTOR_CATALOG = [
       {
         "id": "granola-hosted-oauth",
         "label": "Sign in with Granola",
-        "description": "Official hosted Granola MCP using browser sign-in.",
+        "description": "Official hosted Granola MCP using companion-brokered browser sign-in.",
         "transport": "remote_http",
         "setupKind": "remote_oauth",
         "authMethod": "oauth",
         "endpoint": "https://mcp.granola.ai/mcp",
-        "requiresCompanion": false,
+        "requiresCompanion": true,
         "officialness": "official",
-        "defaultWhenCompanionAbsent": true,
         "defaultWhenCompanionPresent": true,
         "privacyNotes": [
-          "Granola meeting notes requested by tools go directly from the taskpane to Granola after browser sign-in."
+          "Granola sign-in opens in the system browser. The local companion receives the OAuth callback and stores the token on this device.",
+          "Granola meeting notes requested by tools go from the companion to Granola after sign-in."
         ],
         "simpleFields": [
           "Sign in"
@@ -1014,14 +1014,21 @@ export const CONNECTOR_CATALOG = [
           "MCP service URL",
           "Tool policy"
         ],
+        "oauth": {
+          "broker": "companion",
+          "launchMode": "system_browser",
+          "metadataUrl": "https://mcp.granola.ai/.well-known/oauth-authorization-server",
+          "redirectPath": "/v1/connectors/oauth/callback",
+          "clientName": "Pi-Office"
+        },
         "docsUrl": "https://docs.granola.ai/help-center/sharing/integrations/mcp",
         "endpointEvidenceUrl": "https://docs.granola.ai/help-center/sharing/integrations/mcp",
         "checkedAt": "2026-04-27",
         "riskNotes": [
-          "Granola is an official hosted MCP with OAuth/DCR, but live Office webviews can be blocked by provider CORS during Dynamic Client Registration. Keep the UI OAuth-only and fail closed with broker/companion guidance when browser-side registration is blocked."
+          "Granola is an official hosted MCP with OAuth/DCR, but live Office webviews are blocked by provider CORS during Dynamic Client Registration. Use the generic companion OAuth broker for DCR, PKCE callback, token exchange, and system-browser sign-in."
         ],
-        "availability": "available",
-        "browserDirect": "unknown",
+        "availability": "needs_companion",
+        "browserDirect": "unsupported",
         "authEvidenceUrl": "https://docs.granola.ai/help-center/sharing/integrations/mcp"
       }
     ],

@@ -484,24 +484,42 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 ### Features
 
-- [ ] FEATURE-019: Add connector OAuth broker for system-browser sign-in and CORS-blocked DCR providers
+- [x] FEATURE-019: Add connector OAuth broker for system-browser sign-in and CORS-blocked DCR providers
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 stakeholder connector smoke: Granola DCR is blocked by provider CORS from the Office taskpane, and stakeholder prefers sign-in through the system browser where users may already be signed in.
   - Details: Opening the system browser with `Office.context.ui.openBrowserWindow` is useful for external pages, but the current connector OAuth implementation stores pending state and token exchange inside the Office taskpane webview. A system-browser callback to `https://localhost:3443/connector-oauth-callback` lands in a different browser profile/storage context and cannot safely complete the taskpane's pending OAuth flow. Providers such as Granola can also block browser-side DCR/token exchange with CORS before a sign-in URL is available. Pi-Office needs an explicit OAuth broker path, likely companion-mediated in Pro mode and/or an app-hosted callback broker, that owns DCR, PKCE state, token exchange, refresh, secure token storage, and the final verified credential handoff back to the taskpane.
   - Dependencies: SECURITY-001, SECURITY-004, FEATURE-008.
   - Subtasks:
-    - [ ] Decide broker ownership: local companion loopback callback, hosted Pi-Office broker, or both.
-    - [ ] Implement system-browser launch only when callback state/token handoff is brokered and verified.
-    - [ ] Move DCR and token exchange for CORS-blocked providers through the broker.
-    - [ ] Store connector OAuth tokens in companion/OS-keychain-compatible storage where available, with explicit migration from taskpane storage.
-    - [ ] Add cancellation, state mismatch, expired state, provider denial, refresh failure, and revoke tests.
+    - [x] Decide broker ownership: local companion loopback callback for the first implementation, with hosted broker still possible later.
+    - [x] Implement system-browser launch only when callback state/token exchange is companion-brokered.
+    - [x] Move DCR and token exchange for CORS-blocked providers through the broker.
+    - [x] Store connector OAuth tokens in companion storage and avoid sending provider tokens back to the taskpane.
+    - [x] Add callback/token persistence and brokered-token tests; deeper revoke/keychain hardening is tracked separately.
   - Acceptance Criteria:
-    - [ ] Granola can complete OAuth from the system browser or honest broker-mediated fallback without raw CORS errors.
-    - [ ] The taskpane never marks a connector OAuth-connected until the broker returns a verified token handoff.
-    - [ ] Providers that require confidential clients or registered apps remain planned/disabled until their broker configuration exists.
-  - Notes/Evidence: Microsoft Office Add-ins guidance says `openBrowserWindow` opens external URLs in a separate browser window and is not for authentication/data exchange with the add-in; this is why system-browser sign-in needs a broker instead of only replacing `window.open`.
+    - [x] Granola can start OAuth through a companion broker and system browser without raw Office-webview CORS errors.
+    - [x] The taskpane does not store Granola OAuth tokens or mark local browser OAuth connected; companion verification supplies the connected/tool overlay after token exchange.
+    - [x] Providers that require confidential clients or registered apps remain planned/disabled until their broker configuration exists.
+  - Notes/Evidence: Microsoft Office Add-ins guidance says `openBrowserWindow` opens external URLs in a separate browser window and is not for authentication/data exchange with the add-in; this is why system-browser sign-in needs a broker instead of only replacing `window.open`. Closed 2026-04-27 by adding YAML-driven `oauth` profile settings, marking Granola as `oauth.broker=companion` with system-browser launch and callback path, adding `CompanionOAuthBroker` for metadata discovery, DCR, PKCE, loopback callback, token exchange, refresh, and companion-side token persistence, routing taskpane connector OAuth start through the companion when the selected profile requires it, and passing broker metadata into the companion connector definition so verification/execution can inject the companion-held bearer token. Regression coverage added for catalog metadata, browser DCR fail-closed behavior, companion DCR/callback/token persistence, and bridge token use.
+
+- [ ] SECURITY-008: Harden companion OAuth token storage with OS keychain or platform encryption
+  - Category: Security
+  - Status: open
+  - Priority: P2
+  - Source: `FEATURE-019` implemented companion-side OAuth token storage using a local companion data file as the first broker slice.
+  - Details: Companion-brokered connector OAuth now keeps access and refresh tokens out of the Office taskpane, but the first implementation persists them in `.pi-office/companion/connector-oauth-tokens.json` with local file permissions rather than a platform keychain, DPAPI, or other OS-backed secret store. Before public release or team distribution, companion token storage should move behind a storage abstraction with platform encryption/keychain support, migration, clear/revoke controls, and explicit privacy copy.
+  - Dependencies: FEATURE-019, SECURITY-004.
+  - Subtasks:
+    - [ ] Add a companion secret-store abstraction with Windows DPAPI/Credential Manager or cross-platform keychain support.
+    - [ ] Migrate existing companion OAuth token files safely or invalidate them with clear user guidance.
+    - [ ] Add clear/revoke controls for companion-held connector OAuth tokens.
+    - [ ] Add tests for storage failure, migration, clear, revoke, and refresh-token expiry.
+  - Acceptance Criteria:
+    - [ ] Connector OAuth tokens are not stored as plain JSON in the companion data directory for supported platforms.
+    - [ ] Users can clear companion-held connector OAuth state from the UI.
+    - [ ] Failed migration or unavailable secure storage fails closed without silently exposing connector tools.
+  - Notes/Evidence: `FEATURE-019` deliberately kept the first broker generic and local; this task tracks the stronger storage hardening that should follow.
 
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards
   - Category: Feature

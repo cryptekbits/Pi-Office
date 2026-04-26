@@ -4,6 +4,8 @@ import { createServer as createHttpsServer } from "node:https";
 import { dirname } from "node:path";
 import express from "express";
 import type {
+  CompanionConnectorOAuthStartRequest,
+  CompanionConnectorOAuthStatusRequest,
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
   CompanionShellCapability,
@@ -17,6 +19,7 @@ import { CompanionConnectorBridge } from "./connector-bridge.js";
 import { executeFileTool } from "./file-tools.js";
 import { companionCorsMiddleware } from "./http.js";
 import { captureNativeViewport, createNativeCaptureCapability } from "./native-capture.js";
+import { CompanionOAuthBroker } from "./oauth-broker.js";
 import { createCompanionRuntimeDiagnostics } from "./runtime-diagnostics.js";
 import { CompanionShellSandbox } from "./shell-sandbox.js";
 
@@ -98,7 +101,8 @@ function createCompanionState(
 
 export class CompanionServer {
   private readonly config = loadConfig();
-  private readonly connectorBridge = new CompanionConnectorBridge();
+  private readonly oauthBroker = new CompanionOAuthBroker(this.config);
+  private readonly connectorBridge = new CompanionConnectorBridge(this.oauthBroker);
   private readonly sessionsByBrowserId = new Map<string, SessionRecord>();
   private readonly sessionsById = new Map<string, SessionRecord>();
 
@@ -150,6 +154,33 @@ export class CompanionServer {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    });
+
+    app.post("/v1/connectors/oauth/start", async (request, response) => {
+      try {
+        const body = request.body as CompanionConnectorOAuthStartRequest;
+        const result = await this.oauthBroker.start(body.definition);
+        response.json(result);
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.post("/v1/connectors/oauth/status", (request, response) => {
+      try {
+        response.json(this.oauthBroker.status(request.body as CompanionConnectorOAuthStatusRequest));
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.get("/v1/connectors/oauth/callback", async (request, response) => {
+      const result = await this.oauthBroker.completeCallback(request.query as Record<string, unknown>);
+      response.status(result.statusCode).type("html").send(result.html);
     });
 
     app.post("/v1/sessions/open", async (request, response) => {

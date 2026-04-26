@@ -240,14 +240,19 @@ function companionIsOnline(companion: CompanionState | undefined): boolean {
 }
 
 function setupProfileNeedsCompanion(profile: ConnectorSetupProfile | undefined, transport: ConnectorSetupRequest["transport"] | undefined): boolean {
+  if (setupProfileUsesCompanionOAuthBroker(profile)) return true;
   if (profile?.transport === "remote_http" && setupProfileIsHostedHttp(profile)) return false;
   if (profile?.requiresCompanion === true || profile?.availability === "needs_companion") return true;
   if (transport === "local_stdio" || profile?.transport === "local_stdio") return true;
   return false;
 }
 
+function setupProfileUsesCompanionOAuthBroker(profile: ConnectorSetupProfile | undefined): boolean {
+  return profile?.authMethod === "oauth" && profile.oauth?.broker === "companion";
+}
+
 function setupProfileIsBrowserDirect(profile: ConnectorSetupProfile | undefined): boolean {
-  return profile?.transport === "remote_http" && profile.browserDirect === "supported" && setupProfileIsHostedHttp(profile) && profile.setupDisabled !== true;
+  return profile?.transport === "remote_http" && !setupProfileUsesCompanionOAuthBroker(profile) && profile.browserDirect === "supported" && setupProfileIsHostedHttp(profile) && profile.setupDisabled !== true;
 }
 
 function setupProfileIsHostedHttp(profile: ConnectorSetupProfile | undefined): boolean {
@@ -293,6 +298,10 @@ function profileNeedsCommunityWarning(profile: ConnectorSetupProfile | undefined
     profile?.officialness === "experimental";
 }
 
+function profileUsesSystemBrowserOAuth(profile: ConnectorSetupProfile | undefined): boolean {
+  return profile?.oauth?.launchMode === "system_browser" || profile?.oauth?.broker === "companion";
+}
+
 function connectorOAuthWindowFeatures(): string {
   const screenWidth = typeof window !== "undefined" ? window.screen?.width ?? 1200 : 1200;
   const screenHeight = typeof window !== "undefined" ? window.screen?.height ?? 900 : 900;
@@ -301,6 +310,23 @@ function connectorOAuthWindowFeatures(): string {
   const left = Math.max(0, Math.round((screenWidth - width) / 2));
   const top = Math.max(0, Math.round((screenHeight - height) / 2));
   return `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+}
+
+function openConnectorOAuthSystemBrowser(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const officeUi = (globalThis as unknown as {
+      Office?: { context?: { ui?: { openBrowserWindow?: (targetUrl: string) => void } } };
+    }).Office?.context?.ui;
+    if (typeof officeUi?.openBrowserWindow === "function") {
+      officeUi.openBrowserWindow(url);
+      return true;
+    }
+  } catch {
+    // Fall through to the browser-preview fallback.
+  }
+  if (typeof window === "undefined" || typeof window.open !== "function") return false;
+  return Boolean(window.open(url, "_blank"));
 }
 
 function openConnectorOAuthWindow(): Window | null {
@@ -816,7 +842,8 @@ export function IntegrationsSection({
     [companion, draft?.setupProfileId, selectedConnector, selectedStatus?.setupProfileId],
   );
   const selectedDraftNeedsCompanion = setupProfileNeedsCompanion(selectedDraftProfile, draft?.transport);
-  const selectedDraftNeedsCompanionNotice = selectedDraftNeedsCompanion && !setupProfileIsHostedHttp(selectedDraftProfile);
+  const selectedDraftNeedsCompanionNotice = selectedDraftNeedsCompanion && (!setupProfileIsHostedHttp(selectedDraftProfile) || setupProfileUsesCompanionOAuthBroker(selectedDraftProfile));
+  const selectedDraftUsesCompanionOAuthBroker = setupProfileUsesCompanionOAuthBroker(selectedDraftProfile);
 
   useEffect(() => {
     if (!selectedKey) return;
@@ -1016,13 +1043,27 @@ export function IntegrationsSection({
   async function handleStartOAuth(targetId?: string) {
     let connectorId = targetId;
     let oauthWindow: Window | null = null;
+    const targetStatus = connectorId
+      ? statuses.find((status) => status.id === connectorId || status.connectorId === connectorId)
+      : selectedStatus;
+    const targetCatalog = targetStatus
+      ? connectors.find((connector) => connector.id === targetStatus.connectorId)
+      : selectedConnector;
+    const targetProfile = draft && !connectorId
+      ? selectedDraftProfile
+      : targetCatalog
+        ? selectSetupProfile(targetCatalog, targetStatus?.setupProfileId, companion)
+        : selectedDraftProfile;
+    const preferSystemBrowser = profileUsesSystemBrowserOAuth(targetProfile);
     if (!connectorId && draft) {
       const message = connectStepValidationMessage(draft, scopeContext, selectedDraftProfile);
       if (message) {
         setError(message);
         return;
       }
-      oauthWindow = openConnectorOAuthWindow();
+      if (!preferSystemBrowser) {
+        oauthWindow = openConnectorOAuthWindow();
+      }
       try {
         const saved = await onConnectConnector(buildRequest(draft, scopeContext));
         connectorId = saved.status.id;
@@ -1039,16 +1080,26 @@ export function IntegrationsSection({
         setError("Choose a connector before starting sign-in.");
         return;
       }
-      oauthWindow = openConnectorOAuthWindow();
+      if (!preferSystemBrowser) {
+        oauthWindow = openConnectorOAuthWindow();
+      }
     } else {
-      oauthWindow = openConnectorOAuthWindow();
+      if (!preferSystemBrowser) {
+        oauthWindow = openConnectorOAuthWindow();
+      }
     }
     setWorking("oauth");
     setError(undefined);
     try {
       const started = await onStartOAuth(connectorId);
-      if (!navigateConnectorOAuthWindow(oauthWindow, started.url)) {
-        setError("Sign-in popup was blocked. Use the sign-in link below or allow popups for Pi-Office.");
+      const useSystemBrowser = started.openMode === "system_browser" || preferSystemBrowser;
+      const opened = useSystemBrowser
+        ? openConnectorOAuthSystemBrowser(started.url)
+        : navigateConnectorOAuthWindow(oauthWindow, started.url);
+      if (!opened) {
+        setError(useSystemBrowser
+          ? "System browser sign-in could not be opened. Use the sign-in link below."
+          : "Sign-in popup was blocked. Use the sign-in link below or allow popups for Pi-Office.");
       }
       setPendingOAuth((current) => ({
         ...current,
@@ -1058,7 +1109,9 @@ export function IntegrationsSection({
           url: started.url,
         },
       }));
-      setLiveMessage("OAuth sign-in started. Complete sign-in in the dedicated sign-in window.");
+      setLiveMessage(useSystemBrowser
+        ? "OAuth sign-in started. Complete sign-in in the system browser, then return to Pi-Office and run Check connection."
+        : "OAuth sign-in started. Complete sign-in in the dedicated sign-in window.");
     } catch (reason) {
       closeConnectorOAuthWindow(oauthWindow);
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -1597,11 +1650,19 @@ export function IntegrationsSection({
                       <h4>Connect</h4>
                       {selectedDraftNeedsCompanionNotice ? (
                         <div className={`settings-note integration-note ${companionIsOnline(companion) ? "integration-note-info" : "integration-note-warning"}`}>
-                          <strong>Optional companion</strong>{" "}
-                          {companionIsOnline(companion)
-                            ? "Connected. You can verify MCP connectors and expose read-safe tools to the model."
-                            : "Not connected. Save settings anytime; use the Companion tab to start discovery, then run Check connection."}
-                          {draft.transport === "local_stdio" ? " Local stdio MCP always runs on this PC through the companion process." : " This profile needs companion-side verification before it can run."}
+                          <strong>{selectedDraftUsesCompanionOAuthBroker ? "Companion required" : "Optional companion"}</strong>{" "}
+                          {selectedDraftUsesCompanionOAuthBroker
+                            ? (companionIsOnline(companion)
+                                ? "Connected. Sign-in will open in your system browser and return to the local companion."
+                                : "Not connected. Start the Companion tab first; this connector uses it for secure sign-in and token exchange.")
+                            : (companionIsOnline(companion)
+                                ? "Connected. You can verify MCP connectors and expose read-safe tools to the model."
+                                : "Not connected. Save settings anytime; use the Companion tab to start discovery, then run Check connection.")}
+                          {selectedDraftUsesCompanionOAuthBroker
+                            ? " Connector requests will also execute through the companion after sign-in."
+                            : draft.transport === "local_stdio"
+                              ? " Local stdio MCP always runs on this PC through the companion process."
+                              : " This profile needs companion-side verification before it can run."}
                         </div>
                       ) : setupProfileCanTryBrowserMcp(selectedDraftProfile) ? (
                         <div className="settings-note integration-note integration-note-info">
@@ -1689,6 +1750,8 @@ export function IntegrationsSection({
                           <p className="settings-note">
                             {connectionTypeUserLabel(draft.transport)} — {setupProfileCanTryBrowserMcp(selectedDraftProfile)
                               ? "verified directly from the taskpane when the hosted MCP allows browser access."
+                              : selectedDraftUsesCompanionOAuthBroker
+                                ? "signed in, verified, and executed through the Pi-Office companion on this device."
                               : setupProfileIsHostedHttp(selectedDraftProfile)
                                 ? "hosted MCP URL saved in Pi-Office; sign-in opens in a dedicated window."
                               : selectedDraftNeedsCompanionNotice

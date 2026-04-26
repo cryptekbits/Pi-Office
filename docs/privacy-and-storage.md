@@ -6,6 +6,7 @@ Pi-Office keeps Office.js execution inside the active Office taskpane. Network c
 
 - AI provider requests can include the user's prompt, selected Office context, generated-image prompts, model/tool results, and any document snippets the taskpane attaches for the current request.
 - Remote HTTP connectors can send connector-specific requests to the configured service endpoint after the optional companion verifies read-safe MCP tools.
+- Companion-brokered OAuth connectors open the provider sign-in page in the system browser. The provider redirects back to the loopback companion callback, and the companion exchanges the authorization code with the provider.
 - Local stdio connectors also run through the optional companion when connected. The companion is designed for read-only MCP execution.
 - The optional companion runs on loopback and receives saved-document context only when a saved document is bound to the session.
 
@@ -17,6 +18,13 @@ Pi-Office keeps Office.js execution inside the active Office taskpane. Network c
 - User preferences, enabled providers/models, recent models, and persistent permission choices are stored locally.
 
 The AES-GCM envelopes are local obfuscation only. The crypto keys are also stored in `localStorage`, so this does not protect secrets from same-origin script access, a compromised taskpane bundle, or XSS. Stronger storage such as OS keychain-backed companion storage is tracked as future provider/auth work.
+
+## What Stays In Companion Storage
+
+- Companion-brokered connector OAuth tokens are stored under `.pi-office/companion/connector-oauth-tokens.json` on the companion machine in the first implementation. This keeps provider tokens out of the Office taskpane, but it is not yet OS-keychain-backed storage.
+- The companion uses those stored tokens to add bearer authentication when verifying or executing the matching MCP connector. Tokens are not exported in connector bundles and are not copied back into taskpane `localStorage`.
+
+`SECURITY-008` tracks the follow-up to move companion OAuth tokens behind platform encryption or an OS keychain, plus clear/revoke controls.
 
 ## Clear Data Controls
 

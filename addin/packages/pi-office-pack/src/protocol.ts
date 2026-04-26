@@ -538,6 +538,20 @@ export type ConnectorSetupProfileOfficialness =
 
 export type ConnectorSetupProfileAvailability = "available" | "needs_companion" | "planned" | "advanced";
 export type ConnectorBrowserDirectSupport = "supported" | "unsupported" | "unknown";
+export type ConnectorOAuthBroker = "taskpane" | "companion";
+export type ConnectorOAuthLaunchMode = "popup" | "system_browser";
+
+export interface ConnectorOAuthProfileSettings {
+  broker: ConnectorOAuthBroker;
+  launchMode?: ConnectorOAuthLaunchMode | undefined;
+  metadataUrl?: string | undefined;
+  authorizationUrl?: string | undefined;
+  tokenUrl?: string | undefined;
+  registrationUrl?: string | undefined;
+  redirectPath?: string | undefined;
+  clientName?: string | undefined;
+  scopes?: string[] | undefined;
+}
 
 export interface ConnectorSetupProfile {
   id: string;
@@ -559,6 +573,7 @@ export interface ConnectorSetupProfile {
   officialness: ConnectorSetupProfileOfficialness;
   availability?: ConnectorSetupProfileAvailability | undefined;
   browserDirect?: ConnectorBrowserDirectSupport | undefined;
+  oauth?: ConnectorOAuthProfileSettings | undefined;
   docsUrl?: string | undefined;
   endpointEvidenceUrl?: string | undefined;
   authEvidenceUrl?: string | undefined;
@@ -662,6 +677,8 @@ export interface CompanionConnectorDefinition {
   remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
   /** Request headers populated from companion environment variable values. */
   remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
+  /** OAuth broker metadata copied from the selected setup profile. */
+  oauth?: ConnectorOAuthProfileSettings | undefined;
   secret?: string | undefined;
   secretEnvKey?: string | undefined;
   useDetectedEnvKey?: string | undefined;
@@ -897,6 +914,27 @@ export interface ConnectorOAuthStartResponse {
   callbackUrl?: string | undefined;
   state: string;
   expiresAt: string;
+  broker?: ConnectorOAuthBroker | undefined;
+  openMode?: ConnectorOAuthLaunchMode | undefined;
+}
+
+export interface CompanionConnectorOAuthStartRequest {
+  definition: CompanionConnectorDefinition;
+}
+
+export interface CompanionConnectorOAuthStatusRequest {
+  connectorId?: string | undefined;
+  state?: string | undefined;
+}
+
+export interface CompanionConnectorOAuthStatusResponse {
+  ok: true;
+  connectorId?: string | undefined;
+  state?: string | undefined;
+  connected: boolean;
+  pending: boolean;
+  expiresAt?: string | undefined;
+  error?: string | undefined;
 }
 
 export interface ConnectorOAuthCredentialHandoff {

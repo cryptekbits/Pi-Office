@@ -20,6 +20,8 @@ const VALID_OFFICIALNESS = new Set([
 ]);
 const VALID_AVAILABILITY = new Set(["available", "needs_companion", "planned", "advanced"]);
 const VALID_BROWSER_DIRECT = new Set(["supported", "unsupported", "unknown"]);
+const VALID_OAUTH_BROKER = new Set(["taskpane", "companion"]);
+const VALID_OAUTH_LAUNCH_MODE = new Set(["popup", "system_browser"]);
 
 function asObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -116,6 +118,42 @@ function validateProfile(connector, profile, index, errors) {
   }
   if (profile.browserDirect === "supported" && profile.requiresCompanion === true) {
     errors.push(`${label} is browserDirect=supported but still requires companion.`);
+  }
+  if (profile.oauth !== undefined) {
+    const oauth = asObject(profile.oauth, `${label}.oauth`);
+    const broker = asString(oauth.broker, `${label}.oauth.broker`);
+    if (!VALID_OAUTH_BROKER.has(broker)) {
+      errors.push(`${label}.oauth.broker must be one of ${[...VALID_OAUTH_BROKER].join(", ")}.`);
+    }
+    if (oauth.launchMode !== undefined) {
+      const launchMode = asString(oauth.launchMode, `${label}.oauth.launchMode`);
+      if (!VALID_OAUTH_LAUNCH_MODE.has(launchMode)) {
+        errors.push(`${label}.oauth.launchMode must be one of ${[...VALID_OAUTH_LAUNCH_MODE].join(", ")}.`);
+      }
+    }
+    for (const field of ["metadataUrl", "authorizationUrl", "tokenUrl", "registrationUrl"]) {
+      if (oauth[field] !== undefined) validateUrl(oauth[field], `${label}.oauth.${field}`);
+    }
+    if (oauth.redirectPath !== undefined) {
+      const redirectPath = asString(oauth.redirectPath, `${label}.oauth.redirectPath`);
+      if (!redirectPath.startsWith("/")) {
+        errors.push(`${label}.oauth.redirectPath must start with "/".`);
+      }
+    }
+    if (oauth.clientName !== undefined) {
+      asString(oauth.clientName, `${label}.oauth.clientName`);
+    }
+    if (oauth.scopes !== undefined) {
+      asArray(oauth.scopes, `${label}.oauth.scopes`).forEach((scope, scopeIndex) => {
+        asString(scope, `${label}.oauth.scopes[${scopeIndex}]`);
+      });
+    }
+    if (broker === "companion" && profile.requiresCompanion !== true) {
+      errors.push(`${label}.oauth.broker=companion requires requiresCompanion=true.`);
+    }
+    if (broker === "companion" && profile.browserDirect !== "unsupported") {
+      errors.push(`${label}.oauth.broker=companion requires browserDirect=unsupported.`);
+    }
   }
 }
 

@@ -352,15 +352,20 @@ function profileIsHostedHttp(profile: ConnectorSetupProfile | undefined): boolea
   return profile?.transport === "remote_http" && !endpointIsLocalHttp(profile.endpoint) && profile.availability !== "needs_companion";
 }
 
+function profileUsesCompanionOAuthBroker(profile: ConnectorSetupProfile | undefined): boolean {
+  return profile?.authMethod === "oauth" && profile.oauth?.broker === "companion";
+}
+
 function profileIsBrowserDirect(profile: ConnectorSetupProfile | undefined): boolean {
-  return profileIsHostedHttp(profile) && profile?.browserDirect === "supported" && profile.setupDisabled !== true;
+  return profileIsHostedHttp(profile) && !profileUsesCompanionOAuthBroker(profile) && profile?.browserDirect === "supported" && profile.setupDisabled !== true;
 }
 
 function profileCanTryBrowserMcp(profile: ConnectorSetupProfile | undefined): boolean {
-  return profileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && !profileSetupDisabled(profile);
+  return profileIsHostedHttp(profile) && !profileUsesCompanionOAuthBroker(profile) && profile?.browserDirect !== "unsupported" && !profileSetupDisabled(profile);
 }
 
 function profileNeedsCompanion(profile: ConnectorSetupProfile | undefined, transport: ConnectorTransport | undefined): boolean {
+  if (profileUsesCompanionOAuthBroker(profile)) return true;
   if (profileCanTryBrowserMcp(profile)) return false;
   if (profile?.requiresCompanion === true || profile?.availability === "needs_companion") return true;
   if (transport === "local_stdio") return true;
@@ -943,6 +948,9 @@ export class BrowserConnectorRuntime {
     if (profileSetupDisabled(profile)) {
       throw new Error(profile?.riskNotes?.[0] ?? "This connector sign-in path is not available yet.");
     }
+    if (profileUsesCompanionOAuthBroker(profile)) {
+      throw new Error("This connector signs in through the local companion OAuth broker. Connect the companion, then start sign-in again.");
+    }
     const canUseMcpOAuthDiscovery = profile?.transport === "remote_http" && profile.authMethod === "oauth" && !profileSetupDisabled(profile);
     if (!canUseMcpOAuthDiscovery) {
       const url = trimString(catalog?.authUrl);
@@ -1071,6 +1079,55 @@ export class BrowserConnectorRuntime {
     });
     await this.persist();
     return { ok: true, connectorId, url: url.toString(), callbackUrl: redirectUri, state, expiresAt };
+  }
+
+  async markCompanionOAuthStarted(connectorId: string, started: ConnectorOAuthStartResponse): Promise<ConnectorOAuthStartResponse> {
+    const stored = this.state.connectors.find((entry) => entry.id === connectorId);
+    if (!stored) {
+      throw new Error("Unknown connector.");
+    }
+    if (stored.authMethod !== "oauth") {
+      throw new Error("This connector does not use OAuth sign-in.");
+    }
+    const issuedAt = nowIso();
+    const expiresAt = trimString(started.expiresAt) ?? new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const state = trimString(started.state);
+    if (!state) {
+      throw new Error("Companion OAuth broker did not return a callback state.");
+    }
+
+    this.state.oauthFlows = this.state.oauthFlows.filter((entry) => entry.connectorId !== connectorId && Date.parse(entry.expiresAt) > Date.now());
+    this.state.oauthFlows.push({
+      connectorId,
+      state,
+      createdAt: issuedAt,
+      expiresAt,
+      url: trimString(started.url),
+      redirectUri: trimString(started.callbackUrl),
+    });
+
+    stored.credentialSource = "oauth";
+    stored.secret = undefined;
+    stored.oauthConnected = false;
+    stored.oauthLastAuthError = "OAuth sign-in in progress through the local companion.";
+    stored.updatedAt = issuedAt;
+    this.upsertRecord(stored);
+
+    this.appendLog({
+      connectorId,
+      connectorName: stored.name,
+      kind: "setup",
+      level: "info",
+      message: "Started companion-brokered OAuth sign-in flow.",
+    });
+    await this.persist();
+    return {
+      ...started,
+      connectorId,
+      expiresAt,
+      broker: started.broker ?? "companion",
+      openMode: started.openMode ?? "system_browser",
+    };
   }
 
   async completeOAuth(request: ConnectorOAuthCallbackRequest, scopeContext?: ConnectorScopeContext): Promise<ConnectorOAuthCallbackResponse> {
@@ -1446,6 +1503,7 @@ export class BrowserConnectorRuntime {
       stdioEnvPassthrough: record.stdioEnvPassthrough,
       remoteHttpHeaders: record.remoteHttpHeaders,
       remoteHttpHeadersFromEnv: record.remoteHttpHeadersFromEnv,
+      oauth: profile?.oauth,
       secret: record.secret,
       secretEnvKey: record.secretEnvKey,
       useDetectedEnvKey: record.useDetectedEnvKey,
@@ -1803,6 +1861,16 @@ export class BrowserConnectorRuntime {
       return [
         { key: "node", label: "Node.js", ok: false, detail: "Local runtime unavailable in browser-only mode." },
         { key: "python", label: "Python", ok: false, detail: "Local runtime unavailable in browser-only mode." },
+      ];
+    }
+    if (profileUsesCompanionOAuthBroker(profile)) {
+      return [
+        {
+          key: "git",
+          label: "Companion OAuth broker",
+          ok: false,
+          detail: "This hosted MCP signs in through the local companion so the system-browser callback and token exchange stay out of the Office webview.",
+        },
       ];
     }
     if (profileCanTryBrowserMcp(profile)) {

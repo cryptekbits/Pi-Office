@@ -1,6 +1,8 @@
 import type {
   CompanionConnectorDefinition,
   CompanionDiscoveryAttempt,
+  CompanionConnectorOAuthStartRequest,
+  CompanionConnectorOAuthStatusResponse,
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
   CompanionNativeCaptureResponse,
@@ -11,6 +13,7 @@ import type {
   CompanionState,
   ConnectorDiagnosticsResponse,
   ConnectorDiagnostic,
+  ConnectorOAuthStartResponse,
   ConnectorStatus,
   OfficeStateUpdate,
 } from "@pi-office/pi-office-pack/protocol";
@@ -348,6 +351,31 @@ export class CompanionClient {
     return fetchJsonWithTimeout(`${this.state.endpoint}/v1/connectors/probe`, {
       method: "POST",
       body: JSON.stringify(definition),
+    });
+  }
+
+  async startConnectorOAuth(definition: CompanionConnectorDefinition): Promise<ConnectorOAuthStartResponse> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      throw new Error("Optional companion is not connected for connector sign-in.");
+    }
+
+    const body: CompanionConnectorOAuthStartRequest = { definition };
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/connectors/oauth/start`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getConnectorOAuthStatus(state: string): Promise<CompanionConnectorOAuthStatusResponse> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      throw new Error("Optional companion is not connected for connector sign-in.");
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/connectors/oauth/status`, {
+      method: "POST",
+      body: JSON.stringify({ state }),
     });
   }
 

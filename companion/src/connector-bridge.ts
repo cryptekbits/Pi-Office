@@ -75,6 +75,10 @@ interface PreparedSession {
   executionTargets: Map<string, PreparedExecutionTarget>;
 }
 
+export interface CompanionOAuthTokenProvider {
+  getAccessToken(definition: CompanionConnectorDefinition): Promise<string | undefined>;
+}
+
 function trimString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -706,11 +710,31 @@ function buildStatus(
   };
 }
 
-async function inspectConnector(definition: CompanionConnectorDefinition): Promise<{
+async function withBrokeredOAuthToken(
+  definition: CompanionConnectorDefinition,
+  oauthTokenProvider: CompanionOAuthTokenProvider | undefined,
+): Promise<CompanionConnectorDefinition> {
+  if (
+    definition.authMethod !== "oauth" ||
+    definition.credentialSource !== "oauth" ||
+    definition.oauth?.broker !== "companion" ||
+    trimString(definition.secret)
+  ) {
+    return definition;
+  }
+  const token = await oauthTokenProvider?.getAccessToken(definition);
+  return token ? { ...definition, secret: token } : definition;
+}
+
+async function inspectConnector(
+  definition: CompanionConnectorDefinition,
+  oauthTokenProvider?: CompanionOAuthTokenProvider | undefined,
+): Promise<{
   status: ConnectorStatus;
   diagnostics: ConnectorDiagnostic[];
   executionTargets: PreparedExecutionTarget[];
 }> {
+  definition = await withBrokeredOAuthToken(definition, oauthTokenProvider);
   if (!isConfigured(definition)) {
     const healthState: ConnectorHealthState = "unverified";
     return {
@@ -789,6 +813,8 @@ function resourceContentToToolResult(result: {
 }
 
 export class CompanionConnectorBridge {
+  constructor(private readonly oauthTokenProvider?: CompanionOAuthTokenProvider | undefined) {}
+
   private readonly preparedSessions = new Map<string, PreparedSession>();
 
   async probeConnector(definition: CompanionConnectorDefinition): Promise<{
@@ -796,7 +822,7 @@ export class CompanionConnectorBridge {
     status: ConnectorStatus;
     diagnostics: ConnectorDiagnostic[];
   }> {
-    const inspected = await inspectConnector(definition);
+    const inspected = await inspectConnector(definition, this.oauthTokenProvider);
     return {
       ok: inspected.status.healthState === "ready",
       status: inspected.status,
@@ -816,7 +842,7 @@ export class CompanionConnectorBridge {
     };
 
     for (const definition of connectors) {
-      const inspected = await inspectConnector(definition);
+      const inspected = await inspectConnector(definition, this.oauthTokenProvider);
       prepared.connectors.push(inspected.status);
       for (const target of inspected.executionTargets) {
         prepared.executionTargets.set(target.exposedToolName, target);

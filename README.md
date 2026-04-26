@@ -25,7 +25,7 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 - The taskpane runtime is self-contained for chat, providers, models, Office tools, and browser-safe connectors
 - The optional companion is a separate loopback capability provider on `https://localhost:3444`
 - Saved documents provide folder context, but local file tools stay disabled until the optional companion connects
-- Remote HTTP and local stdio MCP connectors require the optional companion for read-only agent execution
+- Local stdio, local HTTP, and companion-brokered MCP connectors require the optional companion; browser-compatible hosted HTTP profiles can run directly when their catalog profile and provider CORS allow it
 - Multiple Office windows can reuse one machine-local companion while keeping logical taskpane sessions isolated
 - Privacy and storage behavior, including local credential limits and clear-data controls, is documented in [`docs/privacy-and-storage.md`](docs/privacy-and-storage.md)
 
@@ -107,14 +107,14 @@ If Word launches with a blank document during debugging, open the target saved d
 ## Companion Notes
 
 - Pi-Office works without the companion
-- Without the companion, local files plus local stdio and remote HTTP MCP connector execution are unavailable
+- Without the companion, local files, local stdio/local HTTP MCP execution, and companion-brokered OAuth connectors are unavailable
 - With the companion connected, Pi-Office enables read-only `read`, `grep`, `find`, and `ls` for the saved document folder
-- With the companion connected, verified read-safe local stdio and remote HTTP MCP tools can be exposed through the generic `mcp` tool
+- With the companion connected, verified read-safe local stdio, local HTTP, companion-required remote HTTP, and brokered OAuth MCP tools can be exposed through the generic `mcp` tool
 - Smart Auto routing prefers companion execution for eligible non-Office capabilities when the companion advertises support, while keeping taskpane fallback for browser-supported providers and image generation
 - True viewport/window screenshots are companion-native only; taskpane-only visual tools remain Office.js snapshots and metadata
 - Shell/bash access is hidden unless the companion shell sandbox reports an available isolation backend and passing destructive probes; there is no raw host shell fallback
 - Companion-owned provider auth, inference, memory, and agent sessions are capability-gated advanced-mode work. Browser API-key providers remain taskpane-local unless the user explicitly moves auth to the companion.
-- Remote HTTP connectors are browser setup-only until the optional companion verifies and exposes read-safe MCP tools for the active session
+- Browser-direct hosted HTTP connectors can run from the taskpane when supported; companion-brokered connectors such as Granola use the companion for system-browser sign-in and MCP execution
 - Packaging for `dist/binaries`, zip, and npm distribution is planned later
 - Runtime capability boundaries are documented in [`docs/capability-boundaries.md`](docs/capability-boundaries.md)
 

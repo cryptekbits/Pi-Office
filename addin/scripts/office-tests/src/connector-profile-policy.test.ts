@@ -88,8 +88,11 @@ test("all built-in connectors expose curated setup profiles", () => {
   assert.equal(granola.envHints.length, 0);
   assert.deepEqual(granola.setupProfiles?.map((profile) => profile.id), ["granola-hosted-oauth"]);
   assert.equal(granola.setupProfiles?.[0]?.authMethod, "oauth");
-  assert.equal(granola.setupProfiles?.[0]?.requiresCompanion, false);
-  assert.equal(granola.setupProfiles?.[0]?.browserDirect, "unknown");
+  assert.equal(granola.setupProfiles?.[0]?.requiresCompanion, true);
+  assert.equal(granola.setupProfiles?.[0]?.availability, "needs_companion");
+  assert.equal(granola.setupProfiles?.[0]?.browserDirect, "unsupported");
+  assert.equal(granola.setupProfiles?.[0]?.oauth?.broker, "companion");
+  assert.equal(granola.setupProfiles?.[0]?.oauth?.launchMode, "system_browser");
 
   const perplexity = connectors.find((connector) => connector.id === "perplexity");
   assert.ok(perplexity);
@@ -256,70 +259,10 @@ test("Parallel ZDR profile updates an existing connector to OAuth sign-in", asyn
   assert.match(started.url ?? "", /code_challenge=/);
 });
 
-test("granola OAuth starts browser sign-in and hosted MCP verification enforces tool policy", async () => {
-  const openedUrls: string[] = [];
-  const globalAny = globalThis as unknown as {
-    window?: { location?: { origin?: string }; open?: (...args: unknown[]) => unknown };
-    fetch?: typeof fetch;
-  };
+test("granola OAuth is companion-brokered and does not attempt browser-side DCR", async () => {
   const Runtime = await loadBrowserConnectorRuntime();
   const runtime = new Runtime();
   await runtime.ready;
-  globalAny.window = {
-    location: { origin: "https://localhost:3443" },
-    open: (url) => {
-      openedUrls.push(String(url));
-      return null;
-    },
-  };
-  globalAny.fetch = async (input, init) => {
-    const url = String(input);
-    const method = init?.method ?? "GET";
-    if (url === "https://mcp.granola.ai/.well-known/oauth-authorization-server") {
-      return Response.json({
-        authorization_endpoint: "https://mcp-auth.granola.ai/oauth2/authorize",
-        token_endpoint: "https://mcp-auth.granola.ai/oauth2/token",
-        registration_endpoint: "https://mcp-auth.granola.ai/oauth2/register",
-      });
-    }
-    if (url === "https://mcp-auth.granola.ai/oauth2/register" && method === "POST") {
-      return Response.json({ client_id: "pi-office-test-client" });
-    }
-    if (url === "https://mcp-auth.granola.ai/oauth2/token" && method === "POST") {
-      return Response.json({
-        access_token: "granola-access-token",
-        refresh_token: "granola-refresh-token",
-        token_type: "Bearer",
-        expires_in: 3600,
-      });
-    }
-    if (url === "https://mcp.granola.ai/mcp" && method === "POST") {
-      const payload = JSON.parse(String(init?.body ?? "{}")) as { method?: string; id?: string };
-      const headers = new Headers({ "content-type": "application/json", "mcp-session-id": "session-1" });
-      if (payload.method === "initialize") {
-        return Response.json({ jsonrpc: "2.0", id: payload.id, result: { protocolVersion: "2025-06-18", capabilities: {} } }, { headers });
-      }
-      if (payload.method === "notifications/initialized") {
-        return new Response("", { status: 202, headers });
-      }
-      if (payload.method === "tools/list") {
-        return Response.json({
-          jsonrpc: "2.0",
-          id: payload.id,
-          result: {
-            tools: [
-              { name: "search_meetings", description: "Search meeting notes", annotations: { readOnlyHint: true, openWorldHint: true } },
-              { name: "delete_meeting", description: "Delete meeting notes", annotations: { destructiveHint: true } },
-            ],
-          },
-        }, { headers });
-      }
-      if (payload.method === "tools/call") {
-        return Response.json({ jsonrpc: "2.0", id: payload.id, result: { content: [{ type: "text", text: "ok" }] } }, { headers });
-      }
-    }
-    return new Response(`Unexpected ${method} ${url}`, { status: 500 });
-  };
 
   const saved = await runtime.connectConnector({
     connectorId: "granola",
@@ -332,30 +275,16 @@ test("granola OAuth starts browser sign-in and hosted MCP verification enforces 
     url: "https://mcp.granola.ai/mcp",
   });
   assert.equal(saved.status.healthState, "auth_required");
-
-  const started = await runtime.startOAuth(saved.status.id);
-  assert.equal(started.callbackUrl, "https://localhost:3443/connector-oauth-callback");
-  assert.equal(openedUrls.length, 0);
-  assert.match(started.url ?? "", /^https:\/\/mcp-auth\.granola\.ai\/oauth2\/authorize/);
-  assert.match(started.url ?? "", /code_challenge=/);
-
-  const completed = await runtime.completeOAuth({ state: started.state, code: "auth-code" });
-  assert.equal(completed.status.healthState, "ready");
-
-  const verified = await runtime.reverifyConnector(saved.status.id);
-  assert.equal(verified.ok, true);
-  assert.deepEqual(verified.status.capabilities?.allowedTools, ["search_meetings"]);
-  assert.deepEqual(verified.status.capabilities?.blockedTools, ["delete_meeting"]);
-
+  const definition = runtime.buildCompanionConnectorDefinition(saved.status.id);
+  assert.equal(definition?.oauth?.broker, "companion");
+  assert.equal(definition?.oauth?.launchMode, "system_browser");
   await assert.rejects(
-    () => runtime.executeBrowserMcpTool("delete_meeting", {}, { host: "word", documentSaved: false }),
-    /not enabled|disabled/,
+    () => runtime.startOAuth(saved.status.id),
+    /local companion OAuth broker/i,
   );
-  const executed = await runtime.executeBrowserMcpTool("search_meetings", { query: "recap" }, { host: "word", documentSaved: false });
-  assert.ok(executed);
 });
 
-test("OAuth DCR browser CORS failures are reported with actionable copy", async () => {
+test("browser-direct OAuth DCR CORS failures are reported with actionable copy", async () => {
   const Runtime = await loadBrowserConnectorRuntime();
   const runtime = new Runtime();
   await runtime.ready;
@@ -363,28 +292,28 @@ test("OAuth DCR browser CORS failures are reported with actionable copy", async 
   globalAny.fetch = async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
-    if (url === "https://mcp.granola.ai/.well-known/oauth-authorization-server") {
+    if (url === "https://platform.parallel.ai/.well-known/oauth-authorization-server") {
       return Response.json({
-        authorization_endpoint: "https://mcp-auth.granola.ai/oauth2/authorize",
-        token_endpoint: "https://mcp-auth.granola.ai/oauth2/token",
-        registration_endpoint: "https://mcp-auth.granola.ai/oauth2/register",
+        authorization_endpoint: "https://platform.parallel.ai/getKeys/authorize",
+        token_endpoint: "https://platform.parallel.ai/getKeys/token",
+        registration_endpoint: "https://platform.parallel.ai/getKeys/register",
       });
     }
-    if (url === "https://mcp-auth.granola.ai/oauth2/register" && method === "POST") {
+    if (url === "https://platform.parallel.ai/getKeys/register" && method === "POST") {
       throw new TypeError("Failed to fetch");
     }
     return new Response(`Unexpected ${method} ${url}`, { status: 500 });
   };
 
   const saved = await runtime.connectConnector({
-    connectorId: "granola",
-    setupProfileId: "granola-hosted-oauth",
-    name: "Granola",
+    connectorId: "parallel-web",
+    setupProfileId: "parallel-search-oauth-zdr",
+    name: "Parallel Web",
     enabled: true,
     authMethod: "oauth",
     transport: "remote_http",
     credentialSource: "oauth",
-    url: "https://mcp.granola.ai/mcp",
+    url: "https://search.parallel.ai/mcp-oauth",
   });
 
   await assert.rejects(

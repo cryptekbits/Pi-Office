@@ -3290,6 +3290,7 @@ class InProcessKernel {
     transport: ConnectorSetupRequest["transport"],
     companion: CompanionState,
     requiresCompanion = transport === "local_stdio",
+    oauthBrokerRequired = false,
   ): ConnectorDiagnostic[] {
     if (!requiresCompanion) {
       return diagnostics;
@@ -3301,8 +3302,10 @@ class InProcessKernel {
         {
           level: "info",
           code: isLocal ? "local_stdio_companion_connected" : "remote_http_companion_connected",
-          title: "Optional companion connected",
-          message: isLocal
+          title: oauthBrokerRequired ? "Companion connected" : "Optional companion connected",
+          message: oauthBrokerRequired
+            ? "System-browser sign-in and connector execution will run through the local companion."
+            : isLocal
             ? "Read-only local connector execution is available through the optional companion."
             : "Read-only remote MCP connector execution is available through the optional companion after verification.",
         },
@@ -3314,12 +3317,18 @@ class InProcessKernel {
       {
         level: "warning",
         code: transport === "local_stdio" ? "local_stdio_companion_unavailable" : "remote_http_companion_unavailable",
-        title: "Optional companion unavailable",
-        message: transport === "local_stdio"
+        title: oauthBrokerRequired ? "Companion required" : "Optional companion unavailable",
+        message: oauthBrokerRequired
+          ? "This connector uses the local companion for secure system-browser sign-in, callback handling, and token exchange."
+          : transport === "local_stdio"
           ? "Local stdio connectors need the optional companion to verify and execute."
           : "Remote HTTP MCP connectors need the optional companion to verify and execute.",
       },
     ];
+  }
+
+  private setupProfileUsesCompanionOAuthBroker(profile: ConnectorSetupProfile | undefined): boolean {
+    return profile?.authMethod === "oauth" && profile.oauth?.broker === "companion";
   }
 
   private setupProfileIsHostedHttp(profile: ConnectorSetupProfile | undefined): boolean {
@@ -3336,6 +3345,9 @@ class InProcessKernel {
   }
 
   private setupProfileNeedsCompanion(profile: ConnectorSetupProfile | undefined, transport: ConnectorSetupRequest["transport"]): boolean {
+    if (this.setupProfileUsesCompanionOAuthBroker(profile)) {
+      return true;
+    }
     if (this.setupProfileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && profile?.setupDisabled !== true) {
       return false;
     }
@@ -3351,7 +3363,7 @@ class InProcessKernel {
     const profile = catalog?.setupProfiles?.find((entry) => entry.id === status.setupProfileId)
       ?? catalog?.setupProfiles?.find((entry) => entry.defaultWhenCompanionAbsent)
       ?? catalog?.setupProfiles?.[0];
-    const browserDirect = !forceCompanion && this.setupProfileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && profile?.setupDisabled !== true;
+    const browserDirect = !forceCompanion && !this.setupProfileUsesCompanionOAuthBroker(profile) && this.setupProfileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && profile?.setupDisabled !== true;
     const usesCompanion = forceCompanion || (!browserDirect && this.setupProfileNeedsCompanion(profile, status.transport));
     return {
       ...status,
@@ -3570,9 +3582,16 @@ class InProcessKernel {
       const selectedProfile = response.connector.setupProfiles?.find((profile) => profile.id === response.draft?.setupProfileId)
         ?? response.connector.setupProfiles?.[0];
       const requiresCompanion = this.setupProfileNeedsCompanion(selectedProfile, selectedProfile?.transport ?? response.connector.transport);
+      const oauthBrokerRequired = this.setupProfileUsesCompanionOAuthBroker(selectedProfile);
       return {
         ...response,
-        diagnostics: this.addCompanionDiagnostics(response.diagnostics, selectedProfile?.transport ?? response.connector.transport, companion, requiresCompanion),
+        diagnostics: this.addCompanionDiagnostics(
+          response.diagnostics,
+          selectedProfile?.transport ?? response.connector.transport,
+          companion,
+          requiresCompanion,
+          oauthBrokerRequired,
+        ),
         executionEnvironment: requiresCompanion
           ? "companion"
           : "browser",
@@ -3607,6 +3626,7 @@ class InProcessKernel {
           response.status.transport,
           companion,
           Boolean(definition),
+          definition?.oauth?.broker === "companion",
         ),
       } as T;
     }
@@ -3638,6 +3658,7 @@ class InProcessKernel {
           response.status.transport,
           companion,
           Boolean(definition),
+          definition?.oauth?.broker === "companion",
         ),
       } as T;
     }
@@ -3677,6 +3698,7 @@ class InProcessKernel {
           response.status.transport,
           companion,
           Boolean(definition),
+          definition?.oauth?.broker === "companion",
         ),
       } as T;
     }
@@ -3685,6 +3707,15 @@ class InProcessKernel {
       const connectorId = String(request?.connectorId ?? "");
       if (!connectorId) {
         throw new Error("connectorId is required.");
+      }
+      const definition = this.connectorRuntime.buildCompanionConnectorDefinition(connectorId);
+      if (definition?.oauth?.broker === "companion") {
+        const companion = await this.getCompanionState();
+        if (companion.status !== "connected") {
+          throw new Error("Start the local companion before signing in to this connector.");
+        }
+        const started = await this.companionClient.startConnectorOAuth(definition);
+        return (await this.connectorRuntime.markCompanionOAuthStarted(connectorId, started) as ConnectorOAuthStartResponse) as T;
       }
       return (await this.connectorRuntime.startOAuth(connectorId) as ConnectorOAuthStartResponse) as T;
     }
