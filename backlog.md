@@ -220,21 +220,21 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 - [ ] BUG-004: Office state refresh race and deduping follow-up
   - Category: Bug
-  - Status: open
+  - Status: in_progress
   - Priority: P2
   - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS5 and observation mapping.
   - Details: The transition plan called out office state refresh race potential during the independent taskpane migration. Selection-change handlers, polling, and session state sync can overlap in Office hosts, especially Word desktop, leading to noisy refresh failures or stale document/selection state.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Trace all Office state refresh triggers in the taskpane app and host adapters.
-    - [ ] Add throttling, deduping, or latest-only cancellation so stale refreshes cannot overwrite newer state.
-    - [ ] Ensure errors from transient Office host state are surfaced only when actionable.
-    - [ ] Add focused tests or smoke scenarios for rapid selection changes and taskpane reconnect.
+    - [x] Trace all Office state refresh triggers in the taskpane app and host adapters.
+    - [x] Add throttling, deduping, or latest-only cancellation so stale refreshes cannot overwrite newer state.
+    - [x] Ensure errors from transient Office host state are surfaced only when actionable.
+    - [x] Add focused tests or smoke scenarios for rapid selection changes and taskpane reconnect.
   - Acceptance Criteria:
-    - [ ] Rapid selection changes do not produce recurring "Office state refresh failed" noise.
-    - [ ] Stale refresh responses cannot replace newer session state.
+    - [x] Rapid selection changes do not produce recurring "Office state refresh failed" noise.
+    - [x] Stale refresh responses cannot replace newer session state.
     - [ ] Word desktop smoke testing confirms selection/context updates remain stable.
-  - Notes/Evidence: Transition plan lists "Office state refresh race potential" under WS5.
+  - Notes/Evidence: Transition plan lists "Office state refresh race potential" under WS5. 2026-04-26 automated hardening traced the active refresh path to `subscribeToOfficeChanges()` in `addin/apps/taskpane/src/lib/office/shared.ts` and the async listener in `App.tsx`. The taskpane now issues monotonically increasing refresh attempt tokens, applies Office state/session sync responses only when they are still the latest active attempt for the same session, suppresses stale errors from older attempts, and dedupes repeated transient refresh failures for 15 seconds. Focused regression coverage in `addin/scripts/office-tests/src/office-refresh-policy.test.ts` proves latest-only session matching and error deduping. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 124 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`. Real Word desktop smoke remains open under this task and `TESTING-002`.
 
 - [x] BUG-005: Provider readiness reports stored credentials as ready without validating usability
   - Category: Bug

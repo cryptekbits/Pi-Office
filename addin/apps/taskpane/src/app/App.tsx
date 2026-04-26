@@ -69,6 +69,12 @@ import {
   type OfficeThemeSnapshot,
 } from "../lib/office";
 import { executeOfficeTool } from "../lib/office-tools";
+import {
+  formatOfficeRefreshError,
+  getOfficeRefreshErrorDecision,
+  shouldApplyOfficeRefreshResult,
+  type OfficeRefreshErrorRecord,
+} from "../lib/office-refresh-policy";
 import { addCheckpoint, clearCheckpoints, getCheckpoint, hasCheckpoint } from "../lib/checkpoint-store";
 import type { DocumentCheckpoint } from "../lib/checkpoint-store";
 import type { RewindMode } from "./components/RewindDialog";
@@ -250,6 +256,8 @@ export function App() {
   const subjectDerivedRef = useRef(false);
   const disconnectBridgeRef = useRef<(() => void) | undefined>(undefined);
   const officeStateRef = useRef<OfficeStateUpdate | undefined>(undefined);
+  const officeRefreshSequenceRef = useRef(0);
+  const lastOfficeRefreshErrorRef = useRef<OfficeRefreshErrorRecord | undefined>(undefined);
   const pendingAskUserSummaryRef = useRef<ChatEntry | null>(null);
   const thinkingSegmentOpenRef = useRef(false);
   const promptSuggestionGenerationRef = useRef(0);
@@ -1310,17 +1318,36 @@ export function App() {
         await openSession(initialState);
 
         unsubOffice = subscribeToOfficeChanges(async () => {
-          if (!sessionIdRef.current) return;
+          const refreshSessionId = sessionIdRef.current;
+          if (!refreshSessionId) return;
+          const refreshSequence = officeRefreshSequenceRef.current + 1;
+          officeRefreshSequenceRef.current = refreshSequence;
+          const refreshAttempt = { sequence: refreshSequence, sessionId: refreshSessionId };
+          const currentRefreshState = () => ({
+            active,
+            latestSequence: officeRefreshSequenceRef.current,
+            sessionId: sessionIdRef.current,
+          });
+
           try {
             setOfficeTheme(readOfficeTheme());
             const s = await collectOfficeState(host);
-            if (!active) return;
+            if (!shouldApplyOfficeRefreshResult(refreshAttempt, currentRefreshState())) return;
             setOfficeState(s);
-            const r = await postJson<OfficeSessionStateResponse>(`/v1/sessions/${sessionIdRef.current}/office-state`, s);
-            if (!active) return;
+            const r = await postJson<OfficeSessionStateResponse>(`/v1/sessions/${refreshSessionId}/office-state`, s);
+            if (!shouldApplyOfficeRefreshResult(refreshAttempt, currentRefreshState())) return;
+            lastOfficeRefreshErrorRef.current = undefined;
             applySessionState(r);
           } catch (error) {
-            if (active) pushErrorMessage(`Office state refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+            if (!shouldApplyOfficeRefreshResult(refreshAttempt, currentRefreshState())) return;
+            const message = formatOfficeRefreshError(error);
+            const decision = getOfficeRefreshErrorDecision(lastOfficeRefreshErrorRef.current, message);
+            lastOfficeRefreshErrorRef.current = decision.nextRecord;
+            if (decision.shouldSurface) {
+              pushErrorMessage(`Office state refresh failed: ${message}`);
+            } else {
+              console.warn("[office-state] Suppressed repeated refresh failure:", message);
+            }
           }
         });
       } catch (error) {
