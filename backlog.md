@@ -442,6 +442,28 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Regression tests cover fallback candidates, abort-message sanitization, and health-response validation.
   - Notes/Evidence: Closed 2026-04-27 by adding companion discovery attempts to `CompanionState`, extending discovery timeout to 5s, trying manual/last-known/default loopback candidates, sanitizing abort/network/certificate failures, validating health response shape, simplifying `/v1/health`, and clarifying Settings setup text. Validation passed: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (153 tests), `npm run build`, `npm run validate:manifests`, and `git diff --check`. `npm run check:bundle` still fails on the known main-taskpane budget issue tracked by `BUG-014`.
 
+- [ ] BUG-015: Hosted connector setup is disrupted by companion polling and over-eager OAuth assumptions
+  - Category: Bug
+  - Status: in_progress
+  - Priority: P0
+  - Source: 2026-04-27 Office add-in smoke from stakeholder: Slack sign-in failed with missing DCR, Parallel setup showed companion warnings and profile selection reset, Granola DCR was blocked by CORS, and system-browser OAuth was requested.
+  - Details: Hosted HTTP MCP setup should not feel companion-gated. Companion discovery and diagnostics refreshes should update background state without rebuilding an open wizard draft or resetting the user's selected setup profile. Slack MCP is official but cannot be generic browser-DCR OAuth because Slack documents no Dynamic Client Registration and requires a registered Slack app/client credentials; mark it coming soon until the Slack app path is ready. Browser-only OAuth DCR can also fail at provider CORS, as seen with Granola, so Pi-Office must fail closed with actionable copy instead of raw console/CORS errors. System-browser OAuth should not be switched on until there is a broker or companion callback handoff, because the system browser cannot complete callback state in the Office taskpane runtime.
+  - Dependencies: FEATURE-008, BUG-013.
+  - Subtasks:
+    - [ ] Keep hosted HTTP setup free of optional-companion warnings while preserving companion requirements for local STDIO/local HTTP.
+    - [ ] Stop companion/diagnostics polling from rebuilding the active wizard draft or resetting the selected setup profile.
+    - [ ] Mark Slack MCP setup as coming soon/planned until Pi-Office has a registered Slack app/confidential OAuth path.
+    - [ ] Attempt browser-direct verification for hosted HTTP profiles when possible and fail closed on CORS/auth limitations.
+    - [ ] Replace raw OAuth DCR/token CORS failures with actionable UI errors.
+    - [ ] Record why system-browser OAuth needs a broker/companion callback handoff before becoming the default.
+  - Acceptance Criteria:
+    - [ ] Parallel profile selection remains stable while companion discovery refreshes.
+    - [ ] Hosted HTTP connectors do not show "Optional companion unavailable" in the setup wizard solely because companion is offline.
+    - [ ] Slack appears as a visible coming-soon connector and cannot start OAuth until the Slack app registration path exists.
+    - [ ] Granola DCR CORS failures show a clear broker/companion-needed message rather than a raw CORS/failed fetch error.
+    - [ ] Regression tests cover hosted HTTP diagnostics, Slack planned gating, Parallel browser verification, and OAuth DCR CORS failure copy.
+  - Notes/Evidence: First-party Slack MCP docs state the endpoint is `https://mcp.slack.com/mcp`, Dynamic Client Registration is not supported, and Slack MCP clients need confidential OAuth with a registered Slack app. Microsoft Office Add-ins docs say `window.open()` is unreliable and `Office.context.ui.openBrowserWindow()` is for external URLs, not authentication/data exchange; system-browser OAuth therefore needs an explicit callback broker before it can safely replace the taskpane/dialog flow.
+
 ### Features
 
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards

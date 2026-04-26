@@ -13,6 +13,10 @@ npm --prefix addin run check:provider-models
 
 The current generated catalog was validated against refreshed `pi-mono` commit `05f79b08` and `@mariozechner/pi-ai@0.70.2`.
 
+## Runtime Dependency
+
+Pi-Office consumes Pi as the orchestration and model-catalog runtime through `pi-mono` / `@mariozechner/pi-ai`. Pi is not a selectable model provider in the provider/auth matrix; the rows below are only user-facing inference providers or provider-like subscription/auth surfaces.
+
 ## Status Legend
 
 | Status | Meaning |
@@ -26,7 +30,6 @@ The current generated catalog was validated against refreshed `pi-mono` commit `
 
 | Provider | Status | Runtime Surface | Auth Method | Simple Models | Advanced Availability | Source URL | Pi Catalog Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Pi runtime | `supported` | Basic dependency/runtime layer | N/A | N/A | N/A | `pi-mono` local source | Pi is consumed as the orchestration dependency; Pi-Office does not vendor Pi source. |
 | OpenAI API | `supported` | Basic | API key | `gpt-5.5` default, `gpt-5.4-pro`, `gpt-5.4`, `gpt-4.1` | Full OpenAI Pi catalog in Advanced; un-recommended picks warn. | https://developers.openai.com/api/docs/models | Preferred `gpt-5.5-pro` is absent after refresh; recorded as drift and not added as a local override. |
 | ChatGPT / OpenAI Codex OAuth | `planned` | Pro | OAuth/subscription token brokerage | `gpt-5.5` default, `gpt-5.4`, `gpt-5.3-codex` | Full `openai-codex` catalog visible setup-only until Pro auth exists. | https://developers.openai.com/api/docs/models | `/v1/auth/start` rejects browser OAuth today. |
 | Anthropic API | `supported` | Basic | API key | `claude-opus-4-7` default, `claude-opus-4-6`, `claude-sonnet-4-6` | Full Anthropic Pi catalog in Advanced; older Claude models warn if selected. | https://www.anthropic.com/claude/opus and https://www.anthropic.com/news/claude-sonnet-4-6 | Direct API-key path is executable; Claude subscription OAuth remains Pro work. |
