@@ -312,6 +312,73 @@ test("protocol parity: tool permission timeouts deny across gated categories", a
   socket.close();
 });
 
+test("protocol parity: office_execute_js requires per-call approval", async () => {
+  const { runtime, socket, session } = await openSessionHarness("execute-js-per-call");
+
+  for (const autonomyLevel of ["medium", "high", "extreme"]) {
+    await runtime.dispatchKernelRequest("/v1/preferences", {
+      method: "POST",
+      body: JSON.stringify({ autonomyLevel, toolPermissionOverrides: [] }),
+    });
+    const isAutoApproved = (session as { shouldAutoApproveTool: (name: string) => boolean }).shouldAutoApproveTool("office_execute_js");
+    assert.equal(isAutoApproved, false, `${autonomyLevel} autonomy must not auto-approve office_execute_js.`);
+  }
+
+  const deniedMessage = waitForServerMessage(socket, (payload) => payload.type === "tool_permission_request");
+  const deniedPromise = (session as {
+    requestToolPermission: (toolName: string, params: Record<string, unknown>) => Promise<unknown>;
+  }).requestToolPermission("office_execute_js", { code: "return 2 + 2;" });
+  const deniedRequest = (await deniedMessage).request as { requestId: string; toolCategory: string };
+  assert.equal(deniedRequest.toolCategory, "escape-hatch");
+  socket.send(
+    JSON.stringify({
+      type: "tool_permission_response",
+      requestId: deniedRequest.requestId,
+      decision: { toolName: "office_execute_js", allowed: false, scope: "once" },
+    }),
+  );
+  const denied = await deniedPromise as { allowed: boolean; scope: string };
+  assert.equal(denied.allowed, false);
+  assert.equal(denied.scope, "once");
+
+  const approvedMessage = waitForServerMessage(socket, (payload) => payload.type === "tool_permission_request");
+  const approvedPromise = (session as {
+    requestToolPermission: (toolName: string, params: Record<string, unknown>) => Promise<unknown>;
+  }).requestToolPermission("office_execute_js", { code: "return 4;" });
+  const approvedRequest = (await approvedMessage).request as { requestId: string; toolCategory: string };
+  assert.equal(approvedRequest.toolCategory, "escape-hatch");
+  socket.send(
+    JSON.stringify({
+      type: "tool_permission_response",
+      requestId: approvedRequest.requestId,
+      decision: { toolName: "office_execute_js", allowed: true, scope: "session" },
+    }),
+  );
+  const approved = await approvedPromise as { allowed: boolean; scope: string };
+  assert.equal(approved.allowed, true);
+  assert.equal(approved.scope, "once");
+  assert.equal(
+    (session as { shouldAutoApproveTool: (name: string) => boolean }).shouldAutoApproveTool("office_execute_js"),
+    false,
+  );
+
+  const nextPrompt = waitForServerMessage(socket, (payload) => payload.type === "tool_permission_request");
+  const nextPromise = (session as {
+    requestToolPermission: (toolName: string, params: Record<string, unknown>) => Promise<unknown>;
+  }).requestToolPermission("office_execute_js", { code: "return 5;" });
+  const nextRequest = (await nextPrompt).request as { requestId: string };
+  socket.send(
+    JSON.stringify({
+      type: "tool_permission_response",
+      requestId: nextRequest.requestId,
+      decision: { toolName: "office_execute_js", allowed: false, scope: "once" },
+    }),
+  );
+  const next = await nextPromise as { allowed: boolean };
+  assert.equal(next.allowed, false);
+  socket.close();
+});
+
 test("protocol parity: edit proposal request/decision roundtrip", async () => {
   const { socket, session } = await openSessionHarness("edit-proposal");
   const proposal = {

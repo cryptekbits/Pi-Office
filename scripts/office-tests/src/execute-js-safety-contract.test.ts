@@ -77,6 +77,16 @@ test("execute-js prompt and tool descriptions use the best-effort restricted sub
   assertSafetyContractText(officeHostSkillText);
 });
 
+test("escape-hatch permission UI frames approval as one time only", () => {
+  const popupPath = join(process.cwd(), "apps", "taskpane", "src", "app", "components", "ToolPermissionPopup.tsx");
+  const popupText = readFileSync(popupPath, "utf8");
+
+  assert.match(popupText, /request\.toolCategory === "escape-hatch"/);
+  assert.match(popupText, /escapeHatch \? "once" : scope/);
+  assert.match(popupText, /Escape-hatch approvals are one time only/);
+  assert.match(popupText, /!\s*escapeHatch\s*&&/);
+});
+
 test("office_execute_js is categorized as a manual-only escape hatch", () => {
   assert.equal(TOOL_CATEGORY_MAP.office_execute_js, "escape-hatch");
 

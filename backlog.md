@@ -71,24 +71,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Automated tests prove timeout, disconnect, and cleanup paths fail closed.
   - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` resolving allowed on timeout and `packages/pi-office-pack/src/protocol.ts` defining tool categories/autonomy levels. 2026-04-26 hardening changed timeout resolution to `allowed: false`, added a `tool_permission_expired` bridge event, clears the visible prompt when the matching request expires, and added a static regression test in `scripts/office-tests/src/runtime-permission-policy.test.ts`. 2026-04-26 closure added protocol-level coverage in `scripts/office-tests/src/protocol-parity.test.ts` proving write-doc, connector, read-external, and write-external permission timeouts resolve denied; existing disconnect coverage rejects pending permission prompts when the bridge closes; new cleanup coverage rejects pending permissions when a session is force-reopened/disposed. Validation: `npm run test:office` passed with 89 tests.
 
-- [ ] SECURITY-003: `office_execute_js` raw Office.js escape hatch can be auto-approved as a normal document write
+- [x] SECURITY-003: `office_execute_js` raw Office.js escape hatch can be auto-approved as a normal document write
   - Category: Security
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-26 product-goal review; 2026-04-26 Office-host subagent review.
   - Details: `office_execute_js` executes arbitrary Office.js snippets through `new Function` after a best-effort regex blocklist. The tool is categorized as `write-doc`, and the default user preference is medium autonomy, which auto-approves `write-doc`. This makes the raw escape hatch much easier to invoke than its risk profile warrants. Structured native tools should remain the default path, and raw Office.js should require an explicit owner/user decision.
   - Dependencies: SECURITY-002 for fail-closed permission prompts.
   - Subtasks:
-    - [ ] Give `office_execute_js` a separate high-risk category or disable it by default.
-    - [ ] Require explicit per-call approval for `office_execute_js` regardless of medium/high document-write autonomy.
-    - [ ] Add UI and prompt wording that frames it as an escape hatch, not a normal edit tool.
-    - [ ] Add tests proving default autonomy cannot auto-approve `office_execute_js`.
-    - [ ] Inventory existing structured Office tools and route common use cases away from raw execution.
+    - [x] Give `office_execute_js` a separate high-risk category or disable it by default.
+    - [x] Require explicit per-call approval for `office_execute_js` regardless of medium/high document-write autonomy.
+    - [x] Add UI and prompt wording that frames it as an escape hatch, not a normal edit tool.
+    - [x] Add tests proving default autonomy cannot auto-approve `office_execute_js`.
+    - [x] Inventory existing structured Office tools and route common use cases away from raw execution.
   - Acceptance Criteria:
-    - [ ] `office_execute_js` cannot execute under default medium autonomy without explicit approval.
-    - [ ] Regex gating is not presented as an isolated sandbox.
-    - [ ] Tests cover auto-approval, explicit approval, explicit denial, and blocked-code paths.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/office/document-tools.ts` using `new Function`, `packages/pi-office-pack/src/protocol.ts` mapping `office_execute_js` to `write-doc`, and the default `autonomyLevel: "medium"`. 2026-04-26 hardening introduced the `escape-hatch` tool category, moved `office_execute_js` into it, excluded it from all autonomy auto-approval sets, and added tests proving it stays manual-only.
+    - [x] `office_execute_js` cannot execute under default medium autonomy without explicit approval.
+    - [x] Regex gating is not presented as an isolated sandbox.
+    - [x] Tests cover auto-approval, explicit approval, explicit denial, and blocked-code paths.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/office/document-tools.ts` using `new Function`, `packages/pi-office-pack/src/protocol.ts` mapping `office_execute_js` to `write-doc`, and the default `autonomyLevel: "medium"`. 2026-04-26 hardening introduced the `escape-hatch` tool category, moved `office_execute_js` into it, excluded it from all autonomy auto-approval sets, and added tests proving it stays manual-only. 2026-04-26 closure normalized escape-hatch permission responses to `scope: "once"` even if a client sends `scope: "session"`, limited the permission popup to one-time approval for escape-hatch requests, and added protocol/UI contract tests for medium/high/extreme autonomy, explicit denial, explicit approval, attempted session approval, and blocked-code paths. Existing first-class tool inventory/registration tests and tool descriptions route common Office work toward structured tools before raw execution. Validation: `npm run test:office` passed with 91 tests; `npm run typecheck:taskpane` passed.
 
 - [ ] SECURITY-004: Add taskpane CSP/security policy and public privacy/storage disclosure
   - Category: Security

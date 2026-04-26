@@ -1255,10 +1255,14 @@ class BrowserOfficeSession {
       if (!pending) return;
       clearTimeout(pending.timeout);
       this.pendingPermissions.delete(message.requestId);
-      if (message.decision.allowed && message.decision.scope === "session") {
-        this.sessionApprovedTools.add(message.decision.toolName);
+      const category = (TOOL_CATEGORY_MAP[message.decision.toolName] ?? "connector") as ToolCategory;
+      const decision: ToolPermissionDecision = category === "escape-hatch"
+        ? { ...message.decision, scope: "once" }
+        : message.decision;
+      if (decision.allowed && decision.scope === "session") {
+        this.sessionApprovedTools.add(decision.toolName);
       }
-      pending.resolve(message.decision);
+      pending.resolve(decision);
       return;
     }
 

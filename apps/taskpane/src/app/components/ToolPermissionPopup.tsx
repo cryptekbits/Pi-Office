@@ -30,11 +30,12 @@ function formatParams(params: Record<string, unknown>): string {
 }
 
 export function ToolPermissionPopup({ request, onDecision }: ToolPermissionPopupProps) {
+  const escapeHatch = request.toolCategory === "escape-hatch";
   const handleAllow = useCallback(
     (scope: "once" | "session" | "workspace" | "always") => {
-      onDecision(request.requestId, true, scope);
+      onDecision(request.requestId, true, escapeHatch ? "once" : scope);
     },
-    [onDecision, request.requestId],
+    [escapeHatch, onDecision, request.requestId],
   );
 
   const handleDeny = useCallback(() => {
@@ -57,6 +58,11 @@ export function ToolPermissionPopup({ request, onDecision }: ToolPermissionPopup
           {Object.keys(request.params).length > 0 && (
             <pre className="tool-permission-params">{formatParams(request.params)}</pre>
           )}
+          {escapeHatch && (
+            <div className="tool-card-note">
+              Escape-hatch approvals are one time only.
+            </div>
+          )}
         </div>
 
         <div className="tool-permission-actions">
@@ -64,15 +70,19 @@ export function ToolPermissionPopup({ request, onDecision }: ToolPermissionPopup
             <button type="button" className="button button-solid button-sm" onClick={() => handleAllow("once")}>
               Allow once
             </button>
-            <button type="button" className="button button-sm" onClick={() => handleAllow("session")}>
-              For session
-            </button>
-            <button type="button" className="button button-sm" onClick={() => handleAllow("workspace")}>
-              For workspace
-            </button>
-            <button type="button" className="button button-sm" onClick={() => handleAllow("always")}>
-              Always
-            </button>
+            {!escapeHatch && (
+              <>
+                <button type="button" className="button button-sm" onClick={() => handleAllow("session")}>
+                  For session
+                </button>
+                <button type="button" className="button button-sm" onClick={() => handleAllow("workspace")}>
+                  For workspace
+                </button>
+                <button type="button" className="button button-sm" onClick={() => handleAllow("always")}>
+                  Always
+                </button>
+              </>
+            )}
           </div>
           <button type="button" className="button button-danger button-sm" onClick={handleDeny}>
             Deny

@@ -53,6 +53,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - The 2026-04-26 implementation review identified release-blocking "capability honesty" work around OAuth, remote connectors, provider readiness, raw Office.js execution, permission prompts, visual capture fidelity, and privacy/storage disclosure.
 - Current hardening makes tool permissions fail closed on timeout, makes `office_execute_js` a manual-only escape hatch category, prevents connector imports/OAuth completion from creating false connected OAuth state, and marks remote HTTP connectors setup-only until execution exists.
 - `SECURITY-002` is closed: timeout, disconnect, and session cleanup paths now have automated fail-closed permission coverage across write-doc, connector, read-external, and write-external tool categories.
+- `SECURITY-003` is closed: `office_execute_js` is an escape-hatch tool that cannot be auto-approved and any approval is normalized to a one-time decision, even if a client sends a broader scope.
 - The broad independent taskpane transition is now committed: `a70cd9a` moves Pi session routes into the taskpane in-process kernel, reduces the companion to optional read-only file/MCP support, archives old companion source, and includes next-prompt suggestions, model curation, and runtime regression tests.
 - Dev and sideload hardening is now committed as `a8a5a0d` plus `43b2a5b`, including the CI workflow, bundle budget, cert/port preflight, sideload resource preflight, manifest cache-bust version `1.0.0.2`, taskpane dev host on `https://localhost:3443`, and Vite cert loading scoped to the dev server only.
 
@@ -64,6 +65,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - 2026-04-26: Implemented the plan's first hardening pass: added originality/provenance and companion-mode direction, made permission timeouts fail closed, made `office_execute_js` manual-only, blocked false OAuth connected state, and marked remote HTTP connectors setup-only.
 - 2026-04-26: Analyzed and grouped the dirty worktree into scoped commits: `2b5f058` for local factory ignore hygiene, `a8a5a0d` for BUG-001 dev/CI/preflight gates, `43b2a5b` for BUG-001 clean-checkout Vite cert loading, and `a70cd9a` for FEATURE-006 independent taskpane runtime work. Validation passed with `npm run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, `npm run test:office`, `npm run preflight:dev`, and a certs-absent `npm run build:taskpane` check.
 - 2026-04-26: Closed `SECURITY-002` by adding protocol-level permission timeout coverage across write-doc, connector, read-external, and write-external categories plus session cleanup rejection coverage; `npm run test:office` passed with 89 tests.
+- 2026-04-26: Closed `SECURITY-003` by enforcing one-time-only `office_execute_js` approvals in the runtime and permission popup, with protocol/UI tests for auto-approval, denial, attempted session approval, and blocked snippets; `npm run test:office` passed with 91 tests and `npm run typecheck:taskpane` passed.
 
 ## Core rules
 
