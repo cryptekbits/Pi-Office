@@ -1,0 +1,350 @@
+version: 1
+catalogEvidence:
+  refreshedAt: "2026-04-26"
+  piMonoCommit: "05f79b08"
+  piAiPackageVersion: "0.70.2"
+  sourcePath: "../pi-mono/packages/ai/src/models.generated.ts"
+catalogDrift:
+  missingPreferredModels:
+    - provider: openai
+      modelId: gpt-5.5-pro
+      requestedLabel: GPT-5.5 Pro
+      evidence: "Absent from pi-mono packages/ai/src/models.generated.ts at 05f79b08 and @mariozechner/pi-ai 0.70.2; closest available OpenAI Pro slug is gpt-5.4-pro."
+providers:
+  openai:
+    label: OpenAI API
+    lab: OpenAI
+    settingsVisibility: simple
+    defaultEnabled: true
+    defaultModel: gpt-5.5
+    models:
+      - modelId: gpt-5.5
+        family: GPT-5.5
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Best current OpenAI general-purpose model in the refreshed Pi catalog."
+      - modelId: gpt-5.4-pro
+        family: GPT-5.4
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current available Pro-class OpenAI slug while gpt-5.5-pro is not present in Pi."
+      - modelId: gpt-5.4
+        family: GPT-5.4
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Strong current OpenAI fallback for professional document work."
+      - modelId: gpt-4.1
+        family: GPT-4.1
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Lower-cost legacy-compatible OpenAI option kept visible for existing API users."
+  openai-codex:
+    label: ChatGPT / Codex OAuth
+    lab: OpenAI
+    settingsVisibility: simple
+    defaultEnabled: false
+    defaultModel: gpt-5.5
+    models:
+      - modelId: gpt-5.5
+        family: GPT-5.5
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Preferred ChatGPT/Codex-family model once companion OAuth token brokerage exists."
+      - modelId: gpt-5.4
+        family: GPT-5.4
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current high-quality companion-owned OAuth fallback."
+      - modelId: gpt-5.3-codex
+        family: Codex
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Coding-agent oriented model for advanced companion mode once OAuth is implemented."
+  anthropic:
+    label: Anthropic API
+    lab: Anthropic
+    settingsVisibility: simple
+    defaultEnabled: true
+    defaultModel: claude-opus-4-7
+    models:
+      - modelId: claude-opus-4-7
+        family: Claude Opus
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Preferred Anthropic model in the refreshed Pi catalog for high-stakes document review."
+      - modelId: claude-opus-4-6
+        family: Claude Opus
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Recent Opus fallback with strong reasoning and editing behavior."
+      - modelId: claude-sonnet-4-6
+        family: Claude Sonnet
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Balanced Anthropic option for lower-latency professional editing."
+  google:
+    label: Google Gemini API
+    lab: Google
+    settingsVisibility: simple
+    defaultEnabled: true
+    defaultModel: gemini-3.1-pro-preview
+    models:
+      - modelId: gemini-3.1-pro-preview
+        family: Gemini 3.1
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Preferred Gemini Pro preview in the refreshed Pi catalog."
+      - modelId: gemini-3-pro-preview
+        family: Gemini 3
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Stable Gemini 3 Pro preview fallback."
+      - modelId: gemini-3-flash-preview
+        family: Gemini 3
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Fast Gemini option for lightweight Office tasks."
+  github-copilot:
+    label: GitHub Copilot OAuth
+    lab: GitHub Copilot
+    settingsVisibility: simple
+    defaultEnabled: false
+    defaultModel: gpt-5.4
+    models:
+      - modelId: gpt-5.4
+        family: GPT-5.4
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Best OpenAI-family Copilot slug currently exposed by Pi."
+      - modelId: claude-opus-4.6
+        family: Claude Opus
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Copilot-hosted Opus option for companion OAuth mode."
+      - modelId: claude-sonnet-4.6
+        family: Claude Sonnet
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Copilot-hosted Sonnet option for balanced Office work."
+      - modelId: gemini-3.1-pro-preview
+        family: Gemini 3.1
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Copilot-hosted Gemini Pro preview option."
+  opencode:
+    label: OpenCode Zen
+    lab: OpenCode
+    settingsVisibility: simple
+    defaultEnabled: false
+    defaultModel: claude-opus-4-7
+    models:
+      - modelId: claude-opus-4-7
+        family: Claude Opus
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "OpenCode-hosted Opus default for long-form document editing."
+      - modelId: gpt-5.4
+        family: GPT-5.4
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "OpenAI-family fallback through OpenCode."
+      - modelId: gemini-3.1-pro
+        family: Gemini 3.1
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Gemini Pro option through OpenCode."
+      - modelId: kimi-k2.6
+        family: Kimi K2
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current Kimi K2.6 slug through OpenCode."
+      - modelId: glm-5.1
+        family: GLM-5
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current GLM 5.1 slug through OpenCode."
+  opencode-go:
+    label: OpenCode Go
+    lab: OpenCode
+    settingsVisibility: simple
+    defaultEnabled: false
+    defaultModel: kimi-k2.6
+    models:
+      - modelId: kimi-k2.6
+        family: Kimi K2
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Current Kimi K2.6 default for OpenCode Go."
+      - modelId: kimi-k2.5
+        family: Kimi K2
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Kimi K2.5 fallback for OpenCode Go."
+      - modelId: glm-5.1
+        family: GLM-5
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current GLM 5.1 option for OpenCode Go."
+  openrouter:
+    label: OpenRouter
+    lab: OpenRouter
+    settingsVisibility: simple
+    defaultEnabled: false
+    defaultModel: openai/gpt-5.4
+    models:
+      - modelId: openai/gpt-5.4
+        family: GPT-5.4
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Best OpenAI-family model exposed by OpenRouter in the refreshed Pi catalog."
+      - modelId: google/gemini-3.1-pro-preview
+        family: Gemini 3.1
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Gemini Pro preview via OpenRouter."
+      - modelId: x-ai/grok-4.20
+        family: Grok 4.20
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current Grok 4.20 OpenRouter slug."
+      - modelId: moonshotai/kimi-k2.6
+        family: Kimi K2
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current Kimi K2.6 OpenRouter slug."
+      - modelId: deepseek/deepseek-v4-pro
+        family: DeepSeek V4
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current DeepSeek V4 Pro OpenRouter slug."
+  vercel-ai-gateway:
+    label: Vercel AI Gateway
+    lab: Vercel
+    settingsVisibility: simple
+    defaultEnabled: false
+    defaultModel: openai/gpt-5.4
+    models:
+      - modelId: openai/gpt-5.4
+        family: GPT-5.4
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Best OpenAI-family model exposed by Vercel AI Gateway in the refreshed Pi catalog."
+      - modelId: google/gemini-3.1-pro-preview
+        family: Gemini 3.1
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Gemini Pro preview via Vercel AI Gateway."
+      - modelId: xai/grok-4.20-reasoning
+        family: Grok 4.20
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Reasoning Grok 4.20 Vercel Gateway slug."
+      - modelId: moonshotai/kimi-k2.6
+        family: Kimi K2
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current Kimi K2.6 Vercel Gateway slug."
+      - modelId: zai/glm-5.1
+        family: GLM-5
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Current GLM 5.1 Vercel Gateway slug."
+  groq:
+    label: Groq
+    lab: Groq
+    settingsVisibility: simple
+    defaultEnabled: false
+    defaultModel: moonshotai/kimi-k2-instruct
+    models:
+      - modelId: moonshotai/kimi-k2-instruct
+        family: Kimi K2
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Kimi K2 instruct model exposed through Groq."
+      - modelId: openai/gpt-oss-120b
+        family: GPT OSS
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Large open-weight model exposed by Groq for fast exploratory tasks."
+  xai:
+    label: xAI
+    lab: xAI
+    settingsVisibility: simple
+    defaultEnabled: false
+    defaultModel: grok-4.20-0309-reasoning
+    models:
+      - modelId: grok-4.20-0309-reasoning
+        family: Grok 4.20
+        settingsVisibility: simple
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Current reasoning Grok 4.20-compatible direct xAI slug in Pi."
+      - modelId: grok-4.20-0309-non-reasoning
+        family: Grok 4.20
+        settingsVisibility: simple
+        recommended: true
+        recommendationReason: "Lower-latency Grok 4.20-compatible direct xAI slug."
+  deepseek:
+    label: DeepSeek API
+    lab: DeepSeek
+    settingsVisibility: advanced
+    defaultEnabled: false
+    defaultModel: deepseek-v4-pro
+    models:
+      - modelId: deepseek-v4-pro
+        family: DeepSeek V4
+        settingsVisibility: advanced
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Direct DeepSeek V4 Pro slug; kept Advanced because direct regional-provider setup should be intentional."
+      - modelId: deepseek-v4-flash
+        family: DeepSeek V4
+        settingsVisibility: advanced
+        recommended: true
+        recommendationReason: "Direct lower-latency DeepSeek V4 slug; kept Advanced for explicit opt-in."
+  zai:
+    label: Z.AI API
+    lab: Z.AI
+    settingsVisibility: advanced
+    defaultEnabled: false
+    defaultModel: glm-5.1
+    models:
+      - modelId: glm-5.1
+        family: GLM-5
+        settingsVisibility: advanced
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Direct GLM 5.1 slug; kept Advanced because direct regional-provider setup should be intentional."
+      - modelId: glm-5
+        family: GLM-5
+        settingsVisibility: advanced
+        recommended: true
+        recommendationReason: "Direct GLM 5 fallback; kept Advanced for explicit opt-in."
+  kimi-coding:
+    label: Kimi Coding
+    lab: Moonshot AI
+    settingsVisibility: advanced
+    defaultEnabled: false
+    defaultModel: kimi-k2-thinking
+    models:
+      - modelId: kimi-k2-thinking
+        family: Kimi K2
+        settingsVisibility: advanced
+        recommended: true
+        defaultForProvider: true
+        recommendationReason: "Direct Kimi thinking slug; kept Advanced for explicit direct-provider setup."
+      - modelId: k2p6
+        family: Kimi K2.6
+        settingsVisibility: advanced
+        recommended: true
+        recommendationReason: "Direct Kimi K2.6-compatible alias exposed by Pi; kept Advanced for explicit direct-provider setup."

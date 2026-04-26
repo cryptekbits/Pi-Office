@@ -457,7 +457,7 @@ test("PowerPoint guidance aligns chart/media/icon and verification tools with su
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bverify_slides\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bverify_slide_visual\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /serialized|XML|OOXML/i);
-  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /layout\/master|layout and master/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /does not edit slide masters/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /slide snapshot|visual verification/i);
 
   const officeHostSkillPath = join(process.cwd(), "packages", "pi-office-pack", "skills", "office-host.SKILL.md");
@@ -469,7 +469,7 @@ test("PowerPoint guidance aligns chart/media/icon and verification tools with su
   assert.match(officeHostSkillText, /\bverify_slides\b/);
   assert.match(officeHostSkillText, /\bverify_slide_visual\b/);
   assert.match(officeHostSkillText, /serialized|XML|OOXML/i);
-  assert.match(officeHostSkillText, /layout\/master|layout and master/i);
+  assert.match(officeHostSkillText, /does not edit slide masters/i);
   assert.match(officeHostSkillText, /slide snapshot|visual verification/i);
 });
 

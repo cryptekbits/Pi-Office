@@ -44,6 +44,9 @@ class MemoryStorage {
 
 const RUNTIME_ONLY_AGENT_TOOLS = ["ask_user", "generate_image"] as const;
 const FINAL_AGENT_TOOL_INVENTORY = [...OFFICE_TOOL_NAMES, ...RUNTIME_ONLY_AGENT_TOOLS] as const;
+const DEFAULT_TASKPANE_AGENT_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
+  (toolName) => toolName !== "office_capture_viewport",
+);
 const REQUIRED_VALIDATION_COMMANDS = ["typecheck", "build", "check:bundle", "validate:manifests", "test:office"] as const;
 
 function sorted(values: Iterable<string>): string[] {
@@ -245,9 +248,8 @@ test("extension registration and runtime-published tools stay synchronized with 
   const runtimeTools = session.agent.state.tools.map((tool) => tool.name);
   socket.close();
 
-  const expected = sorted(FINAL_AGENT_TOOL_INVENTORY);
-  assert.deepEqual(sorted(registeredByExtension), expected);
-  assert.deepEqual(sorted(runtimeTools), expected);
+  assert.deepEqual(sorted(registeredByExtension), sorted(FINAL_AGENT_TOOL_INVENTORY));
+  assert.deepEqual(sorted(runtimeTools), sorted(DEFAULT_TASKPANE_AGENT_TOOL_INVENTORY));
 });
 
 test("taskpane bridge dispatch cases stay in sync with supported Office tools", async () => {

@@ -110,9 +110,13 @@ export async function applyHostEdit(host: OfficeHost, params: { mode: string; co
 }
 
 export {
+  BROWSER_DEBUG_OFFICE_CAPABILITY,
   waitForOfficeReady,
   buildOpenRequest,
   buildConnectorScopeContext,
+  createBrowserDebugOfficeState,
+  isBrowserDebugOfficeState,
+  shouldUseBrowserDebugOfficeState,
   subscribeToOfficeChanges,
   readOfficeTheme,
 } from "./office/shared";

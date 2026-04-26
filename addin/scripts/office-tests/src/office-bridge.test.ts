@@ -332,7 +332,7 @@ test("createOfficeToolExecutor forwards get-context scope to the host adapter", 
   });
 });
 
-test("createOfficeToolExecutor captures viewport only for Word and maps viewport options", async () => {
+test("createOfficeToolExecutor keeps true viewport screenshots companion-only", async () => {
   const calls: Array<{ host: string; options: unknown }> = [];
   const executeOfficeTool = createOfficeToolExecutor({
     collectOfficeContext: async (host, options) => {
@@ -346,7 +346,7 @@ test("createOfficeToolExecutor captures viewport only for Word and maps viewport
     proposeEdits: async () => ({ ok: true }),
   });
 
-  const wordResult = await executeOfficeTool({
+  const result = await executeOfficeTool({
     requestId: "vp-1",
     toolName: "office_capture_viewport",
     host: "word",
@@ -356,38 +356,10 @@ test("createOfficeToolExecutor captures viewport only for Word and maps viewport
     },
   });
 
-  const excelResult = await executeOfficeTool({
-    requestId: "vp-2",
-    toolName: "office_capture_viewport",
-    host: "excel",
-    params: {},
-  });
-
-  assert.equal(wordResult.success, true);
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], {
-    host: "word",
-    options: {
-      includeFormatting: true,
-      maxImages: 1,
-      scope: "viewport",
-    },
-  });
-
-  const payload = wordResult.content as { summary: string; formatting?: Record<string, unknown> };
-  assert.match(payload.summary, /Visible Word viewport metadata captured/);
-  assert.match(payload.summary, /Full window-frame capture is unavailable in browser-only runtime/);
-  assert.equal(
-    (payload.formatting?.viewportCapture as Record<string, unknown> | undefined)?.includeWindowFrameRequested,
-    true,
-  );
-  assert.equal(
-    (payload.formatting?.viewportCapture as Record<string, unknown> | undefined)?.includeWindowFrameCaptured,
-    false,
-  );
-  assert.ok((payload.formatting?.viewportCapture as Record<string, unknown> | undefined)?.mode);
-  assert.equal(excelResult.success, false);
-  assert.match(String(excelResult.error), /only available for Word/);
+  assert.equal(result.success, false);
+  assert.equal(calls.length, 0);
+  assert.match(String(result.error), /requires companion native capture/i);
+  assert.match(String(result.error), /office_capture_snapshot/i);
 });
 
 test("createOfficeToolExecutor returns structured payloads for first-class Word verification tools", async () => {

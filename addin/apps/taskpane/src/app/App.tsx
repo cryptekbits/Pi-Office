@@ -18,6 +18,7 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
+  ConnectorOAuthCallbackResponse,
   ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
@@ -27,6 +28,8 @@ import type {
   ConnectorStatus,
   ConnectorStatusResponse,
   ConnectorTestResponse,
+  ConnectorToolPolicyUpdateRequest,
+  ConnectorToolPolicyUpdateResponse,
   CompanionState,
   OfficeDocumentState,
   OfficeSessionOpenResponse,
@@ -62,13 +65,21 @@ import {
   captureDocumentSnapshot,
   capturePromptVisuals,
   collectOfficeState,
+  createBrowserDebugOfficeState,
   readOfficeTheme,
   restoreDocumentSnapshot,
+  shouldUseBrowserDebugOfficeState,
   subscribeToOfficeChanges,
   waitForOfficeReady,
   type OfficeThemeSnapshot,
 } from "../lib/office";
 import { executeOfficeTool } from "../lib/office-tools";
+import {
+  formatOfficeRefreshError,
+  getOfficeRefreshErrorDecision,
+  shouldApplyOfficeRefreshResult,
+  type OfficeRefreshErrorRecord,
+} from "../lib/office-refresh-policy";
 import { addCheckpoint, clearCheckpoints, getCheckpoint, hasCheckpoint } from "../lib/checkpoint-store";
 import type { DocumentCheckpoint } from "../lib/checkpoint-store";
 import type { RewindMode } from "./components/RewindDialog";
@@ -226,6 +237,8 @@ export function App() {
   const [askUserRequest, setAskUserRequest] = useState<AskUserRequest | null>(null);
   const [toolPermissionRequest, setToolPermissionRequest] = useState<ToolPermissionRequest | null>(null);
   const [editProposal, setEditProposal] = useState<OfficeEditProposal | null>(null);
+  const [pendingUnrecommendedModel, setPendingUnrecommendedModel] = useState<ConfiguredModelEntry | null>(null);
+  const [suppressUnrecommendedWarningForSelection, setSuppressUnrecommendedWarningForSelection] = useState(false);
 
   const { preferences, updatePreferences } = usePreferences();
   const { enabledModels, enabledProviders, toggleModel, toggleProvider, isModelEnabled } = useEnabledModels();
@@ -234,7 +247,7 @@ export function App() {
     preferences.toolPermissionOverrides,
     officeState?.document.workspaceDir,
   );
-  const { saveChat, loadChat, deleteChat, listChats, updateSubject } = useChatHistory();
+  const { saveChat, loadChat, deleteChat, clearHistory, listChats, updateSubject } = useChatHistory();
 
   const sessionIdRef = useRef<string | undefined>(undefined);
   const bridgeRef = useRef<LocalBridgeSocket | null>(null);
@@ -250,6 +263,8 @@ export function App() {
   const subjectDerivedRef = useRef(false);
   const disconnectBridgeRef = useRef<(() => void) | undefined>(undefined);
   const officeStateRef = useRef<OfficeStateUpdate | undefined>(undefined);
+  const officeRefreshSequenceRef = useRef(0);
+  const lastOfficeRefreshErrorRef = useRef<OfficeRefreshErrorRecord | undefined>(undefined);
   const pendingAskUserSummaryRef = useRef<ChatEntry | null>(null);
   const thinkingSegmentOpenRef = useRef(false);
   const promptSuggestionGenerationRef = useRef(0);
@@ -348,6 +363,15 @@ export function App() {
 
   const pushSystemMessage = useCallback((text: string) => {
     setMessages((c) => [...c, createEntry("system", text)]);
+  }, []);
+
+  const pushUniqueSystemMessage = useCallback((text: string) => {
+    setMessages((c) => {
+      if (c.some((entry) => entry.role === "system" && entry.text === text)) {
+        return c;
+      }
+      return [...c, createEntry("system", text)];
+    });
   }, []);
 
   const pushErrorMessage = useCallback((text: string) => {
@@ -657,7 +681,10 @@ export function App() {
           if (cp.ooxml) snapshotData.ooxml = cp.ooxml;
           if (cp.sheets?.length) snapshotData.sheets = cp.sheets;
           if (cp.presentationBase64) snapshotData.presentationBase64 = cp.presentationBase64;
-          await restoreDocumentSnapshot(officeState.host, snapshotData);
+          const restoreResult = await restoreDocumentSnapshot(officeState.host, snapshotData);
+          if (restoreResult.warnings.length) {
+            pushSystemMessage(`Document restore note: ${restoreResult.warnings.join(" ")}`);
+          }
         } catch (error) {
           pushErrorMessage(`Document restore failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -1296,7 +1323,23 @@ export function App() {
         await Promise.all([refreshProviderState(), refreshConnectorState(undefined), refreshCompanionState()]);
         if (!active) return;
 
-        const host = await waitForOfficeReady();
+        let host: Awaited<ReturnType<typeof waitForOfficeReady>>;
+        try {
+          host = await waitForOfficeReady();
+        } catch (error) {
+          if (!shouldUseBrowserDebugOfficeState(error, { isDev: import.meta.env.DEV, search: window.location.search })) {
+            throw error;
+          }
+
+          const debugState = createBrowserDebugOfficeState(window.location.search);
+          setOfficeTheme(undefined);
+          setOfficeState(debugState);
+          pushUniqueSystemMessage(
+            "Browser preview mode: no real Office host is attached, so Office.js document reads and edits are disabled. Open the add-in inside Word, Excel, or PowerPoint to test document behavior.",
+          );
+          await openSession(debugState);
+          return;
+        }
         if (!active) return;
         setOfficeTheme(readOfficeTheme());
         const initialState = await collectOfficeState(host);
@@ -1307,17 +1350,36 @@ export function App() {
         await openSession(initialState);
 
         unsubOffice = subscribeToOfficeChanges(async () => {
-          if (!sessionIdRef.current) return;
+          const refreshSessionId = sessionIdRef.current;
+          if (!refreshSessionId) return;
+          const refreshSequence = officeRefreshSequenceRef.current + 1;
+          officeRefreshSequenceRef.current = refreshSequence;
+          const refreshAttempt = { sequence: refreshSequence, sessionId: refreshSessionId };
+          const currentRefreshState = () => ({
+            active,
+            latestSequence: officeRefreshSequenceRef.current,
+            sessionId: sessionIdRef.current,
+          });
+
           try {
             setOfficeTheme(readOfficeTheme());
             const s = await collectOfficeState(host);
-            if (!active) return;
+            if (!shouldApplyOfficeRefreshResult(refreshAttempt, currentRefreshState())) return;
             setOfficeState(s);
-            const r = await postJson<OfficeSessionStateResponse>(`/v1/sessions/${sessionIdRef.current}/office-state`, s);
-            if (!active) return;
+            const r = await postJson<OfficeSessionStateResponse>(`/v1/sessions/${refreshSessionId}/office-state`, s);
+            if (!shouldApplyOfficeRefreshResult(refreshAttempt, currentRefreshState())) return;
+            lastOfficeRefreshErrorRef.current = undefined;
             applySessionState(r);
           } catch (error) {
-            if (active) pushErrorMessage(`Office state refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+            if (!shouldApplyOfficeRefreshResult(refreshAttempt, currentRefreshState())) return;
+            const message = formatOfficeRefreshError(error);
+            const decision = getOfficeRefreshErrorDecision(lastOfficeRefreshErrorRef.current, message);
+            lastOfficeRefreshErrorRef.current = decision.nextRecord;
+            if (decision.shouldSurface) {
+              pushErrorMessage(`Office state refresh failed: ${message}`);
+            } else {
+              console.warn("[office-state] Suppressed repeated refresh failure:", message);
+            }
           }
         });
       } catch (error) {
@@ -1339,7 +1401,7 @@ export function App() {
       assistantEntryIdRef.current = undefined;
       setSessionStats(undefined);
     };
-  }, [applySessionState, openSession, pushErrorMessage, refreshCompanionState, refreshConnectorState, refreshProviderState]);
+  }, [applySessionState, openSession, pushErrorMessage, pushUniqueSystemMessage, refreshCompanionState, refreshConnectorState, refreshProviderState]);
 
   useEffect(() => {
     if (lastSelectionFingerprintRef.current && lastSelectionFingerprintRef.current !== selectionFingerprint) {
@@ -1450,6 +1512,17 @@ export function App() {
     }
   }, [pushErrorMessage, pushSystemMessage, refreshProviderState]);
 
+  const handleClearAllProviderAuth = useCallback(async () => {
+    try {
+      await deleteJson<{ ok: true }>("/v1/auth");
+      await refreshProviderState();
+      pushSystemMessage("Cleared all stored provider credentials from this taskpane.");
+    } catch (error) {
+      pushErrorMessage(`Provider credential cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }, [pushErrorMessage, pushSystemMessage, refreshProviderState]);
+
   const handleStartOAuth = useCallback(async (provider: string) => {
     try {
       await postJson<{ ok: true }>("/v1/auth/start", { providerId: provider });
@@ -1470,6 +1543,7 @@ export function App() {
     try {
       const response = await postJson<ConnectorSetupResponse>("/v1/connectors/setup/connect", request);
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
       pushSystemMessage(`Saved connector: ${response.status.name}.`);
       return response;
     } catch (error) {
@@ -1477,7 +1551,7 @@ export function App() {
       pushErrorMessage(`Connector save failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleTestConnector = useCallback(async (request: ConnectorSetupRequest) => {
     try {
@@ -1493,18 +1567,19 @@ export function App() {
     try {
       const response = await postJson<ConnectorTestResponse>("/v1/connectors/reverify", { connectorId, scopeContext });
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
       return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Connector re-verification failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleStartConnectorOAuth = useCallback(async (connectorId: string) => {
     try {
       const response = await postJson<ConnectorOAuthStartResponse>("/v1/connectors/oauth/start", { connectorId });
-      pushSystemMessage("Connector sign-in opened in your browser. Complete sign-in in the setup panel.");
+      pushSystemMessage("Connector sign-in is ready. Complete sign-in in the dedicated sign-in window.");
       await refreshConnectorState(connectorScopeContext);
       return response;
     } catch (error) {
@@ -1514,39 +1589,105 @@ export function App() {
     }
   }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
 
+  useEffect(() => {
+    function handleOAuthMessage(event: MessageEvent): void {
+      if (event.origin !== window.location.origin) return;
+      const payload = event.data as { type?: string } | undefined;
+      if (payload?.type !== "pi-office-connector-oauth-complete") return;
+      void refreshConnectorState(connectorScopeContext).then(() => syncCurrentSessionState());
+    }
+    window.addEventListener("message", handleOAuthMessage);
+    return () => window.removeEventListener("message", handleOAuthMessage);
+  }, [connectorScopeContext, refreshConnectorState, syncCurrentSessionState]);
+
+  useEffect(() => {
+    if (window.location.pathname !== "/connector-oauth-callback") return;
+    const params = new URLSearchParams(window.location.search);
+    const state = params.get("state") ?? "";
+    const code = params.get("code") ?? undefined;
+    const error = params.get("error_description") ?? params.get("error") ?? undefined;
+    let cancelled = false;
+    void postJson<ConnectorOAuthCallbackResponse>("/v1/connectors/oauth/callback", { state, code, error })
+      .then(async () => {
+        if (cancelled) return;
+        pushSystemMessage("Connector sign-in completed.");
+        await refreshConnectorState(connectorScopeContext);
+        await syncCurrentSessionState();
+        window.opener?.postMessage({ type: "pi-office-connector-oauth-complete" }, window.location.origin);
+        window.history.replaceState({}, document.title, "/");
+        window.close();
+      })
+      .catch((callbackError) => {
+        if (cancelled) return;
+        pushErrorMessage(`Connector sign-in callback failed: ${callbackError instanceof Error ? callbackError.message : String(callbackError)}`);
+        window.opener?.postMessage({ type: "pi-office-connector-oauth-complete" }, window.location.origin);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState, syncCurrentSessionState]);
+
   const handleRemoveConnector = useCallback(async (storedConnectorId: string) => {
     try {
       await deleteJson<{ ok: true }>(`/v1/connectors/${storedConnectorId}`);
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
       pushSystemMessage("Connector removed.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Connector removal failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState, syncCurrentSessionState]);
+
+  const handleClearConnectorData = useCallback(async () => {
+    try {
+      await deleteJson<{ ok: true }>("/v1/connectors");
+      await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
+      pushSystemMessage("Cleared connector configuration, secrets, scopes, OAuth state, and logs.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      pushErrorMessage(`Connector cleanup failed: ${message}`);
+      throw error;
+    }
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleSetConnectorFavorite = useCallback(async (request: ConnectorFavoriteRequest) => {
     try {
       await postJson<{ ok: true; status: ConnectorStatus }>("/v1/connectors/favorite", request);
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Favorite update failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleUpdateConnectorScope = useCallback(async (request: ConnectorScopeUpdateRequest) => {
     try {
       await postJson<{ ok: true; status: ConnectorStatus }>("/v1/connectors/scope", request);
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Scope update failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
+
+  const handleUpdateConnectorToolPolicy = useCallback(async (request: ConnectorToolPolicyUpdateRequest) => {
+    try {
+      await postJson<ConnectorToolPolicyUpdateResponse>("/v1/connectors/tools", request);
+      await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      pushErrorMessage(`Tool policy update failed: ${message}`);
+      throw error;
+    }
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleLoadConnectorLogs = useCallback(async (connectorId: string) => {
     try {
@@ -1582,13 +1723,14 @@ export function App() {
     try {
       const response = await postJson<ConnectorImportApplyResponse>("/v1/connectors/import/apply", { bundle, resolutions });
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
       return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Connector import failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleSetConnectorAuditPreference = useCallback(async (preference: ConnectorAuditPreference) => {
     try {
@@ -1601,6 +1743,12 @@ export function App() {
       throw error;
     }
   }, [pushErrorMessage]);
+
+  const handleClearChatHistory = useCallback(() => {
+    clearHistory();
+    setHistoryOpen(false);
+    pushSystemMessage("Cleared saved local chat history.");
+  }, [clearHistory, pushSystemMessage]);
 
   const handleRetryCompanion = useCallback(async () => {
     try {
@@ -1629,13 +1777,50 @@ export function App() {
     }
   }, [pushErrorMessage, pushSystemMessage, syncCurrentSessionState]);
 
-  const handleSelectModel = useCallback((key: string) => {
+  const commitModelSelection = useCallback((key: string) => {
     if (!key && modelPinnedRef.current) {
       pushSystemMessage("This session keeps its current model until you reopen the document.");
     }
     setSelectedModelKey(key);
     if (key) pushRecentModel(key);
   }, [pushSystemMessage]);
+
+  const handleSelectModel = useCallback((key: string) => {
+    if (!key || preferences.suppressUnrecommendedModelWarning) {
+      commitModelSelection(key);
+      return;
+    }
+
+    const model = configuredModels.find((entry) => entry.key === key);
+    if (model?.model.requiresUnrecommendedWarning) {
+      setSuppressUnrecommendedWarningForSelection(false);
+      setPendingUnrecommendedModel(model);
+      return;
+    }
+
+    commitModelSelection(key);
+  }, [commitModelSelection, configuredModels, preferences.suppressUnrecommendedModelWarning]);
+
+  const confirmUnrecommendedModelSelection = useCallback(() => {
+    const model = pendingUnrecommendedModel;
+    if (!model) return;
+    if (suppressUnrecommendedWarningForSelection) {
+      updatePreferences({ suppressUnrecommendedModelWarning: true });
+    }
+    setPendingUnrecommendedModel(null);
+    setSuppressUnrecommendedWarningForSelection(false);
+    commitModelSelection(model.key);
+  }, [
+    commitModelSelection,
+    pendingUnrecommendedModel,
+    suppressUnrecommendedWarningForSelection,
+    updatePreferences,
+  ]);
+
+  const cancelUnrecommendedModelSelection = useCallback(() => {
+    setPendingUnrecommendedModel(null);
+    setSuppressUnrecommendedWarningForSelection(false);
+  }, []);
 
   const handleQueueSelection = useCallback((entry: LocalQueueEntry) => {
     setSelectedLocalQueueId((c) => (c === entry.id ? undefined : entry.id));
@@ -1683,11 +1868,15 @@ export function App() {
           onRemoveConnector={handleRemoveConnector}
           onSetConnectorFavorite={handleSetConnectorFavorite}
           onUpdateConnectorScope={handleUpdateConnectorScope}
+          onUpdateConnectorToolPolicy={handleUpdateConnectorToolPolicy}
           onLoadConnectorLogs={handleLoadConnectorLogs}
           onExportConnectors={handleExportConnectors}
           onPreviewConnectorImport={handlePreviewConnectorImport}
           onApplyConnectorImport={handleApplyConnectorImport}
           onSetConnectorAuditPreference={handleSetConnectorAuditPreference}
+          onClearAllProviderAuth={handleClearAllProviderAuth}
+          onClearConnectorData={handleClearConnectorData}
+          onClearChatHistory={handleClearChatHistory}
           onRetryCompanion={handleRetryCompanion}
           onSaveCompanionEndpoint={handleSaveCompanionEndpoint}
           onClearRuntimeDiagnostics={clearRuntimeDiagnostics}
@@ -1834,6 +2023,34 @@ export function App() {
           request={askUserRequest}
           onSubmit={handleAskUserSubmit}
         />
+      )}
+
+      {pendingUnrecommendedModel && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="unrecommended-model-modal" role="dialog" aria-modal="true" aria-label="Advanced model warning">
+            <h3>Advanced Model</h3>
+            <p>
+              {pendingUnrecommendedModel.model.modelName} is outside the curated recommendation list for {pendingUnrecommendedModel.provider.label}.
+              It may be legacy, experimental, regional, or less validated for Pi-Office workflows.
+            </p>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={suppressUnrecommendedWarningForSelection}
+                onChange={(event) => setSuppressUnrecommendedWarningForSelection(event.target.checked)}
+              />
+              <span>Do not show this again</span>
+            </label>
+            <div className="settings-actions">
+              <button type="button" className="button" onClick={cancelUnrecommendedModelSelection}>
+                Cancel
+              </button>
+              <button type="button" className="button button-solid" onClick={confirmUnrecommendedModelSelection}>
+                Use model
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {toolPermissionRequest && (

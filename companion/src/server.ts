@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import express from "express";
 import type {
   CompanionHealthResponse,
+  CompanionNativeCaptureRequest,
   CompanionShellCapability,
   CompanionShellExecuteRequest,
   CompanionSessionOpenRequest,
@@ -14,6 +15,9 @@ import type {
 import { loadConfig, type CompanionConfig } from "./config.js";
 import { CompanionConnectorBridge } from "./connector-bridge.js";
 import { executeFileTool } from "./file-tools.js";
+import { companionCorsMiddleware } from "./http.js";
+import { captureNativeViewport, createNativeCaptureCapability } from "./native-capture.js";
+import { createCompanionRuntimeDiagnostics } from "./runtime-diagnostics.js";
 import { CompanionShellSandbox } from "./shell-sandbox.js";
 
 interface SessionRecord {
@@ -44,6 +48,7 @@ function createCompanionState(
   connectorToolNames?: string[] | undefined,
   shell?: CompanionShellCapability | undefined,
 ): CompanionState {
+  const connectorToolCount = connectorToolNames?.length ?? 0;
   return {
     status: "connected",
     endpoint: config.endpoint,
@@ -55,6 +60,38 @@ function createCompanionState(
       localMcp: true,
       endpoint: config.endpoint,
       shell,
+      version: "companion-capabilities-v1",
+      agent: {
+        state: "unavailable",
+        available: false,
+        version: "companion-agent-v1",
+        officeToolProxy: true,
+        providerAuth: false,
+        smartAuto: true,
+        reason: "Companion-owned inference is capability-gated until provider auth is explicitly configured in the companion.",
+      },
+      providerAuth: {
+        state: "unavailable",
+        available: false,
+        version: "companion-provider-auth-v1",
+        explicitMigrationRequired: true,
+        supportedAuthMethods: ["oauth", "manual_token", "api_key", "cloud_identity", "aws_credentials"],
+        reason: "Taskpane provider secrets are not silently migrated; use an explicit companion auth move/setup flow when implemented.",
+      },
+      nativeCapture: createNativeCaptureCapability(),
+      mcp: {
+        state: "available",
+        available: true,
+        version: "companion-mcp-v1",
+        readOnly: true,
+        toolCount: connectorToolCount,
+      },
+      memory: {
+        state: "unavailable",
+        available: false,
+        version: "companion-memory-v1",
+        reason: "Durable companion memory is reserved for advanced mode.",
+      },
     },
   };
 }
@@ -69,6 +106,7 @@ export class CompanionServer {
     mkdirSync(this.config.dataDir, { recursive: true });
 
     const app = express();
+    app.use(companionCorsMiddleware);
     app.use(express.json({ limit: "10mb" }));
     this.mountRoutes(app);
 
@@ -86,19 +124,17 @@ export class CompanionServer {
 
   private mountRoutes(app: express.Express): void {
     app.get("/v1/health", (_request, response) => {
-      const shell = createShellSandbox(this.config).getCapability();
       const body: CompanionHealthResponse = {
         ok: true,
         endpoint: this.config.endpoint,
         identity: this.config.identity,
-        capabilities: {
-          fileRead: true,
-          localMcp: true,
-          endpoint: this.config.endpoint,
-          shell,
-        },
+        capabilities: createCompanionState(this.config, undefined, []).capabilities,
       };
       response.json(body);
+    });
+
+    app.get("/v1/diagnostics", (_request, response) => {
+      response.json(createCompanionRuntimeDiagnostics());
     });
 
     app.get("/v1/shell/capability", (_request, response) => {
@@ -194,6 +230,33 @@ export class CompanionServer {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    });
+
+    app.post("/v1/sessions/:sessionId/native-capture/viewport", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      const result = captureNativeViewport(session, request.body as CompanionNativeCaptureRequest);
+      response.json(result);
+    });
+
+    app.post("/v1/sessions/:sessionId/agent/prompt", (_request, response) => {
+      response.status(501).json({
+        ok: false,
+        error:
+          "Companion-owned Pi agent sessions require explicit companion provider auth setup. Smart Auto will keep using the taskpane runtime until that capability is available.",
+      });
+    });
+
+    app.post("/v1/sessions/:sessionId/agent/office-tool-result", (_request, response) => {
+      response.status(501).json({
+        ok: false,
+        error:
+          "Companion-owned Office tool proxying is reserved for companion agent mode. Office.js execution remains taskpane-owned.",
+      });
     });
 
     app.post("/v1/sessions/:sessionId/files/:toolName", async (request, response) => {

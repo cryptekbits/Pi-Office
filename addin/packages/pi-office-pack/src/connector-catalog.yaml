@@ -1,0 +1,2833 @@
+revision: 2026-04-27
+source: connector-catalog.yaml
+connectors:
+  - category: knowledge
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: jira
+    name: Jira
+    vendor: Atlassian
+    iconKey: jira
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Read issues, epics, comments, and sprint context while drafting updates or preparing status reports.
+    officeValue: Pull project status into executive summaries, RAID logs, and meeting notes without copying tickets manually.
+    tags:
+      - tickets
+      - project-tracking
+      - status
+    capabilityHints:
+      - search issues
+      - read ticket details
+      - review comments
+    requirements: []
+    envHints:
+      - key: JIRA_API_TOKEN
+        label: Jira API token
+        description: Reuse an existing Jira token from this PC.
+      - key: JIRA_BASE_URL
+        label: Jira site URL
+        description: For example https://your-team.atlassian.net
+        required: true
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(transition|assign|comment|edit|create_issue|update_issue)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.atlassian.com/v1/mcp
+    setupProfiles:
+      - id: atlassian-hosted-oauth
+        label: Sign in with Atlassian
+        description: Official Atlassian remote MCP for Jira through browser sign-in.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.atlassian.com/v1/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Jira issue and comment requests go to Atlassian's hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        endpointEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        authEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: community-local-stdio
+        label: Use local companion
+        description: Advanced self-hosted Jira/Confluence MCP through a local command.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: uvx
+        args:
+          - mcp-atlassian
+        credentialEnvKey: JIRA_API_TOKEN
+        requiresCompanion: true
+        officialness: community
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        endpointEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        authEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Community/local MCP profile; review the command and package source before enabling.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+    authUrl: https://id.atlassian.com/manage-profile/security/api-tokens
+    setupNotes:
+      - Most Jira MCP servers use a site URL plus an API token.
+      - Use read-only access for reporting and drafting only.
+  - category: knowledge
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: confluence
+    name: Confluence
+    vendor: Atlassian
+    iconKey: confluence
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Search wiki pages, SOPs, and project documentation while writing polished Office documents.
+    officeValue: Ground slide decks, briefs, and meeting notes in the latest internal documentation.
+    tags:
+      - wiki
+      - knowledge-base
+      - docs
+    capabilityHints:
+      - search pages
+      - read page content
+      - fetch spaces
+    requirements: []
+    envHints:
+      - key: CONFLUENCE_API_TOKEN
+        label: Confluence API token
+      - key: CONFLUENCE_BASE_URL
+        label: Confluence site URL
+        description: For example https://your-team.atlassian.net/wiki
+        required: true
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(create_page|update_page|delete_page|comment|publish)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.atlassian.com/v1/mcp
+    setupProfiles:
+      - id: atlassian-hosted-oauth
+        label: Sign in with Atlassian
+        description: Official Atlassian remote MCP for Confluence through browser sign-in.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.atlassian.com/v1/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Confluence page and space requests go to Atlassian's hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        endpointEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        authEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: community-local-stdio
+        label: Use local companion
+        description: Advanced self-hosted Jira/Confluence MCP through a local command.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: uvx
+        args:
+          - mcp-atlassian
+        credentialEnvKey: CONFLUENCE_API_TOKEN
+        requiresCompanion: true
+        officialness: community
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        endpointEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        authEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Community/local MCP profile; review the command and package source before enabling.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+    authUrl: https://id.atlassian.com/manage-profile/security/api-tokens
+    setupNotes:
+      - Use a site URL and token pair.
+      - Confluence works best for policy docs, specs, and meeting follow-ups.
+  - category: productivity
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: microsoft-365
+    name: Microsoft 365 (Work IQ)
+    vendor: Microsoft
+    iconKey: microsoft-365
+    maturity: beta
+    setupKind: remote_oauth
+    authMethod: oauth
+    transport: remote_http
+    readOnly: true
+    summary: Read Teams channels, SharePoint files, Outlook email, calendar events, and OneDrive documents through
+      Microsoft's official Work IQ MCP.
+    officeValue: "Ground your Office documents in real M365 context: meeting notes from Teams, source files from SharePoint,
+      and email threads from Outlook."
+    tags:
+      - m365
+      - teams
+      - sharepoint
+      - email
+      - calendar
+      - files
+      - onedrive
+    capabilityHints:
+      - search Teams messages
+      - read SharePoint files
+      - list calendar events
+      - search email
+      - browse OneDrive
+    requirements: []
+    envHints:
+      - key: M365_ACCESS_TOKEN
+        label: Microsoft 365 access token
+        description: If you already export a token locally, the add-in can reuse it.
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(send|message|reply|post|upload|delete|move|rename|share|grant|create|write|create_channel)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    setupProfiles:
+      - id: workiq-local-stdio
+        label: Use local Work IQ
+        description: Runs Microsoft's Work IQ MCP locally through the companion.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: oauth
+        command: npx
+        args:
+          - -y
+          - "@microsoft/workiq@latest"
+          - mcp
+        credentialEnvKey: M365_ACCESS_TOKEN
+        requiresCompanion: true
+        officialness: official_preview
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - Sign in
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+        endpointEvidenceUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+        authEvidenceUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+      - id: agent365-hosted-mail
+        label: Agent 365 hosted MCP
+        description: Advanced tenant/server endpoint for Microsoft Agent 365 MCP.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://agent365.svc.cloud.microsoft/agents/tenants/{tenantId}/servers/{serverId}
+        requiresCompanion: false
+        officialness: planned
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Requires Microsoft 365 Copilot/Agent 365 tenant setup and admin-approved OAuth.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+        endpointEvidenceUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+        authEvidenceUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Tenant/server-specific Agent 365 setup is visible as roadmap until Pi-Office supports verified Microsoft
+            OAuth handoff.
+        availability: planned
+        browserDirect: unknown
+        setupDisabled: true
+    docsUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+    authUrl: https://portal.office.com
+    setupNotes:
+      - Work IQ is Microsoft's official MCP server for M365 productivity data.
+      - Use browser sign-in or a Microsoft 365 access token from your IT-approved flow.
+      - Covers Teams, SharePoint, Calendar, Email, and OneDrive in a single connector.
+  - category: engineering
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: figma
+    name: Figma
+    vendor: Figma
+    iconKey: figma
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Read design files, comments, and handoff context while preparing specs or reviews.
+    officeValue: Reference source-of-truth design decisions when building product decks and feature briefs.
+    tags:
+      - design
+      - handoff
+      - review
+    capabilityHints:
+      - read file metadata
+      - inspect comments
+      - search design context
+    requirements: []
+    envHints:
+      - key: FIGMA_API_KEY
+        label: Figma token
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(create|update|delete|comment|post)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.figma.com/mcp
+    setupProfiles:
+      - id: figma-hosted-oauth
+        label: Sign in with Figma
+        description: Official hosted Figma MCP for supported MCP clients.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.figma.com/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Figma hosted MCP support depends on Figma's client catalog and workspace policy.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://developers.figma.com/docs/figma-mcp-server/
+        endpointEvidenceUrl: https://developers.figma.com/docs/figma-mcp-server/
+        authEvidenceUrl: https://developers.figma.com/docs/figma-mcp-server/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: figma-desktop-http
+        label: Use Figma desktop
+        description: Advanced local Figma Desktop MCP endpoint.
+        transport: remote_http
+        setupKind: remote_url_token
+        authMethod: none
+        endpoint: http://127.0.0.1:3845/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Uses the signed-in Figma desktop app on this machine.
+        simpleFields:
+          - Connector URL
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://developers.figma.com/docs/figma-mcp-server/
+        endpointEvidenceUrl: https://developers.figma.com/docs/figma-mcp-server/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Figma Desktop exposes a local MCP endpoint, so Pi-Office routes it through the companion instead of
+            browser-local calls.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://developers.figma.com/docs/figma-mcp-server/
+    authUrl: https://www.figma.com/developers/api
+    setupNotes:
+      - Use a personal access token or your approved workspace token.
+  - category: collaboration
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: slack
+    name: Slack
+    vendor: Slack
+    iconKey: slack
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: bearer_token
+    transport: remote_http
+    readOnly: true
+    summary: Read channels, threads, and searchable message history from Slack workspaces.
+    officeValue: Summarize scattered decisions into crisp Office-ready outputs without manually copying message threads.
+    tags:
+      - chat
+      - threads
+      - search
+    capabilityHints:
+      - search messages
+      - read channels
+      - inspect threads
+    requirements: []
+    envHints:
+      - key: SLACK_BOT_TOKEN
+        label: Slack bot token
+      - key: SLACK_USER_TOKEN
+        label: Slack user token
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(chat_post|post_message|reply|send|create_channel|archive)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.slack.com/mcp
+    setupProfiles:
+      - id: slack-hosted-oauth
+        label: Sign in with Slack
+        description: Official hosted Slack MCP, coming soon in Pi-Office after a Slack app is registered.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.slack.com/mcp
+        requiresCompanion: false
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Slack messages and channel metadata requested by tools go to Slack's hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.slack.dev/ai/slack-mcp-server/
+        endpointEvidenceUrl: https://docs.slack.dev/ai/slack-mcp-server/
+        authEvidenceUrl: https://docs.slack.dev/ai/slack-mcp-server/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Slack MCP does not support Dynamic Client Registration and requires a registered Slack app client ID/secret.
+            Pi-Office will enable setup after the Slack app registration path is ready.
+        availability: planned
+        browserDirect: unsupported
+        setupDisabled: true
+    docsUrl: https://docs.slack.dev/ai/slack-mcp-server/
+    authUrl: https://api.slack.com/apps
+    setupNotes:
+      - Slack MCP requires a registered Slack app with confidential OAuth, so Pi-Office setup is intentionally coming soon.
+      - Keep the connector visible as a roadmap entry until the Slack app registration and credential broker path is ready.
+  - category: knowledge
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: notion
+    name: Notion
+    vendor: Notion
+    iconKey: notion
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: bearer_token
+    transport: remote_http
+    readOnly: true
+    summary: Search pages, databases, and notes from shared Notion workspaces.
+    officeValue: Useful for pulling fast-moving planning notes into polished documents and presentations.
+    tags:
+      - notes
+      - wiki
+      - database
+    capabilityHints:
+      - search pages
+      - read databases
+      - inspect notes
+    requirements: []
+    envHints:
+      - key: NOTION_API_KEY
+        label: Notion internal integration token
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(create_page|update_page|append|write)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.notion.com/mcp
+    setupProfiles:
+      - id: notion-hosted-oauth
+        label: Sign in with Notion
+        description: Official hosted Notion MCP using browser sign-in.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.notion.com/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Notion workspace content requested by tools goes to Notion's hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://developers.notion.com/guides/mcp/overview
+        endpointEvidenceUrl: https://developers.notion.com/guides/mcp/overview
+        authEvidenceUrl: https://developers.notion.com/guides/mcp/overview
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: notion-local-stdio
+        label: Use local companion
+        description: Advanced local Notion MCP package with a Notion integration token.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: bearer_token
+        command: npx
+        args:
+          - -y
+          - "@notionhq/notion-mcp-server"
+        credentialEnvKey: NOTION_TOKEN
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - Access token
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://developers.notion.com/guides/mcp/overview
+        endpointEvidenceUrl: https://developers.notion.com/guides/mcp/overview
+        authEvidenceUrl: https://developers.notion.com/guides/mcp/overview
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://developers.notion.com/guides/mcp/overview
+    authUrl: https://www.notion.so/my-integrations
+    setupNotes:
+      - Use an internal integration token that already has page access granted.
+  - category: knowledge
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: advanced
+    catalogRevision: 2026-04-27
+    id: obsidian
+    name: Obsidian
+    vendor: Community
+    iconKey: obsidian
+    maturity: custom_mcp_only
+    setupKind: local_executable_or_docker
+    authMethod: none
+    transport: local_stdio
+    readOnly: true
+    customOnly: true
+    summary: Connect a local Obsidian MCP if your team already has one.
+    officeValue: Helpful for private research vaults and note libraries that are already curated locally.
+    tags:
+      - local
+      - notes
+      - vault
+    capabilityHints:
+      - search notes
+      - read vault content
+    requirements:
+      - key: node
+        label: Node.js
+      - key: npx
+        label: npx
+    envHints: []
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(append|write|rename|move|delete)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    setupProfiles:
+      - id: obsidian-local-stdio
+        label: Use local companion
+        description: Community Obsidian MCP through the optional local companion.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: uvx
+        args:
+          - mcp-obsidian
+        credentialEnvKey: OBSIDIAN_API_KEY
+        requiresCompanion: true
+        officialness: community
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://github.com/MarkusPfundstein/mcp-obsidian
+        endpointEvidenceUrl: https://github.com/MarkusPfundstein/mcp-obsidian
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Community local connector; users should review vault permissions and package provenance before setup.
+        availability: needs_companion
+        browserDirect: unsupported
+        authEvidenceUrl: https://github.com/MarkusPfundstein/mcp-obsidian
+    docsUrl: https://github.com/MarkusPfundstein/mcp-obsidian
+    setupNotes:
+      - Obsidian is shown as a community/local-only connector, not a vendor-official hosted MCP.
+  - category: knowledge
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: granola
+    name: Granola
+    vendor: Granola
+    iconKey: granola
+    maturity: beta
+    setupKind: remote_oauth
+    authMethod: oauth
+    transport: remote_http
+    readOnly: true
+    summary: Connect Granola meeting history through the official hosted MCP.
+    officeValue: Meeting notes and summaries can become source material for proposals, briefs, action docs, and follow-ups.
+    tags:
+      - meetings
+      - notes
+    capabilityHints:
+      - read meetings
+      - search notes
+    requirements: []
+    envHints: []
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.granola.ai/mcp
+    setupProfiles:
+      - id: granola-hosted-oauth
+        label: Sign in with Granola
+        description: Official hosted Granola MCP using browser sign-in.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.granola.ai/mcp
+        requiresCompanion: false
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Granola meeting notes requested by tools go directly from the taskpane to Granola after browser sign-in.
+        simpleFields:
+          - Sign in
+        advancedFields:
+          - MCP service URL
+          - Tool policy
+        docsUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+        endpointEvidenceUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Granola is an official hosted MCP with OAuth/DCR, but live Office webviews can be blocked by provider CORS
+            during Dynamic Client Registration. Keep the UI OAuth-only and fail closed with broker/companion guidance
+            when browser-side registration is blocked.
+        availability: available
+        browserDirect: unknown
+        authEvidenceUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+    docsUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+    setupNotes:
+      - Granola MCP uses browser sign-in through OAuth/DCR. Do not ask for an API key unless Granola publishes a
+        first-party MCP token flow.
+    authUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+  - category: knowledge
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: supermemory
+    name: Supermemory
+    vendor: Supermemory
+    iconKey: supermemory
+    maturity: beta
+    setupKind: remote_oauth
+    authMethod: oauth
+    transport: remote_http
+    readOnly: true
+    summary: Connect a hosted Supermemory MCP if your team uses it for memory and retrieval.
+    officeValue: Useful for quickly grounding drafts in prior conversations or indexed knowledge.
+    tags:
+      - memory
+      - retrieval
+    capabilityHints:
+      - search memories
+      - retrieve saved context
+    requirements: []
+    envHints:
+      - key: SUPERMEMORY_API_KEY
+        label: Supermemory token
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.supermemory.ai/mcp
+    setupProfiles:
+      - id: supermemory-hosted-oauth
+        label: Sign in with Supermemory
+        description: Official hosted Supermemory MCP using browser sign-in.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.supermemory.ai/mcp
+        requiresCompanion: false
+        officialness: official_preview
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Memory search and recall requests go to Supermemory's hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.supermemory.ai/mcp
+        endpointEvidenceUrl: https://docs.supermemory.ai/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Supermemory docs describe user/project-specific MCP setup; Pi-Office keeps this disabled until a stable
+            endpoint contract is confirmed.
+        availability: planned
+        browserDirect: unknown
+        setupDisabled: true
+        authEvidenceUrl: https://docs.supermemory.ai/mcp
+      - id: supermemory-api-key
+        label: Use API key
+        description: API-key setup for Supermemory projects.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: bearer_token
+        endpoint: https://mcp.supermemory.ai/mcp
+        credentialEnvKey: SUPERMEMORY_API_KEY
+        requiresCompanion: false
+        officialness: official_preview
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Access token
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.supermemory.ai/mcp
+        endpointEvidenceUrl: https://docs.supermemory.ai/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Supermemory docs describe user/project-specific MCP setup; Pi-Office keeps this disabled until a stable
+            endpoint contract is confirmed.
+        availability: planned
+        browserDirect: unknown
+        setupDisabled: true
+        authEvidenceUrl: https://docs.supermemory.ai/mcp
+    docsUrl: https://docs.supermemory.ai/mcp
+    setupNotes:
+      - Starts in custom setup until a stable template is confirmed.
+  - category: analytics
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: posthog
+    name: PostHog
+    vendor: PostHog
+    iconKey: posthog
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Read product analytics, dashboards, and event trends while building reviews or product updates.
+    officeValue: Ground roadmap decks and review docs in live usage data.
+    tags:
+      - analytics
+      - product
+      - usage
+    capabilityHints:
+      - query dashboards
+      - read insights
+      - inspect events
+    requirements: []
+    envHints:
+      - key: POSTHOG_API_KEY
+        label: PostHog personal API key
+      - key: POSTHOG_BASE_URL
+        label: PostHog host URL
+        description: Needed for self-hosted workspaces.
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(capture|create|update|delete|feature_flag_update)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.posthog.com/mcp
+    setupProfiles:
+      - id: posthog-us
+        label: Connect PostHog US
+        description: PostHog hosted MCP for app.posthog.com workspaces.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: api_key
+        endpoint: https://mcp.posthog.com/mcp
+        credentialEnvKey: POSTHOG_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Product analytics queries go to PostHog's hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - API key
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://posthog.com/docs/model-context-protocol
+        endpointEvidenceUrl: https://posthog.com/docs/model-context-protocol
+        authEvidenceUrl: https://posthog.com/docs/model-context-protocol
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: posthog-eu
+        label: Connect PostHog EU
+        description: PostHog hosted MCP for EU workspaces.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: api_key
+        endpoint: https://mcp-eu.posthog.com/mcp
+        credentialEnvKey: POSTHOG_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - API key
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://posthog.com/docs/model-context-protocol
+        endpointEvidenceUrl: https://posthog.com/docs/model-context-protocol
+        authEvidenceUrl: https://posthog.com/docs/model-context-protocol
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: posthog-oauth
+        label: Sign in with PostHog
+        description: OAuth setup for PostHog MCP where supported.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.posthog.com/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://posthog.com/docs/model-context-protocol
+        endpointEvidenceUrl: https://posthog.com/docs/model-context-protocol
+        authEvidenceUrl: https://posthog.com/docs/model-context-protocol
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+    docsUrl: https://posthog.com/docs/model-context-protocol
+    authUrl: https://app.posthog.com/settings/user-api-keys
+  - category: analytics
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: launchdarkly
+    name: LaunchDarkly
+    vendor: LaunchDarkly
+    iconKey: launchdarkly
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Read flag states, environments, and rollout context from LaunchDarkly.
+    officeValue: Ideal for release notes, rollout plans, and operational review slides.
+    tags:
+      - feature-flags
+      - release
+    capabilityHints:
+      - list flags
+      - inspect environments
+      - review rollout metadata
+    requirements: []
+    envHints:
+      - key: LAUNCHDARKLY_API_KEY
+        label: LaunchDarkly access token
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(patch|update|delete|create|toggle|archive)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.launchdarkly.com/mcp/fm
+    setupProfiles:
+      - id: launchdarkly-fm
+        label: Feature flags
+        description: LaunchDarkly hosted MCP for flag management read workflows.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.launchdarkly.com/mcp/fm
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Flag metadata requested by tools goes to LaunchDarkly's hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        endpointEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        authEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: launchdarkly-ai-configs
+        label: AI configs
+        description: LaunchDarkly hosted MCP for AI Configs context.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.launchdarkly.com/mcp/aiconfigs
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        endpointEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        authEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: launchdarkly-observability
+        label: Observability
+        description: LaunchDarkly hosted MCP for observability context.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.launchdarkly.com/mcp/observability
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        endpointEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        authEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: launchdarkly-local-stdio
+        label: Use local companion
+        description: Local LaunchDarkly MCP with a personal access token.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: npx
+        args:
+          - -y
+          - "@launchdarkly/mcp-server"
+        credentialEnvKey: LAUNCHDARKLY_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        endpointEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        authEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    authUrl: https://app.launchdarkly.com/settings/authorization/tokens
+  - category: commerce
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: shopify
+    name: Shopify
+    vendor: Shopify
+    iconKey: shopify
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Read products, orders, and store metrics for merchant-facing documents.
+    officeValue: Useful for merchandising reports, launch decks, and customer success recaps.
+    tags:
+      - commerce
+      - orders
+      - catalog
+    capabilityHints:
+      - list orders
+      - read products
+      - inspect store data
+    requirements: []
+    envHints:
+      - key: SHOPIFY_ACCESS_TOKEN
+        label: Shopify Admin API token
+      - key: SHOPIFY_STORE_DOMAIN
+        label: Shopify store domain
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(fulfill|refund|update|delete|create|adjust)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://{shopDomain}/api/mcp
+    setupProfiles:
+      - id: shopify-storefront
+        label: Storefront catalog
+        description: Shopify Storefront MCP for product/catalog reads.
+        transport: remote_http
+        setupKind: remote_url_token
+        authMethod: none
+        endpoint: https://{shopDomain}/api/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Public storefront catalog requests go to the Shopify shop domain you enter.
+        simpleFields:
+          - Connector URL
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+        endpointEvidenceUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: shopify-customer-account
+        label: Customer account
+        description: Shopify Customer Account MCP with browser sign-in.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://{shopDomain}/customer/api/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+        endpointEvidenceUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+        authEvidenceUrl: https://shopify.dev/docs/api/customer-account-api/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: shopify-dev-local
+        label: Use Shopify Dev MCP
+        description: Local Shopify developer MCP through the companion.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: none
+        command: npx
+        args:
+          - -y
+          - "@shopify/dev-mcp@latest"
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+        endpointEvidenceUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+    authUrl: https://shopify.dev/apps
+  - category: commerce
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: stripe
+    name: Stripe
+    vendor: Stripe
+    iconKey: stripe
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Read payments, subscriptions, and billing context for finance or operations work.
+    officeValue: Helpful for business reviews, reconciliations, and executive finance summaries.
+    tags:
+      - payments
+      - billing
+      - finance
+    capabilityHints:
+      - read charges
+      - list customers
+      - inspect subscriptions
+    requirements: []
+    envHints:
+      - key: STRIPE_API_KEY
+        label: Stripe secret key
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(refund|capture|create|update|delete|cancel)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.stripe.com
+    setupProfiles:
+      - id: stripe-hosted
+        label: Connect Stripe online
+        description: Stripe hosted MCP using OAuth or a restricted API key.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: api_key
+        endpoint: https://mcp.stripe.com
+        credentialEnvKey: STRIPE_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Stripe billing requests go to Stripe's hosted MCP service. Prefer restricted read-only keys.
+        simpleFields:
+          - Connector URL
+          - API key
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.stripe.com/mcp
+        endpointEvidenceUrl: https://docs.stripe.com/mcp
+        authEvidenceUrl: https://docs.stripe.com/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: stripe-local-stdio
+        label: Use local companion
+        description: Local Stripe MCP package with a restricted key.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: npx
+        args:
+          - -y
+          - "@stripe/mcp@latest"
+        credentialEnvKey: STRIPE_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://docs.stripe.com/mcp
+        endpointEvidenceUrl: https://docs.stripe.com/mcp
+        authEvidenceUrl: https://docs.stripe.com/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://docs.stripe.com/mcp
+    authUrl: https://dashboard.stripe.com/apikeys
+  - category: commerce
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: paypal
+    name: PayPal
+    vendor: PayPal
+    iconKey: paypal
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Read PayPal transaction and payout context for finance reporting.
+    officeValue: Useful for payout summaries, payment investigations, and finance ops templates.
+    tags:
+      - payments
+      - finance
+    capabilityHints:
+      - read transactions
+      - inspect payouts
+      - search payments
+    requirements: []
+    envHints:
+      - key: PAYPAL_ACCESS_TOKEN
+        label: PayPal access token
+      - key: PAYPAL_CLIENT_ID
+        label: PayPal client id
+      - key: PAYPAL_CLIENT_SECRET
+        label: PayPal client secret
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(refund|capture|create|update|cancel)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.sandbox.paypal.com/http
+    setupProfiles:
+      - id: paypal-sandbox-http
+        label: PayPal Sandbox
+        description: PayPal sandbox MCP over HTTP for safe setup and testing.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: bearer_token
+        endpoint: https://mcp.sandbox.paypal.com/http
+        credentialEnvKey: PAYPAL_ACCESS_TOKEN
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Sandbox payment requests go to PayPal's sandbox MCP service.
+        simpleFields:
+          - Connector URL
+          - Access token
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        endpointEvidenceUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        authEvidenceUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: paypal-live-http
+        label: PayPal Live
+        description: Production PayPal MCP over HTTP.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: bearer_token
+        endpoint: https://mcp.paypal.com/http
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Production payment requests go to PayPal's live MCP service.
+        simpleFields:
+          - Connector URL
+          - Access token
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        endpointEvidenceUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        authEvidenceUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: paypal-local-stdio
+        label: Use local companion
+        description: Local PayPal MCP package through the companion.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: bearer_token
+        command: npx
+        args:
+          - -y
+          - "@paypal/mcp"
+          - --tools=all
+        credentialEnvKey: PAYPAL_ACCESS_TOKEN
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - Access token
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        endpointEvidenceUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        authEvidenceUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://docs.paypal.ai/developer/tools/ai/mcp-quickstart
+    authUrl: https://developer.paypal.com/dashboard
+  - category: data
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: airtable
+    name: Airtable
+    vendor: Airtable
+    iconKey: airtable
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: bearer_token
+    transport: remote_http
+    readOnly: true
+    summary: Read tables, views, and linked records for operations and planning workflows.
+    officeValue: Great for status trackers, launch plans, hiring ops, and structured planning data in Office docs.
+    tags:
+      - tables
+      - planning
+      - ops
+    capabilityHints:
+      - list bases
+      - read records
+      - query views
+    requirements: []
+    envHints:
+      - key: AIRTABLE_API_KEY
+        label: Airtable token
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(create|update|delete|write|append)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.airtable.com/mcp
+    setupProfiles:
+      - id: airtable-hosted-oauth
+        label: Sign in with Airtable
+        description: Official Airtable hosted MCP with OAuth.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://mcp.airtable.com/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Selected Airtable base and record requests go to Airtable's hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+        endpointEvidenceUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+        authEvidenceUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: airtable-pat
+        label: Use personal token
+        description: Advanced Airtable personal access token setup.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: bearer_token
+        endpoint: https://mcp.airtable.com/mcp
+        credentialEnvKey: AIRTABLE_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Access token
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+        endpointEvidenceUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+        authEvidenceUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+    docsUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+    authUrl: https://airtable.com/create/tokens
+  - category: research
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: guided
+    catalogRevision: 2026-04-27
+    id: perplexity
+    name: Perplexity
+    vendor: Perplexity
+    iconKey: perplexity
+    maturity: beta
+    setupKind: local_node
+    authMethod: api_key
+    transport: local_stdio
+    readOnly: true
+    summary: Run Perplexity's official MCP server locally through the Pi-Office companion.
+    officeValue: Useful for fast briefing support and web-grounded background research.
+    tags:
+      - research
+      - search
+    capabilityHints:
+      - search web
+      - retrieve answers
+    requirements: []
+    envHints:
+      - key: PERPLEXITY_API_KEY
+        label: Perplexity token
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    setupProfiles:
+      - id: perplexity-local-stdio
+        label: Use local companion
+        description: Official Perplexity MCP package through the local companion.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: npx
+        args:
+          - -yq
+          - "@perplexity-ai/mcp-server"
+        credentialEnvKey: PERPLEXITY_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server
+        endpointEvidenceUrl: https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official setup is local STDIO/API-key only, so setup and verification are disabled until the companion is
+            connected.
+        availability: needs_companion
+        browserDirect: unsupported
+        authEvidenceUrl: https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server
+    docsUrl: https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server
+    setupNotes:
+      - Perplexity currently documents a local STDIO MCP package with PERPLEXITY_API_KEY, not a hosted OAuth MCP URL.
+  - category: research
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: parallel-web
+    name: Parallel Web
+    vendor: Parallel
+    iconKey: parallel
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Read fresh web results from Parallel's search tooling.
+    officeValue: Useful for market scans, competitive research, and cited briefing material.
+    tags:
+      - web
+      - search
+      - research
+    capabilityHints:
+      - web fetch
+      - web search
+    requirements: []
+    envHints:
+      - key: PARALLEL_API_KEY
+        label: Parallel API key
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://search-mcp.parallel.ai/mcp
+    setupProfiles:
+      - id: parallel-search-anonymous
+        label: Free web search
+        description: Parallel Search MCP public endpoint for limited anonymous search.
+        transport: remote_http
+        setupKind: remote_url_token
+        authMethod: none
+        endpoint: https://search-mcp.parallel.ai/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Anonymous/free search has limited use and is not the ZDR/org endpoint.
+        simpleFields:
+          - Connector URL
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.parallel.ai/search-api/search-mcp
+        endpointEvidenceUrl: https://docs.parallel.ai/search-api/search-mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: parallel-search-oauth-zdr
+        label: Account or ZDR search
+        description: Parallel Search MCP with OAuth/account attribution where the MCP authorization server offers it.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://search-mcp.parallel.ai/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Use this endpoint for account attribution, organization controls, or ZDR requirements.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.parallel.ai/search-api/search-mcp
+        endpointEvidenceUrl: https://docs.parallel.ai/search-api/search-mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Current official docs expose the same Search MCP endpoint; ZDR/account behavior depends on Parallel account
+            and OAuth metadata, not a hard-coded /mcp-oauth URL.
+        availability: available
+        browserDirect: unknown
+        authEvidenceUrl: https://docs.parallel.ai/search-api/search-mcp
+      - id: parallel-task-mcp
+        label: Deep research tasks
+        description: Parallel Task MCP for authenticated long-running research tasks.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: api_key
+        endpoint: https://task-mcp.parallel.ai/mcp
+        credentialEnvKey: PARALLEL_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Task MCP can create remote research tasks and may consume account quota.
+        simpleFields:
+          - Connector URL
+          - API key
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.parallel.ai/search-api/search-mcp
+        endpointEvidenceUrl: https://docs.parallel.ai/search-api/search-mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+        authEvidenceUrl: https://docs.parallel.ai/search-api/search-mcp
+    docsUrl: https://docs.parallel.ai/search-api/search-mcp
+    setupNotes:
+      - Use an API key-backed hosted MCP endpoint if your team provides one.
+  - category: research
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: exa-search
+    name: Exa Search
+    vendor: Exa
+    iconKey: exa
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Use Exa-backed search and discovery for research-heavy documents.
+    officeValue: Good for analyst notes, market maps, and supporting references in Office content.
+    tags:
+      - search
+      - research
+      - discovery
+    capabilityHints:
+      - web search
+      - content discovery
+    requirements: []
+    envHints:
+      - key: EXA_API_KEY
+        label: Exa API key
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.exa.ai/mcp
+    setupProfiles:
+      - id: exa-hosted
+        label: Connect Exa online
+        description: Exa hosted MCP with optional API key.
+        transport: remote_http
+        setupKind: remote_url_token
+        authMethod: none
+        endpoint: https://mcp.exa.ai/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Web queries, URLs, and fetched content requests go to Exa.
+        simpleFields:
+          - Connect online
+        advancedFields:
+          - MCP service URL
+          - Tool policy
+        docsUrl: https://exa.ai/mcp
+        endpointEvidenceUrl: https://exa.ai/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Exa currently documents a hosted MCP endpoint without requiring Pi-Office to collect an API key.
+        availability: available
+        browserDirect: unknown
+      - id: exa-hosted-basic-tools
+        label: Search and fetch only
+        description: Exa hosted MCP limited to search and fetch tools.
+        transport: remote_http
+        setupKind: remote_url_token
+        authMethod: none
+        endpoint: https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connect online
+        advancedFields:
+          - MCP service URL
+          - Tool policy
+        docsUrl: https://exa.ai/mcp
+        endpointEvidenceUrl: https://exa.ai/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Exa currently documents a hosted MCP endpoint without requiring Pi-Office to collect an API key.
+        availability: available
+        browserDirect: unknown
+      - id: exa-local-stdio
+        label: Use local companion
+        description: Local Exa MCP package through the companion.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: npx
+        args:
+          - -y
+          - exa-mcp-server
+        credentialEnvKey: EXA_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://exa.ai/mcp
+        endpointEvidenceUrl: https://exa.ai/mcp
+        authEvidenceUrl: https://exa.ai/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://exa.ai/mcp
+  - category: data
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: qdrant
+    name: Qdrant
+    vendor: Qdrant
+    iconKey: qdrant
+    maturity: beta
+    setupKind: remote_url_token
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Query vector collections and retrieval layers that back internal knowledge systems.
+    officeValue: Useful when Office docs need to reference internal RAG indexes or embeddings-based search.
+    tags:
+      - vector-db
+      - retrieval
+      - data
+    capabilityHints:
+      - query collections
+      - search points
+      - inspect collections
+    requirements: []
+    envHints:
+      - key: QDRANT_API_KEY
+        label: Qdrant API key
+      - key: QDRANT_URL
+        label: Qdrant base URL
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(upsert|delete|create_collection|update|write)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    setupProfiles:
+      - id: qdrant-local-stdio
+        label: Use local companion
+        description: Official Qdrant MCP through uvx on the companion machine.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: uvx
+        args:
+          - mcp-server-qdrant
+        credentialEnvKey: QDRANT_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://github.com/qdrant/mcp-server-qdrant
+        endpointEvidenceUrl: https://github.com/qdrant/mcp-server-qdrant
+        authEvidenceUrl: https://github.com/qdrant/mcp-server-qdrant
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+      - id: qdrant-local-http
+        label: Local HTTP endpoint
+        description: Advanced local Qdrant MCP over Streamable HTTP.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: api_key
+        endpoint: http://127.0.0.1:8000/mcp
+        credentialEnvKey: QDRANT_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - API key
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://github.com/qdrant/mcp-server-qdrant
+        endpointEvidenceUrl: https://github.com/qdrant/mcp-server-qdrant
+        authEvidenceUrl: https://github.com/qdrant/mcp-server-qdrant
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Local HTTP MCP endpoints are treated like local runtime access and require the Pi-Office companion.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://github.com/qdrant/mcp-server-qdrant
+  - category: productivity
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: google-drive
+    name: Google Drive
+    vendor: Google
+    iconKey: gdrive
+    maturity: beta
+    setupKind: remote_oauth
+    authMethod: oauth
+    transport: remote_http
+    readOnly: true
+    summary: Read shared Drive folders, Docs exports, and supporting files from Google Workspace.
+    officeValue: Bring reference material from Drive into Microsoft Office writing workflows.
+    tags:
+      - files
+      - docs
+      - workspace
+    capabilityHints:
+      - list files
+      - read file metadata
+      - search drive
+    requirements: []
+    envHints:
+      - key: GOOGLE_DRIVE_ACCESS_TOKEN
+        label: Google access token
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(upload|delete|move|rename|share|create|write)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://drivemcp.googleapis.com/mcp/v1
+    setupProfiles:
+      - id: google-drive-official
+        label: Sign in with Google
+        description: Google Drive first-party MCP Developer Preview.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://drivemcp.googleapis.com/mcp/v1
+        requiresCompanion: false
+        officialness: planned
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Drive file metadata/content requested by tools goes to Google's Drive MCP service.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://developers.google.com/drive
+        endpointEvidenceUrl: https://developers.google.com/drive
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Endpoint/auth contract is unverified from first-party MCP docs, so setup is visible as roadmap but disabled.
+        availability: planned
+        browserDirect: unknown
+        setupDisabled: true
+        authEvidenceUrl: https://developers.google.com/drive/api/guides/about-auth
+      - id: google-drive-legacy-local
+        label: Use local companion
+        description: Archived local Google Drive MCP fallback for advanced users.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: oauth
+        command: npx
+        args:
+          - -y
+          - "@modelcontextprotocol/server-gdrive"
+        credentialEnvKey: GOOGLE_DRIVE_ACCESS_TOKEN
+        requiresCompanion: true
+        officialness: deprecated
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - Sign in
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://developers.google.com/drive
+        endpointEvidenceUrl: https://developers.google.com/drive
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Community/local MCP profile; review the command and package source before enabling.
+        availability: needs_companion
+        browserDirect: unsupported
+        authEvidenceUrl: https://developers.google.com/drive/api/guides/about-auth
+    docsUrl: https://developers.google.com/drive
+    authUrl: https://console.cloud.google.com
+    setupNotes:
+      - The exact drivemcp.googleapis.com/mcp/v1 endpoint is intentionally planned/unverified until a first-party Google
+        source is attached.
+  - category: engineering
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: github
+    name: GitHub
+    vendor: GitHub
+    iconKey: github
+    maturity: ready
+    setupKind: remote_url_token
+    authMethod: bearer_token
+    transport: remote_http
+    readOnly: true
+    summary: Read repositories, issues, pull requests, and discussions from GitHub.
+    officeValue: Excellent for release notes, engineering reviews, and product updates assembled inside Office.
+    tags:
+      - code
+      - issues
+      - pull-requests
+    capabilityHints:
+      - read repo files
+      - list PRs
+      - search issues
+    requirements:
+      - key: node
+        label: Node.js
+      - key: npx
+        label: npx
+    envHints:
+      - key: GITHUB_PERSONAL_ACCESS_TOKEN
+        label: GitHub personal access token
+        description: Classic or fine-grained token with read scopes only when possible.
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(create_issue|create_pull|merge|close_pull|update|delete|comment|review|push)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://api.githubcopilot.com/mcp/readonly
+    setupProfiles:
+      - id: github-hosted-readonly
+        label: Connect GitHub online
+        description: Official GitHub hosted MCP read-only endpoint.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: bearer_token
+        endpoint: https://api.githubcopilot.com/mcp/readonly
+        credentialEnvKey: GITHUB_PERSONAL_ACCESS_TOKEN
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Repository and issue requests go to GitHub's hosted MCP/Copilot infrastructure.
+        simpleFields:
+          - Connector URL
+          - Access token
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        endpointEvidenceUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        authEvidenceUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: github-local-stdio
+        label: Use local companion
+        description: Official GitHub MCP server through Docker/binary/npx-compatible local launch.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: bearer_token
+        command: github-mcp-server
+        args:
+          - stdio
+          - --read-only
+        credentialEnvKey: GITHUB_PERSONAL_ACCESS_TOKEN
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - Access token
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        endpointEvidenceUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        authEvidenceUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+      - id: github-local-http
+        label: Local HTTP server
+        description: Advanced local GitHub MCP HTTP endpoint.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: bearer_token
+        endpoint: http://127.0.0.1:8082
+        credentialEnvKey: GITHUB_PERSONAL_ACCESS_TOKEN
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Access token
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        endpointEvidenceUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        authEvidenceUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Local HTTP MCP endpoints are treated like local runtime access and require the Pi-Office companion.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md
+    authUrl: https://github.com/settings/tokens
+    setupNotes:
+      - This is one of the most turnkey MCP setups for read-only knowledge access.
+  - category: engineering
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: gitlab
+    name: GitLab
+    vendor: GitLab
+    iconKey: gitlab
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: bearer_token
+    transport: remote_http
+    readOnly: true
+    summary: Read merge requests, issues, and project files from GitLab workspaces.
+    officeValue: Useful for engineering status packs and stakeholder-facing release materials.
+    tags:
+      - code
+      - issues
+      - merge-requests
+    capabilityHints:
+      - read files
+      - list merge requests
+      - inspect issues
+    requirements: []
+    envHints:
+      - key: GITLAB_PERSONAL_ACCESS_TOKEN
+        label: GitLab personal access token
+      - key: GITLAB_BASE_URL
+        label: GitLab base URL
+        description: Required for self-hosted GitLab instances.
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(approve|comment|create|update|delete|manage_pipeline|pipeline_run)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://gitlab.com/api/v4/mcp
+    setupProfiles:
+      - id: gitlab-hosted-oauth
+        label: Sign in with GitLab
+        description: Official GitLab MCP endpoint for GitLab.com or self-managed instances.
+        transport: remote_http
+        setupKind: remote_oauth
+        authMethod: oauth
+        endpoint: https://gitlab.com/api/v4/mcp
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - GitLab project, issue, and merge request reads go to the GitLab host you configure.
+        simpleFields:
+          - Connector URL
+          - Sign in
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+        endpointEvidenceUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+        authEvidenceUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: gitlab-pat
+        label: Use personal token
+        description: GitLab API token fallback for read-only project context.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: bearer_token
+        endpoint: https://gitlab.com/api/v4/mcp
+        credentialEnvKey: GITLAB_PERSONAL_ACCESS_TOKEN
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Connector requests are made by the companion to the hosted MCP service.
+        simpleFields:
+          - Connector URL
+          - Access token
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+        endpointEvidenceUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+        authEvidenceUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+    docsUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+    authUrl: https://gitlab.com/-/user_settings/personal_access_tokens
+  - category: data
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: guided
+    catalogRevision: 2026-04-27
+    id: postgresql-reader
+    name: PostgreSQL Reader
+    vendor: Community
+    iconKey: postgres
+    maturity: ready
+    setupKind: local_node
+    authMethod: api_key
+    transport: local_stdio
+    readOnly: true
+    summary: Run safe, read-only queries against Postgres data sources that back your reports and models.
+    officeValue: Very effective for pulling live numbers into tables, summaries, and decision docs.
+    tags:
+      - sql
+      - database
+      - reporting
+    capabilityHints:
+      - describe schema
+      - run SELECT queries
+      - inspect tables
+    requirements:
+      - key: node
+        label: Node.js
+      - key: npx
+        label: npx
+    envHints:
+      - key: DB_PASSWORD
+        label: Postgres password
+      - key: DB_HOST
+        label: Database host
+      - key: DB_DATABASE
+        label: Database name
+      - key: DB_USERNAME
+        label: Read-only username
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(insert|update|delete|alter|drop|truncate|grant|revoke)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: local_stdio
+      command: npx
+      args:
+        - -y
+        - "@hovecapital/read-only-postgres-mcp-server"
+      env:
+        DB_HOST: localhost
+        DB_PORT: "5432"
+        DB_DATABASE: ${DB_DATABASE}
+        DB_USERNAME: ${DB_USERNAME}
+        DB_PASSWORD: ${DB_PASSWORD}
+        DB_SSL: "false"
+    setupProfiles:
+      - id: readonly-local-stdio
+        label: Use local companion
+        description: Active read-only PostgreSQL MCP package through the companion.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: npx
+        args:
+          - -y
+          - "@hovecapital/read-only-postgres-mcp-server"
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_DATABASE: ${DB_DATABASE}
+          DB_USERNAME: ${DB_USERNAME}
+          DB_PASSWORD: ${DB_PASSWORD}
+          DB_SSL: "false"
+        credentialEnvKey: DB_PASSWORD
+        requiresCompanion: true
+        officialness: provider_reference
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://github.com/hovecapital/read-only-postgres-mcp-server
+        endpointEvidenceUrl: https://github.com/hovecapital/read-only-postgres-mcp-server
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Reference read-only database profile; still requires companion and must keep write/destructive SQL tools
+            disabled.
+        availability: needs_companion
+        browserDirect: unsupported
+        authEvidenceUrl: https://github.com/hovecapital/read-only-postgres-mcp-server
+    docsUrl: https://github.com/hovecapital/read-only-postgres-mcp-server
+    setupNotes:
+      - This is a reference/community read-only Postgres MCP package, not a PostgreSQL vendor-official hosted connector.
+  - category: research
+    recommendedHosts:
+      - word
+      - excel
+      - powerpoint
+    setupDifficulty: easy
+    catalogRevision: 2026-04-27
+    id: tavily
+    name: Tavily
+    vendor: Tavily
+    iconKey: tavily
+    maturity: beta
+    setupKind: remote_api_key
+    authMethod: api_key
+    transport: remote_http
+    readOnly: true
+    summary: Use Tavily-backed search for fast research and fresh web retrieval.
+    officeValue: Great for cited background research in briefs, decks, and customer-facing docs.
+    tags:
+      - web
+      - search
+      - research
+    capabilityHints:
+      - web search
+      - fetch results
+    requirements: []
+    envHints:
+      - key: TAVILY_API_KEY
+        label: Tavily API key
+    readPolicy:
+      mode: hard-read-only
+      allowResources: true
+      allowPrompts: false
+      allowToolPatterns:
+        - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+        - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+      blockToolPatterns:
+        - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+        - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+        - (^|_)(crawl)(_|$)
+      allowPromptPatterns: []
+      blockPromptPatterns:
+        - .*
+    template:
+      transport: remote_http
+      url: https://mcp.tavily.com/mcp/
+    setupProfiles:
+      - id: tavily-hosted
+        label: Connect Tavily online
+        description: Official hosted Tavily MCP with API-key auth.
+        transport: remote_http
+        setupKind: remote_api_key
+        authMethod: api_key
+        endpoint: https://mcp.tavily.com/mcp/
+        credentialEnvKey: TAVILY_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: true
+        defaultWhenCompanionPresent: true
+        privacyNotes:
+          - Search queries, URLs, and included Office text go to Tavily.
+        simpleFields:
+          - Connector URL
+          - API key
+        advancedFields:
+          - HTTP headers
+          - Environment-backed headers
+          - Tool policy
+        docsUrl: https://docs.tavily.com/documentation/mcp
+        endpointEvidenceUrl: https://docs.tavily.com/documentation/mcp
+        authEvidenceUrl: https://docs.tavily.com/documentation/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for
+            this endpoint.
+        availability: available
+        browserDirect: unknown
+      - id: tavily-local-stdio
+        label: Use local companion
+        description: Official Tavily MCP package through the companion.
+        transport: local_stdio
+        setupKind: local_node
+        authMethod: api_key
+        command: npx
+        args:
+          - -y
+          - tavily-mcp@latest
+        credentialEnvKey: TAVILY_API_KEY
+        requiresCompanion: true
+        officialness: official
+        defaultWhenCompanionAbsent: false
+        defaultWhenCompanionPresent: false
+        privacyNotes:
+          - Local command output and tool results are sent back to the active Pi-Office session.
+        simpleFields:
+          - Local companion
+          - Launch command
+          - API key
+        advancedFields:
+          - Arguments
+          - Working directory
+          - Environment variables
+          - Tool policy
+        docsUrl: https://docs.tavily.com/documentation/mcp
+        endpointEvidenceUrl: https://docs.tavily.com/documentation/mcp
+        authEvidenceUrl: https://docs.tavily.com/documentation/mcp
+        checkedAt: 2026-04-27
+        riskNotes:
+          - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+            commands.
+        availability: needs_companion
+        browserDirect: unsupported
+    docsUrl: https://docs.tavily.com/documentation/mcp

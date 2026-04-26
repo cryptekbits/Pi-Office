@@ -90,24 +90,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests cover auto-approval, explicit approval, explicit denial, and blocked-code paths.
   - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` using `new Function`, `addin/packages/pi-office-pack/src/protocol.ts` mapping `office_execute_js` to `write-doc`, and the default `autonomyLevel: "medium"`. 2026-04-26 hardening introduced the `escape-hatch` tool category, moved `office_execute_js` into it, excluded it from all autonomy auto-approval sets, and added tests proving it stays manual-only. 2026-04-26 closure normalized escape-hatch permission responses to `scope: "once"` even if a client sends `scope: "session"`, limited the permission popup to one-time approval for escape-hatch requests, and added protocol/UI contract tests for medium/high/extreme autonomy, explicit denial, explicit approval, attempted session approval, and blocked-code paths. Existing first-class tool inventory/registration tests and tool descriptions route common Office work toward structured tools before raw execution. Validation: `npm run test:office` passed with 91 tests; `npm run typecheck:taskpane` passed.
 
-- [ ] SECURITY-004: Add taskpane CSP/security policy and public privacy/storage disclosure
+- [x] SECURITY-004: Add taskpane CSP/security policy and public privacy/storage disclosure
   - Category: Security
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 competitor review against ChatGPT, Claude, and Ghostwriter inspiration captures.
   - Details: The taskpane is intended to be open-source and privacy-conscious, but the current implementation stores provider API keys, connector state/secrets, and chat history in browser storage. API key and connector envelopes use AES-GCM, but the crypto keys are also stored in localStorage, so this is local obfuscation rather than strong protection against same-origin script access or XSS. The taskpane shell also lacks an obvious CSP comparable to the ChatGPT inspiration capture. Users need a plain privacy/auth panel and docs that state what leaves the machine, what stays in browser storage, provider/connector call boundaries, telemetry defaults, clear-data controls, and the limits of localStorage encryption.
   - Dependencies: SECURITY-001, BUG-002, BUG-005 for accurate connector/provider disclosures.
   - Subtasks:
-    - [ ] Add a taskpane CSP or equivalent deployment security-header policy compatible with Office add-in hosts.
-    - [ ] Add in-app privacy/auth disclosure covering provider calls, connector calls, local chat history, audit logs, and localStorage credential limits.
-    - [ ] Add clear-data controls for provider auth, connector config/logs, and chat history.
-    - [ ] Document telemetry defaults and ensure any telemetry or analytics are opt-in and visibly disclosed.
-    - [ ] Evaluate stronger storage options for packaged builds or the optional companion, such as OS keychain/token broker storage.
+    - [x] Add a taskpane CSP or equivalent deployment security-header policy compatible with Office add-in hosts.
+    - [x] Add in-app privacy/auth disclosure covering provider calls, connector calls, local chat history, audit logs, and localStorage credential limits.
+    - [x] Add clear-data controls for provider auth, connector config/logs, and chat history.
+    - [x] Document telemetry defaults and ensure any telemetry or analytics are opt-in and visibly disclosed.
+    - [x] Evaluate stronger storage options for packaged builds or the optional companion, such as OS keychain/token broker storage.
   - Acceptance Criteria:
-    - [ ] Users can tell where keys, prompts, document snippets, connector requests, and chat history are stored or sent.
-    - [ ] A user can clear locally stored sensitive state from the UI.
-    - [ ] The taskpane has an explicit CSP/security policy or a documented Office-host-compatible reason why a different mechanism is used.
-  - Notes/Evidence: Review pointed to `BrowserAuthStore` and connector storage storing crypto keys in localStorage, `useChatHistory` persisting messages to localStorage, and inspiration add-ins with more explicit CSP/privacy surfaces.
+    - [x] Users can tell where keys, prompts, document snippets, connector requests, and chat history are stored or sent.
+    - [x] A user can clear locally stored sensitive state from the UI.
+    - [x] The taskpane has an explicit CSP/security policy or a documented Office-host-compatible reason why a different mechanism is used.
+  - Notes/Evidence: Review pointed to `BrowserAuthStore` and connector storage storing crypto keys in localStorage, `useChatHistory` persisting messages to localStorage, and inspiration add-ins with more explicit CSP/privacy surfaces. Closed 2026-04-26 by adding a taskpane `Content-Security-Policy` meta policy in `addin/apps/taskpane/index.html`, a Settings -> Privacy tab that discloses provider calls, connector calls, saved chat history, telemetry defaults, and the limits of localStorage-held AES-GCM keys, clear-data controls for all provider credentials, all connector config/secrets/scopes/OAuth state/logs, and saved local chat history, runtime routes `DELETE /v1/auth` and `DELETE /v1/connectors` that also remove their local crypto keys, and `docs/privacy-and-storage.md` linked from `README.md`. Stronger OS keychain/token-broker storage remains future provider/advanced-companion work and is documented as the intended hardening path. Regression coverage added in `addin/scripts/office-tests/src/privacy-storage.test.ts` for the CSP declaration, provider auth clear-all, connector clear-all, and chat-history clearing. Validation: `npm run typecheck:addin` passed; `npm run test:office` passed with 105 tests; `npm run build:addin` passed; `npm run typecheck:companion` passed; `npm run check:bundle` passed with `main.js=1436.3 KiB`; `npm run validate:manifests` validated Word, Excel, and PowerPoint.
 
 - [x] SECURITY-005: Maintain originality/provenance audit for competitor-inspired capabilities
   - Category: Security
@@ -145,23 +145,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Sandbox probes prove denied filesystem, secret, and network operations fail closed before shell is enabled.
   - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second. 2026-04-26 first slice added `docs/companion-shell-sandbox.md` with the required policy, platform backends, protocol contract, and destructive probes; README then stated shell/bash was unavailable until that policy was implemented; `addin/scripts/office-tests/src/external-context-gaps.test.ts` asserted the active session did not expose `bash`, `edit`, or `write` tools and the companion server had no shell/bash/exec route. 2026-04-26 closure added shared shell capability/request/result protocol types, `companion/src/shell-sandbox.ts` with fail-closed backend detection, policy validation, destructive probes, environment scrubbing, output caps, timeout plumbing, and `createCompanionBashOperations`; companion health/session routes now expose shell capability and a sandboxed execute endpoint that returns unavailable/denied unless the sandbox state is `available`; the taskpane only publishes `bash` for saved documents with a connected companion whose sandbox capability is available. Tests in `addin/scripts/office-tests/src/companion-shell-sandbox.test.ts` cover default-disabled detection, degraded Windows/Linux/macOS-style fallback, destructive probes, scratch-only writes, unavailable execution, env scrubbing, output caps, timeouts, and the BashOperations adapter. `addin/scripts/office-tests/src/external-context-gaps.test.ts` proves default sessions still expose no raw `bash`, `edit`, or `write` tools and that companion shell routing goes through `CompanionShellSandbox`. Validation: `npm run test:office` passed with 98 tests; `npm run typecheck:taskpane` and `npm run typecheck:companion` passed.
 
-- [ ] SECURITY-007: Audit third-party connector logo licensing and source provenance before public packaging
+- [x] SECURITY-007: Audit third-party connector logo licensing and source provenance before public packaging
   - Category: Security
-  - Status: open
+  - Status: obsolete
   - Priority: P1
   - Source: 2026-04-26 `SECURITY-005` provenance audit.
   - Details: The active taskpane contains connector logo/image assets under `addin/apps/taskpane/public/connectors`. They are not copied competitor-add-in assets, but they are third-party vendor-identification marks and should have source/license notes or neutral fallback badges before a public package/release is cut.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Inventory every connector image/SVG under `addin/apps/taskpane/public/connectors`.
-    - [ ] Record source, license, trademark usage note, and replacement/fallback plan for each asset.
-    - [ ] Replace any asset that lacks acceptable source/license provenance with an original neutral badge or generated non-brand icon.
-    - [ ] Add a release check or doc section proving packaged connector assets match the approved inventory.
+    - [x] Inventory every connector image/SVG under `addin/apps/taskpane/public/connectors`.
+    - [x] Record source, license, trademark usage note, and replacement/fallback plan for each asset.
+    - [x] Replace any asset that lacks acceptable source/license provenance with an original neutral badge or generated non-brand icon.
+    - [x] Add a release check or doc section proving packaged connector assets match the approved inventory.
   - Acceptance Criteria:
-    - [ ] Public release artifacts do not bundle connector brand marks without documented source/license/trademark review.
-    - [ ] Any unapproved connector asset has a neutral fallback in the taskpane.
-    - [ ] `docs/provenance.md` or a linked asset inventory records the final approved state.
-  - Notes/Evidence: `docs/provenance.md` now distinguishes competitor provenance from third-party connector logo licensing and explicitly tracks this as the remaining asset provenance gap.
+    - [x] Public release artifacts do not bundle connector brand marks without documented source/license/trademark review.
+    - [x] Any unapproved connector asset has a neutral fallback in the taskpane.
+    - [x] `docs/provenance.md` or a linked asset inventory records the final approved state.
+  - Notes/Evidence: `docs/provenance.md` now distinguishes competitor provenance from third-party connector logo licensing and explicitly tracks this as the remaining asset provenance gap. Obsoleted 2026-04-26 by stakeholder decision: connector logos are acceptable as-is and do not need a licensing/source audit for the current release path.
 
 ### Bugs
 
@@ -200,132 +200,132 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Remote HTTP and local stdio connector behavior is covered by tests.
   - Notes/Evidence: Review pointed to `buildCompanionSessionConnectors` filtering `local_stdio`, non-local statuses receiving `executionAvailable: true`, and only companion-backed `mcp` tool registration. 2026-04-26 fix chose setup-only browser behavior until remote MCP execution exists, updated runtime metadata/diagnostics/README, and added `remote HTTP connectors are marked setup-only until browser execution exists` in `addin/scripts/office-tests/src/external-context-gaps.test.ts`.
 
-- [ ] BUG-003: Local stdio connector credential and environment propagation is incomplete
+- [x] BUG-003: Local stdio connector credential and environment propagation is incomplete
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 worktree review.
   - Details: The companion connector bridge resolves credentials, but local stdio runtime creation does not inject resolved manual secrets or detected/env credentials into the child process. It also passes `runtime.env` as the process env for `StdioClientTransport`; if the SDK does not merge with `process.env`, custom connector env may drop `PATH` and other required system variables.
   - Dependencies: SECURITY-001 for secure credential lifecycle and storage expectations.
   - Subtasks:
-    - [ ] Trace the MCP SDK `StdioClientTransport` env behavior and confirm whether it merges or replaces `process.env`.
-    - [ ] Define how each credential source maps into local stdio process env without leaking secrets in UI/logs.
-    - [ ] Merge inherited safe environment variables with connector-specific env when launching local stdio connectors.
-    - [ ] Add tests or a local probe harness for manual secret, env-var secret, detected-env secret, and custom env cases.
+    - [x] Trace the MCP SDK `StdioClientTransport` env behavior and confirm whether it merges or replaces `process.env`.
+    - [x] Define how each credential source maps into local stdio process env without leaking secrets in UI/logs.
+    - [x] Merge inherited safe environment variables with connector-specific env when launching local stdio connectors.
+    - [x] Add tests or a local probe harness for manual secret, env-var secret, detected-env secret, and custom env cases.
   - Acceptance Criteria:
-    - [ ] Local stdio connectors receive required credentials through the intended env variable.
-    - [ ] Custom env does not break command discovery or PATH-dependent launches.
-    - [ ] Secrets are not printed in diagnostics, status cards, logs, or exported connector bundles.
-  - Notes/Evidence: Review pointed to `companion/src/connector-bridge.ts` computing credentials but building local runtime without credential injection.
+    - [x] Local stdio connectors receive required credentials through the intended env variable.
+    - [x] Custom env does not break command discovery or PATH-dependent launches.
+    - [x] Secrets are not printed in diagnostics, status cards, logs, or exported connector bundles.
+  - Notes/Evidence: Review pointed to `companion/src/connector-bridge.ts` computing credentials but building local runtime without credential injection. 2026-04-26 trace confirmed the installed MCP SDK merges `getDefaultEnvironment()` with supplied stdio env; Pi-Office now also explicitly builds the stdio env from the SDK safe inherited key list, merges connector env, and injects manual/env/detected credentials only under the intended env variable. Manual local credentials with no env target now stay `auth_required` with `credential_env_key_required`, and taskpane setup preserves the local env target for manual secrets. Regression coverage added in `addin/scripts/office-tests/src/companion-connector-bridge.test.ts`; validation passed with `npm run typecheck:companion`, `npm run typecheck:taskpane`, `npm run test:office`, `npm run build`, `npm run validate:manifests`, and `npm run check:bundle`.
 
-- [ ] BUG-004: Office state refresh race and deduping follow-up
+- [x] BUG-004: Office state refresh race and deduping follow-up
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS5 and observation mapping.
   - Details: The transition plan called out office state refresh race potential during the independent taskpane migration. Selection-change handlers, polling, and session state sync can overlap in Office hosts, especially Word desktop, leading to noisy refresh failures or stale document/selection state.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Trace all Office state refresh triggers in the taskpane app and host adapters.
-    - [ ] Add throttling, deduping, or latest-only cancellation so stale refreshes cannot overwrite newer state.
-    - [ ] Ensure errors from transient Office host state are surfaced only when actionable.
-    - [ ] Add focused tests or smoke scenarios for rapid selection changes and taskpane reconnect.
+    - [x] Trace all Office state refresh triggers in the taskpane app and host adapters.
+    - [x] Add throttling, deduping, or latest-only cancellation so stale refreshes cannot overwrite newer state.
+    - [x] Ensure errors from transient Office host state are surfaced only when actionable.
+    - [x] Add focused tests or smoke scenarios for rapid selection changes and taskpane reconnect.
   - Acceptance Criteria:
-    - [ ] Rapid selection changes do not produce recurring "Office state refresh failed" noise.
-    - [ ] Stale refresh responses cannot replace newer session state.
-    - [ ] Word desktop smoke testing confirms selection/context updates remain stable.
-  - Notes/Evidence: Transition plan lists "Office state refresh race potential" under WS5.
+    - [x] Rapid selection changes do not produce recurring "Office state refresh failed" noise.
+    - [x] Stale refresh responses cannot replace newer session state.
+    - [x] Word desktop smoke testing confirms selection/context updates remain stable.
+  - Notes/Evidence: Transition plan lists "Office state refresh race potential" under WS5. 2026-04-26 automated hardening traced the active refresh path to `subscribeToOfficeChanges()` in `addin/apps/taskpane/src/lib/office/shared.ts` and the async listener in `App.tsx`. The taskpane now issues monotonically increasing refresh attempt tokens, applies Office state/session sync responses only when they are still the latest active attempt for the same session, suppresses stale errors from older attempts, and dedupes repeated transient refresh failures for 15 seconds. Focused regression coverage in `addin/scripts/office-tests/src/office-refresh-policy.test.ts` proves latest-only session matching and error deduping. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 124 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`. 2026-04-26 Word desktop smoke from stakeholder passed taskpane load/reconnect, rapid selection refresh, focus/keyboard behavior, streaming scroll, and non-mutating review/visual-honesty checks. Stakeholder noted selection freshness and review adherence remain partly model-dependent, but the Office refresh layer updated to the latest selection through a follow-up context call and did not show recurring refresh-failure noise. Connector validation failed separately and is tracked in `BUG-011`.
 
-- [ ] BUG-005: Provider readiness reports stored credentials as ready without validating usability
+- [x] BUG-005: Provider readiness reports stored credentials as ready without validating usability
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 product-goal review and provider/auth/privacy subagent review.
   - Details: Provider/model status treats the presence of a stored API key as configured/ready. The taskpane accepts and persists a string, `BrowserModelRegistry` reports models as configured via `hasAuth(providerId)`, and Settings displays ready counts from that flag. A mistyped, expired, revoked, or incompatible key can therefore appear ready until the first real model call fails. For a provider-flexible product, "stored" and "verified usable" need separate states.
   - Dependencies: FEATURE-002 for broader provider-auth capability modeling.
   - Subtasks:
-    - [ ] Split provider auth state into at least `credentialStored`, `verifiedUsable`, `verificationFailed`, and `notConfigured`.
-    - [ ] Add a lightweight validation path where provider APIs support it, or mark keys unverified until the first successful request.
-    - [ ] Demote provider/model readiness after 401/403/auth failures and surface actionable recovery text.
-    - [ ] Update Settings labels so unverified credentials do not read as fully ready.
-    - [ ] Add tests for saved-but-invalid, verified, expired/revoked, and recovered provider credentials.
+    - [x] Split provider auth state into at least `credentialStored`, `verifiedUsable`, `verificationFailed`, and `notConfigured`.
+    - [x] Add a lightweight validation path where provider APIs support it, or mark keys unverified until the first successful request.
+    - [x] Demote provider/model readiness after 401/403/auth failures and surface actionable recovery text.
+    - [x] Update Settings labels so unverified credentials do not read as fully ready.
+    - [x] Add tests for saved-but-invalid, verified, expired/revoked, and recovered provider credentials.
   - Acceptance Criteria:
-    - [ ] A newly saved key is not labeled fully ready unless it has been verified or successfully used.
-    - [ ] Auth failures update provider status visibly.
-    - [ ] Model selection cannot imply a provider is usable when only an unverified credential string exists.
-  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` accepting API keys and using `hasAuth`, plus `addin/apps/taskpane/src/app/components/SettingsPage.tsx` deriving ready counts from model `configured`.
+    - [x] A newly saved key is not labeled fully ready unless it has been verified or successfully used.
+    - [x] Auth failures update provider status visibly.
+    - [x] Model selection cannot imply a provider is usable when only an unverified credential string exists.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` accepting API keys and using `hasAuth`, plus `addin/apps/taskpane/src/app/components/SettingsPage.tsx` deriving ready counts from model `configured`. Closed 2026-04-26 by adding shared provider auth states (`not_configured`, `credential_stored`, `verified_usable`, `verification_failed`), preserving legacy `configured` as credential-present while exposing explicit `credentialStored`/`verifiedUsable` metadata, migrating old stored keys to unverified, promoting providers after successful model/image requests, demoting 401/403/auth failures, and updating Settings/model-picker labels to show `Unverified` or `Auth failed` instead of `Ready`. Regression coverage added in `addin/scripts/office-tests/src/provider-auth-readiness.test.ts` for newly saved, legacy stored, auth-failed, and recovered credentials. Validation: `npm run typecheck:addin` passed; `npm run test:office` passed with 101 tests; `npm run build:addin` passed; `npm run typecheck:companion` passed; `npm run check:bundle` passed with `main.js=1436.3 KiB`; `npm run validate:manifests` validated Word, Excel, and PowerPoint.
 
-- [ ] BUG-006: Image-generation UI and catalog imply providers that browser runtime cannot execute
+- [x] BUG-006: Image-generation UI and catalog imply providers that browser runtime cannot execute
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: 2026-04-26 product-goal review and provider/auth/privacy subagent review.
   - Details: Settings copy tells users to configure OpenAI, Google, or OpenRouter for image models, and protocol constants include multiple image API styles. The browser runtime currently hard-errors unless the selected image model provider is OpenAI. This creates capability drift for visual reasoning and diagram/image workflows.
   - Dependencies: FEATURE-002 if non-OpenAI image providers are implemented through the broader provider matrix.
   - Subtasks:
-    - [ ] Decide whether v1 image generation is OpenAI-only or multi-provider.
-    - [ ] If OpenAI-only, restrict catalog/UI copy to OpenAI and explain other providers are not implemented yet.
-    - [ ] If multi-provider, implement Google/OpenRouter image execution paths with provider-specific request/response handling.
-    - [ ] Add tests proving the configured image model catalog matches executable providers.
+    - [x] Decide whether v1 image generation is OpenAI-only or multi-provider.
+    - [x] Restrict catalog/UI copy to OpenAI and explain other providers are not implemented yet.
+    - [x] Defer Google/OpenRouter image execution paths behind future provider-specific runtime work.
+    - [x] Add tests proving the configured image model catalog matches executable providers.
   - Acceptance Criteria:
-    - [ ] The UI never lists an image provider as usable unless runtime execution exists.
-    - [ ] Unsupported image providers fail at configuration/catalog time with clear messaging, not only during generation.
-    - [ ] Tests cover image-provider catalog/runtime consistency.
-  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/app/components/SettingsPage.tsx` mentioning OpenAI/Google/OpenRouter and `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` throwing for non-OpenAI image generation.
+    - [x] The UI never lists an image provider as usable unless runtime execution exists.
+    - [x] Unsupported image providers fail at configuration/catalog time with clear messaging, not only during generation.
+    - [x] Tests cover image-provider catalog/runtime consistency.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/app/components/SettingsPage.tsx` mentioning OpenAI/Google/OpenRouter and `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` throwing for non-OpenAI image generation. Closed 2026-04-26 by making Settings image-generation copy OpenAI-only, keeping `/v1/image-models` OpenAI-only, adding `imageGenerationSupported` provider capability metadata, and rejecting unsupported `defaultImageModel` preference writes before generation. Regression coverage in `addin/scripts/office-tests/src/provider-auth-readiness.test.ts` proves the image catalog is OpenAI-only and non-catalog image model preferences fail during configuration. Validation passed: `npm run typecheck:addin`, `npm run test:office`, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
-- [ ] BUG-007: Visual capture tools overstate screenshot and range-image fidelity
+- [x] BUG-007: Visual capture tools overstate screenshot and range-image fidelity
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 product-goal review; 2026-04-26 Office-host subagent review.
   - Details: The product goal depends on vision and layout reasoning for diagrams, images, pitch decks, resumes, and polished documents. Current Word viewport capture is explicitly metadata/context-derived and cannot capture a pixel-perfect window/page screenshot after the companion-based window capture was removed. Excel `read_range_image` is described as first-class range imagery but falls back to generic selected-image capture rather than rendering/copying the requested range. Settings also calls `office_capture_snapshot` a visual screenshot even though the actual contract is selection/context snapshots plus metadata.
   - Dependencies: TESTING-002 for manual Office desktop validation.
   - Subtasks:
-    - [ ] Reconcile tool names/descriptions so they match current fidelity exactly.
-    - [ ] Decide whether to restore a safe owner-approved viewport/window capture capability or keep metadata-only capture.
-    - [ ] Implement a real Excel range image path or downgrade `read_range_image` messaging until one exists.
-    - [ ] Add visual QA tests/manual scripts for Word viewport and Excel range-image scenarios.
+    - [x] Reconcile tool names/descriptions so they match current fidelity exactly.
+    - [x] Decide whether to restore a safe owner-approved viewport/window capture capability or keep metadata-only capture.
+    - [x] Implement a real Excel range image path or downgrade `read_range_image` messaging until one exists.
+    - [x] Add visual QA tests/manual scripts for Word viewport and Excel range-image scenarios.
   - Acceptance Criteria:
-    - [ ] Tool descriptions and Settings copy do not claim pixel screenshots or range imagery unless actually produced.
-    - [ ] Word layout prompts clearly distinguish metadata/context-derived views from true screenshots.
-    - [ ] Excel visual range workflows either return a real image of the requested range or report the limitation clearly.
-  - Notes/Evidence: Review pointed to `office_capture_viewport` comments in `addin/apps/taskpane/src/lib/office-bridge.ts`, `read_range_image` fallback in `addin/apps/taskpane/src/lib/office/excel-context.ts`, and Settings tool descriptions.
+    - [x] Tool descriptions and Settings copy do not claim pixel screenshots or range imagery unless actually produced.
+    - [x] Word layout prompts clearly distinguish metadata/context-derived views from true screenshots.
+    - [x] Excel visual range workflows either return a real image of the requested range or report the limitation clearly.
+  - Notes/Evidence: Review pointed to `office_capture_viewport` comments in `addin/apps/taskpane/src/lib/office-bridge.ts`, `read_range_image` fallback in `addin/apps/taskpane/src/lib/office/excel-context.ts`, and Settings tool descriptions. Closed 2026-04-26 by downgrading snapshot/range-image tool descriptions to Office.js context snapshots, documenting `read_range_image` as an active-selection snapshot rather than arbitrary offscreen range rendering, and making requested range mismatches fail with guidance to select/navigate first. Regression coverage added in `addin/scripts/office-tests/src/excel-object-export-tools.test.ts`; `docs/CLAUDE_ADDIN_INVESTIGATION_AND_TRACKING.md` now records the partial active-selection fidelity. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 114 tests, `npm run check:bundle`, `npm run build`, and `npm run validate:manifests`.
 
-- [ ] BUG-008: Excel rewind restores values and number formats but drops formulas
+- [x] BUG-008: Excel rewind restores values and number formats but drops formulas
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 Office-host subagent review.
   - Details: Excel checkpoint capture stores formulas, values, and number formats, but restore writes only `range.values` and `range.numberFormat`. For DCFs, financial models, and analytical workbooks, a rewind that flattens formulas into values can silently destroy the model while appearing successful.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Define the intended Excel checkpoint fidelity contract for formulas, formats, tables, charts, validations, and workbook structure.
-    - [ ] Restore formulas when formula data exists, preserving values only where formulas are absent.
-    - [ ] Add safety messaging when a snapshot cannot fully restore workbook semantics.
-    - [ ] Add tests for formula preservation, mixed formula/value ranges, and number-format preservation.
+    - [x] Define the intended Excel checkpoint fidelity contract for formulas, formats, tables, charts, validations, and workbook structure.
+    - [x] Restore formulas when formula data exists, preserving values only where formulas are absent.
+    - [x] Add safety messaging when a snapshot cannot fully restore workbook semantics.
+    - [x] Add tests for formula preservation, mixed formula/value ranges, and number-format preservation.
   - Acceptance Criteria:
-    - [ ] Rewinding an Excel checkpoint preserves formulas for captured formula cells.
-    - [ ] The tool reports any unsupported workbook elements that were not restored.
-    - [ ] Tests protect DCF-style workbook formulas from value-only flattening.
-  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` loading `formulas` during capture but restoring only values and number formats.
+    - [x] Rewinding an Excel checkpoint preserves formulas for captured formula cells.
+    - [x] The tool reports any unsupported workbook elements that were not restored.
+    - [x] Tests protect DCF-style workbook formulas from value-only flattening.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` loading `formulas` during capture but restoring only values and number formats. 2026-04-26 fix changed Excel restore to prefer the captured `range.formulas` matrix, which includes both formula cells and constant cells per Office.js, and falls back to values only when formula data is missing or shape-mismatched. Restore now returns warnings for values-only fallback and for the current checkpoint fidelity boundary: used-range formulas/constants/number formats only, not full replay of tables, charts, data validation, or workbook structure. The taskpane surfaces those restore warnings as system messages. Regression tests in `addin/scripts/office-tests/src/excel-rewind.test.ts` prove mixed formula/value matrices write `range.formulas`, values are not used when formulas are available, number formats are restored, and values-only fallback warns. Validation passed with `npm run typecheck:addin`, `npm run test:office`, `npm run build`, `npm run validate:manifests`, and `npm run check:bundle`.
 
-- [ ] BUG-009: PowerPoint shape anchoring and slide-master tooling can mislead agents
+- [x] BUG-009: PowerPoint shape anchoring and slide-master tooling can mislead agents
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 Office-host subagent review.
   - Details: PowerPoint selected-shape descriptors and anchors currently appear to attach selected shapes to `slides.items[0]`, which can produce bad anchors for cross-slide or multi-slide operations. Separately, `edit_slide_master` is named and described as layout/master editing, but the bridge currently supports only `apply_layout`. These gaps can make agents confidently target the wrong slide or overpromise master/layout mutation.
   - Dependencies: TESTING-002 for manual PowerPoint validation if desktop behavior differs from tests.
   - Subtasks:
-    - [ ] Verify selected-shape slide ownership for single-slide, multi-slide, and cross-slide selection scenarios.
-    - [ ] Fix selected-shape descriptors/anchors to include the actual owning slide where Office.js exposes it.
-    - [ ] Rename or narrow `edit_slide_master`, or implement real master/layout mutation beyond `apply_layout`.
-    - [ ] Add tests or fixtures for selected shape anchors and slide-layout operations.
+    - [x] Verify selected-shape slide ownership for single-slide, multi-slide, and cross-slide selection scenarios.
+    - [x] Fix selected-shape descriptors/anchors to include the actual owning slide where Office.js exposes it.
+    - [x] Rename or narrow `edit_slide_master`, or implement real master/layout mutation beyond `apply_layout`.
+    - [x] Add tests or fixtures for selected shape anchors and slide-layout operations.
   - Acceptance Criteria:
-    - [ ] Selected shape anchors resolve to the actual slide instead of defaulting to the first slide.
-    - [ ] `edit_slide_master` naming and behavior match exactly.
-    - [ ] Tests cover at least one multi-slide or non-first-slide shape operation.
-  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/powerpoint-context.ts` using `slides.items[0]` for selected shapes and `addin/apps/taskpane/src/lib/office-bridge.ts` limiting `edit_slide_master` to apply-layout operations.
+    - [x] Selected shape anchors resolve to the actual slide instead of defaulting to the first slide.
+    - [x] `edit_slide_master` naming and behavior match exactly.
+    - [x] Tests cover at least one multi-slide or non-first-slide shape operation.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/powerpoint-context.ts` using `slides.items[0]` for selected shapes and `addin/apps/taskpane/src/lib/office-bridge.ts` limiting `edit_slide_master` to apply-layout operations. Closed 2026-04-26 by resolving selected shape descriptors and anchors through `PowerPoint.Shape.getParentSlideOrNullObject()` when Office.js exposes it, falling back to the selected slide only when parent-slide metadata is unavailable. `edit_slide_master` is now labeled and described as legacy-named apply-existing-layout only; `set_slide_master`/`apply_master` style operations fail with a clear no-master-editing error. Regression coverage was added for non-first-slide shape metadata, tool labels/descriptions in both extension and in-process runtime, and unsupported master-edit operations. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 115 tests, `npm run check:bundle`, `npm run build`, and `npm run validate:manifests`.
 
 - [x] BUG-010: Add-in install and build gates emit stale dependency and bundle warnings
   - Category: Bug
@@ -346,6 +346,123 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] `npm run check:bundle` passes with the main JS bundle below budget.
     - [x] Existing typecheck, manifest validation, and Office regression tests still pass.
   - Notes/Evidence: Fixed by moving sideload scripts to pinned `npx --yes office-addin-debugging@6.0.7`, making manifest validation invoke pinned `office-addin-manifest@2.1.3` on demand, moving `mermaid` to the add-in root with a taskpane peer and `uuid@14.0.0` override, upgrading taskpane Vite to `8.0.10`, making Mermaid rendering a dynamic import, and resolving `vscode-jsonrpc` aliases through Node resolution after the clean lockfile changed hoisting. Validation on 2026-04-26: `npm ci --prefix addin` found 0 vulnerabilities; `npm audit --prefix addin --audit-level=low` found 0 vulnerabilities; `npm run typecheck:addin` passed; `npm run build:addin` passed with `index` 1,465.43 kB and no large-chunk warning; `npm run check:bundle` passed with `main.js=1431.1 KiB`; `npm run validate:manifests` validated Word, Excel, and PowerPoint; `npm run test:office` passed with 98 tests.
+
+- [x] BUG-011: Companion discovery and MCP connector execution are unavailable in real Office taskpane sessions
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-26 Word desktop manual smoke: stakeholder reported Test 6 failed after configuring the Parallel Web MCP connector; the model said no web connector/local companion was available. Stakeholder also reported companion discovery failed even while the companion server was running and Integrations diagnostics showed Node.js, npm, and npx as missing.
+  - Details: The optional companion runs on `https://localhost:3444` while the taskpane runs on `https://localhost:3443`, but the companion server did not emit loopback CORS headers, so a real Office webview could fail browser fetches to companion health/session routes even when the Node process was running. Connector diagnostics also came from the browser runtime and always marked local runtimes missing, even when companion diagnostics should represent the machine environment. Finally, connector save/reverify/scope changes refreshed Settings status but did not immediately resync the active Pi session, so newly verified MCP tools could remain absent from the model until an Office-state refresh/reopen. Remote HTTP MCP connectors such as Parallel Web were still browser setup-only despite the companion bridge already supporting remote HTTP/SSE MCP transports.
+  - Dependencies: BUG-002, BUG-003, SECURITY-006.
+  - Subtasks:
+    - [x] Add loopback CORS handling to the companion so the taskpane origin can call health, diagnostics, session, file, shell, and MCP routes.
+    - [x] Add companion runtime diagnostics for Node.js, npm, npx, Python, uv, Docker, and Git and route Integrations diagnostics through companion checks when connected.
+    - [x] Resync the active session after connector save, reverify, scope, favorite, import, and removal changes so model tool inventory updates without a Word restart.
+    - [x] Route verified remote HTTP MCP connectors through the optional companion instead of marking them browser-executable or permanently setup-only.
+    - [x] Update README and regression tests to describe the companion-routed MCP execution contract.
+  - Acceptance Criteria:
+    - [x] A real taskpane can discover a running loopback companion from `https://localhost:3443`.
+    - [x] Integrations diagnostics show companion machine runtime checks instead of browser-only missing Node/npm/npx state when the companion is connected.
+    - [x] Local stdio and remote HTTP MCP connectors can become model-visible only after companion verification exposes read-safe tool names.
+    - [x] Connector setup changes update the active session tool inventory without requiring a Word restart.
+  - Notes/Evidence: Implemented `companion/src/http.ts` for loopback CORS, `companion/src/runtime-diagnostics.ts` plus `/v1/diagnostics`, taskpane `CompanionClient.getConnectorDiagnostics()`, companion-routed diagnostics in `inprocess-kernel.ts`, connector-session resync calls in `App.tsx`, remote-HTTP companion connector definitions in `browser-connectors.ts`, and visible diagnostic details in `IntegrationsSection.tsx`. Regression coverage added in `addin/scripts/office-tests/src/companion-discovery.test.ts` and updated in `external-context-gaps.test.ts`. Validation passed: `npm run typecheck:companion`, `npm run typecheck:addin`, `npm run test:office` with 131 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
+
+- [x] BUG-012: Browser-opened taskpane fails with unsupported Office host instead of useful preview mode
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-26 browser debugging report; direct `https://localhost:3443/` load reproduced `Connection failed: Unsupported Office host: undefined`.
+  - Details: The user needs to debug taskpane UI in a normal browser because Word desktop debugging is hard to share. Loading the dev taskpane outside Office makes Microsoft `Office.js` log that it is outside an Office client, returns no host from `Office.onReady`, and Pi-Office falls into the generic connection-failure UI. This blocks browser inspection of Settings, provider catalog, connector setup, and general taskpane chrome. The fix must not fake real Office.js document capabilities: browser preview should be clearly labeled and should not expose Office document tools to the model.
+  - Dependencies: None.
+  - Subtasks:
+    - [x] Add a dev-only browser preview fallback when Office host discovery fails outside Word, Excel, or PowerPoint.
+    - [x] Use a synthetic unsaved Office state with host selection by query string for UI debugging.
+    - [x] Keep Office.js document tools out of browser-preview model tool inventory.
+    - [x] Document the browser preview flow and its Office.js limitations.
+    - [x] Add regression coverage for preview state and fallback gating.
+  - Acceptance Criteria:
+    - [x] Opening `https://localhost:3443/` in a normal development browser reaches a usable preview instead of a connection-failed state.
+    - [x] Preview mode clearly states no real Office host is attached.
+    - [x] The active model cannot call Office document read/write tools while in preview mode.
+    - [x] Normal Office sideload behavior remains unchanged.
+  - Notes/Evidence: Initial reproduction showed the header stuck at `Bridge offline`, context bar `Waiting for Office...`, and a visible error `Connection failed: Unsupported Office host: undefined`; browser logs showed `Warning: Office.js is loaded outside of Office client`. Closed 2026-04-26 by adding `BROWSER_DEBUG_OFFICE_CAPABILITY`, `createBrowserDebugOfficeState`, and dev-only fallback gating in `office/shared.ts`; wiring `App.tsx` to open a synthetic unsaved preview session when Office host discovery fails in dev; filtering Office document tools out of preview model sessions in `inprocess-kernel.ts`; and documenting `?piOfficeHost=excel|powerpoint` plus `?piOfficeBrowserDebug=0` in `README.md`. Browser verification showed `Bridge ready`, `Browser Preview (Word)`, one preview notice, and no connection-failed card. Regression coverage added in `browser-debug-office-state.test.ts` and `protocol-parity.test.ts`. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 144 tests, `npm run build:addin`, `npm run check:bundle`, and `npm run validate:manifests`.
+
+- [x] BUG-013: Hosted HTTP connector wizard shows companion warning and OAuth opens from runtime
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 stakeholder review of hosted HTTP connector setup copy and OAuth launch behavior.
+  - Details: Hosted HTTP connector profiles that are not yet proven browser-direct showed the same "Optional companion not connected" warning as local STDIO profiles, making online OAuth setup feel blocked by the companion. The OAuth URL was also opened by the runtime after async setup/metadata work, which can be treated as a non-user-initiated popup and does not match the dedicated-window pattern used by diagram expansion.
+  - Dependencies: FEATURE-008.
+  - Subtasks:
+    - [x] Suppress the optional-companion warning/copy for hosted HTTP setup profiles while keeping local-only companion warnings.
+    - [x] Move OAuth URL opening to the UI click path using a dedicated named popup window before async setup work.
+    - [x] Keep the runtime responsible for generating OAuth state/URL, not opening browser windows.
+    - [x] Add a fallback sign-in link when the dedicated popup is blocked.
+  - Acceptance Criteria:
+    - [x] Hosted HTTP connector setup no longer displays the optional companion warning in the Connect step.
+    - [x] Local STDIO/local companion profiles still display companion requirements.
+    - [x] OAuth sign-in is launched through a dedicated user-initiated window and the runtime returns the generated URL.
+    - [x] Typecheck, Office tests, whitespace checks, and browser UI inspection pass.
+  - Notes/Evidence: Closed 2026-04-27 by adding hosted-HTTP-aware warning suppression in `IntegrationsSection.tsx`, changing hosted HTTP connection copy, opening a named `pi-connector-oauth` popup synchronously from the Sign in button before async save/start calls, removing `window.open` from `BrowserConnectorRuntime.startOAuth`, and updating OAuth tests to assert the runtime returns the URL without opening a window. Browser QA at `https://localhost:3443/` verified Slack hosted HTTP setup shows no optional-companion warning and says sign-in opens in a dedicated window. Validation: `npm run typecheck:addin`, `npm run test:office` (148 tests), `npm run build`, `npm run validate:manifests`, and `git diff --check`. `npm run check:bundle` failed because the generated connector catalog pushes the main taskpane bundle over budget; tracked separately as `BUG-014`.
+
+- [ ] BUG-014: Connector catalog work pushes main taskpane bundle above budget
+  - Category: Bug
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 `BUG-013` validation.
+  - Details: `npm run build` succeeds, but `npm run check:bundle` now reports the main taskpane JS bundle at 1639.1 KiB, above the 1562.5 KiB budget. The likely contributor is the provenance-generated connector catalog and related Integrations runtime remaining in the initial taskpane chunk instead of being code-split behind Settings/Integrations.
+  - Dependencies: FEATURE-008.
+  - Subtasks:
+    - [ ] Confirm the exact bundle delta from generated connector catalog and Integrations imports.
+    - [ ] Move connector catalog/data-heavy Integrations code behind a lazy Settings/Integrations boundary or otherwise pack the generated catalog more compactly.
+    - [ ] Re-run `npm run build` and `npm run check:bundle`.
+  - Acceptance Criteria:
+    - [ ] `npm run check:bundle` passes without merely raising the budget unless a maintainer accepts a documented budget change.
+    - [ ] Settings/Integrations still load without visible delay or broken connector setup.
+  - Notes/Evidence: `npm run check:bundle` failed after a clean `npm run build` with `[bundle-budget] Main JS bundle exceeds budget: 1639.1 KiB > 1562.5 KiB.` The `BUG-013` code change is small, so this should be treated as a follow-up to the larger generated connector catalog payload rather than solved by trimming warning copy.
+
+- [x] BUG-016: Companion discovery reports raw abort errors even when dev servers are running
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 stakeholder screenshot of Settings > Companion showing `signal is aborted without reason`, `Not discovered yet`, and a manual endpoint of `https://localhost:3444` while the expected dev server was running.
+  - Details: Companion discovery used a short abort timeout, surfaced the raw abort reason, tried only the manual/default localhost endpoint, and the setup copy could be read as if the taskpane dev server on `3443` was the companion. The companion health route also included shell capability probing, making a basic health check vulnerable to slow optional capability detection.
+  - Dependencies: FEATURE-006, BUG-011.
+  - Subtasks:
+    - [x] Replace the raw abort message with actionable timeout, network, and certificate guidance.
+    - [x] Record per-endpoint discovery attempts in companion state and show them in Settings.
+    - [x] Try both `https://localhost:3444` and `https://127.0.0.1:3444`, plus any manual or last-known endpoint.
+    - [x] Keep `/v1/health` fast by avoiding slow optional shell capability probing.
+    - [x] Clarify setup copy so `3443` is the taskpane dev server and `3444` is the optional companion.
+  - Acceptance Criteria:
+    - [x] The Companion tab no longer shows `signal is aborted without reason` for timeout discovery failures.
+    - [x] The UI shows which endpoints were attempted and their sanitized result messages.
+    - [x] Discovery accepts only structurally valid companion health responses before marking connected.
+    - [x] Regression tests cover fallback candidates, abort-message sanitization, and health-response validation.
+  - Notes/Evidence: Closed 2026-04-27 by adding companion discovery attempts to `CompanionState`, extending discovery timeout to 5s, trying manual/last-known/default loopback candidates, sanitizing abort/network/certificate failures, validating health response shape, simplifying `/v1/health`, and clarifying Settings setup text. Validation passed: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (153 tests), `npm run build`, `npm run validate:manifests`, and `git diff --check`. `npm run check:bundle` still fails on the known main-taskpane budget issue tracked by `BUG-014`.
+
+- [ ] BUG-015: Hosted connector setup is disrupted by companion polling and over-eager OAuth assumptions
+  - Category: Bug
+  - Status: in_progress
+  - Priority: P0
+  - Source: 2026-04-27 Office add-in smoke from stakeholder: Slack sign-in failed with missing DCR, Parallel setup showed companion warnings and profile selection reset, Granola DCR was blocked by CORS, and system-browser OAuth was requested.
+  - Details: Hosted HTTP MCP setup should not feel companion-gated. Companion discovery and diagnostics refreshes should update background state without rebuilding an open wizard draft or resetting the user's selected setup profile. Slack MCP is official but cannot be generic browser-DCR OAuth because Slack documents no Dynamic Client Registration and requires a registered Slack app/client credentials; mark it coming soon until the Slack app path is ready. Browser-only OAuth DCR can also fail at provider CORS, as seen with Granola, so Pi-Office must fail closed with actionable copy instead of raw console/CORS errors. System-browser OAuth should not be switched on until there is a broker or companion callback handoff, because the system browser cannot complete callback state in the Office taskpane runtime.
+  - Dependencies: FEATURE-008, BUG-013.
+  - Subtasks:
+    - [ ] Keep hosted HTTP setup free of optional-companion warnings while preserving companion requirements for local STDIO/local HTTP.
+    - [ ] Stop companion/diagnostics polling from rebuilding the active wizard draft or resetting the selected setup profile.
+    - [ ] Mark Slack MCP setup as coming soon/planned until Pi-Office has a registered Slack app/confidential OAuth path.
+    - [ ] Attempt browser-direct verification for hosted HTTP profiles when possible and fail closed on CORS/auth limitations.
+    - [ ] Replace raw OAuth DCR/token CORS failures with actionable UI errors.
+    - [ ] Record why system-browser OAuth needs a broker/companion callback handoff before becoming the default.
+  - Acceptance Criteria:
+    - [ ] Parallel profile selection remains stable while companion discovery refreshes.
+    - [ ] Hosted HTTP connectors do not show "Optional companion unavailable" in the setup wizard solely because companion is offline.
+    - [ ] Slack appears as a visible coming-soon connector and cannot start OAuth until the Slack app registration path exists.
+    - [ ] Granola DCR CORS failures show a clear broker/companion-needed message rather than a raw CORS/failed fetch error.
+    - [ ] Regression tests cover hosted HTTP diagnostics, Slack planned gating, Parallel browser verification, and OAuth DCR CORS failure copy.
+  - Notes/Evidence: First-party Slack MCP docs state the endpoint is `https://mcp.slack.com/mcp`, Dynamic Client Registration is not supported, and Slack MCP clients need confidential OAuth with a registered Slack app. Microsoft Office Add-ins docs say `window.open()` is unreliable and `Office.context.ui.openBrowserWindow()` is for external URLs, not authentication/data exchange; system-browser OAuth therefore needs an explicit callback broker before it can safely replace the taskpane/dialog flow.
 
 ### Features
 
@@ -370,41 +487,43 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 - [ ] FEATURE-002: Define and implement provider/auth matrix for subscription-backed and API-key-backed AI access
   - Category: Feature
-  - Status: open
+  - Status: in_progress
   - Priority: P1
   - Source: 2026-04-26 product-goal narrative and implementation review.
   - Details: The product thesis is that users should be able to bring an existing AI subscription or inference provider instead of buying another enterprise add-in subscription. Current browser provider catalog discovers Pi models and supports API-key storage, but reports `oauthSupported: false` for providers and `/v1/auth/start` throws that OAuth is unavailable in browser-only mode. Provider support needs an explicit capability matrix covering API key, OAuth, official SDK constraints, subscription-backed routes, browser compatibility, companion requirements, image support, and any legal/provider policy restrictions.
   - Dependencies: SECURITY-004 for user-facing disclosure; BUG-005 for honest readiness state.
   - Subtasks:
-    - [ ] Create a provider/auth matrix for Pi, OpenAI/ChatGPT, Anthropic-compatible official paths, GitHub Copilot, OpenCode, OpenRouter, Cloudflare, Vercel, and other target providers.
-    - [ ] Mark each provider as supported, planned, blocked, or research-only with the required auth method and runtime surface.
+    - [x] Create a provider/auth matrix for Pi, OpenAI/ChatGPT, Anthropic-compatible official paths, GitHub Copilot, OpenCode, OpenRouter, Cloudflare, Vercel, and other target providers.
+    - [x] Mark each provider as supported, planned, blocked, or research-only with the required auth method and runtime surface.
+    - [x] Add provider/model curation metadata for Simple/Advanced settings visibility, lab/family, recommended/default models, and un-recommended model warnings.
     - [ ] Implement provider auth flows one at a time behind honest capability flags.
-    - [ ] Ensure UI copy never advertises OAuth/subscription access until a real flow exists.
-    - [ ] Add provider-level tests for catalog flags, auth start behavior, readiness, and model execution.
+    - [x] Ensure UI copy never advertises OAuth/subscription access until a real flow exists.
+    - [x] Add provider-level tests for catalog flags, auth start behavior, readiness, and model execution.
   - Acceptance Criteria:
-    - [ ] Provider catalog flags match implemented auth/runtime capability.
-    - [ ] Users can distinguish API-key providers, OAuth providers, companion-required providers, and unsupported providers.
-    - [ ] At least one non-API-key provider path is implemented or explicitly deferred with documented constraints before any UI promise.
-  - Notes/Evidence: Review pointed to `BrowserModelRegistry.getProviderCatalog()` hardcoding `oauthSupported: false`, `/v1/auth/start` throwing for browser-only mode, and the new `AGENTS.md` product goal requiring provider flexibility.
+    - [x] Provider catalog flags match implemented auth/runtime capability.
+    - [x] Users can distinguish API-key providers, OAuth providers, companion-required providers, and unsupported providers.
+    - [x] Provider catalog model descriptors expose curation metadata validated against the refreshed Pi model catalog.
+    - [x] At least one non-API-key provider path is implemented or explicitly deferred with documented constraints before any UI promise.
+  - Notes/Evidence: Review pointed to `BrowserModelRegistry.getProviderCatalog()` hardcoding `oauthSupported: false`, `/v1/auth/start` throwing for browser-only mode, and the new `AGENTS.md` product goal requiring provider flexibility. 2026-04-26 first implementation slice added `docs/provider-auth-matrix.md`, shared provider capability metadata, runtime catalog fields for support status/runtime/auth methods/browser-callable/companion-required/subscription-backed/image support, Settings provider cards that show planned companion/OAuth providers as informational, `/v1/auth/api-key` rejection for non-browser API-key providers, and `/v1/auth/start` errors that distinguish companion-owned OAuth from unsupported browser OAuth. Regression coverage now proves OpenAI is browser/API-key/image capable, Codex/Copilot/Gemini CLI/Antigravity are planned companion OAuth paths, Bedrock is companion-only, OAuth start behavior is honest, and image providers remain OpenAI-only. 2026-04-26 curation slice refreshed `pi-mono` to `05f79b08`, updated the taskpane to `@mariozechner/pi-ai@0.70.2`, added canonical `provider-model-preferences.yaml`, generated typed curation metadata, exposed `settingsVisibility`/lab/family/recommendation/default/warning fields through `/v1/providers`, validated `defaultModelByProvider`, and recorded missing preferred `openai/gpt-5.5-pro` as catalog drift rather than creating a local override. Real companion-owned OAuth provider implementations remain open under this task. Validation passed: `npm run check:provider-models`, `npm run typecheck:addin`, `npm run test:office` with 129 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
-- [ ] FEATURE-003: Add professional workflow packs and host playbooks for high-value Office artifacts
+- [x] FEATURE-003: Add professional workflow packs and host playbooks for high-value Office artifacts
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 product-goal narrative and competitor/inspiration review.
   - Details: Pi-Office should be more than generic chat in a taskpane. Claude's extracted add-in has dense host-specific behavior and verification guidance, while Pi-Office currently has a strong tool surface but only a small skill/playbook library. The product needs curated workflows for research papers, pitch decks, resumes, specs, business user stories, DCFs, legal review, spreadsheets, and similar professional artifacts.
   - Dependencies: BUG-007 for visual truthfulness where workflows rely on layout/vision; FEATURE-004 for deeper native edit coverage.
   - Subtasks:
-    - [ ] Define workflow-pack structure for task intent, required context, preferred tools, review gates, and completion checks.
-    - [ ] Add Word workflows for research papers, resumes, specs, legal/professional review, and business user stories.
-    - [ ] Add Excel workflows for DCF/financial model review, formula auditing, table/chart improvement, and narrative export.
-    - [ ] Add PowerPoint workflows for pitch-deck outline, slide polish, visual consistency, speaker notes, and data-backed slides.
-    - [ ] Add tests or snapshot checks proving workflow prompts register and route to the expected tools.
+    - [x] Define workflow-pack structure for task intent, required context, preferred tools, review gates, and completion checks.
+    - [x] Add Word workflows for research papers, resumes, specs, legal/professional review, and business user stories.
+    - [x] Add Excel workflows for DCF/financial model review, formula auditing, table/chart improvement, and narrative export.
+    - [x] Add PowerPoint workflows for pitch-deck outline, slide polish, visual consistency, speaker notes, and data-backed slides.
+    - [x] Add tests or snapshot checks proving workflow prompts register and route to the expected tools.
   - Acceptance Criteria:
-    - [ ] The package ships multiple domain-specific workflow packs beyond generic Office tool prompts.
-    - [ ] Workflows include verification and review criteria, not only generation instructions.
-    - [ ] Users can invoke or discover workflows from the taskpane without reading code.
-  - Notes/Evidence: Competitor review highlighted Claude's host playbooks and the local `addin/packages/pi-office-pack/skills` surface as a place to grow.
+    - [x] The package ships multiple domain-specific workflow packs beyond generic Office tool prompts.
+    - [x] Workflows include verification and review criteria, not only generation instructions.
+    - [x] Users can invoke or discover workflows from the taskpane without reading code.
+  - Notes/Evidence: Competitor review highlighted Claude's host playbooks and the local `addin/packages/pi-office-pack/skills` surface as a place to grow. Closed 2026-04-26 with typed workflow-pack registry in `addin/packages/pi-office-pack/src/workflow-packs.ts`, prompt/skill surfacing through `OFFICE_APPEND_SYSTEM_PROMPT` and `office-host.SKILL.md`, host-specific taskpane starter prompts, and provenance updates. The shipped packs cover Word research paper/resume/spec/legal/business-user-story work, Excel DCF/formula/table-chart/narrative work, and PowerPoint pitch-deck/slide-polish/visual-consistency/speaker-notes/data-backed-slide work. Regression coverage in `addin/scripts/office-tests/src/workflow-packs.test.ts` proves host coverage, expected Office tool references, prompt/skill injection, and taskpane discoverability. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 121 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 - [ ] FEATURE-004: Expand first-class native Office editing coverage for professional document work
   - Category: Feature
@@ -445,7 +564,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 - [ ] FEATURE-006: Add advanced mode where companion owns inference, providers, MCP, memory, and non-Office tools
   - Category: Feature
-  - Status: open
+  - Status: in_progress
   - Priority: P0
   - Source: 2026-04-26 plan implementation after user clarified "Companion owns all" for advanced mode.
   - Details: The current taskpane owns the Pi agent, model/provider catalog, provider auth, and tool loop, while the companion is a sidecar for read-only file and local MCP calls. Advanced mode should invert that ownership: the companion owns inference, providers, model auth, MCP, memory, non-Office tools, and tool calling. The taskpane remains the Office-hosted presentation layer and structured Office.js executor. Basic taskpane-only mode must remain usable when the companion is absent.
@@ -461,7 +580,51 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Office.js calls still execute only inside the active Office taskpane.
     - [ ] Switching Basic -> Advanced preserves non-secret preferences automatically and handles secrets through an explicit safe migration flow.
     - [ ] Reconnect/fallback behavior is visible and tested.
-  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `companion/src/server.ts` only exposes health, read-only file tools, and MCP execution.
+  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `companion/src/server.ts` only exposes health, read-only file tools, and MCP execution. 2026-04-26 Smart Auto slice added a shared `CapabilityRegistry`, explicit runtime resolution fields, session capability route, extended `CompanionCapabilities`, Settings capability groups, companion-only native viewport capture gating, Windows-first companion native capture API, taskpane fallback behavior for browser-supported providers/images, and capability docs. This slice keeps real companion-owned provider auth/inference unavailable until explicit companion auth/session storage exists; no taskpane provider secrets are silently migrated. Validation passed: `npm --prefix addin run typecheck:pack`, `npm --prefix addin run typecheck:taskpane`, `npm --prefix companion run typecheck`, `npm --prefix addin run test:office` with 138 tests, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
+- [x] FEATURE-007: Curate connector setup profiles and enforce visible tool safety controls
+  - Category: Feature
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 user request after per-connector MCP research using dedicated subagents.
+  - Details: The Integrations catalog currently models each connector as one transport/auth shape, but real MCP providers often expose multiple setup paths such as hosted HTTP, OAuth/ZDR endpoints, local stdio, regional HTTP endpoints, and advanced/community fallbacks. Connected connectors also do not expose a complete editable config/tool inventory surface, and non-read-only MCP tools should be visible but disabled by default with explicit user warnings before enablement.
+  - Dependencies: BUG-011, IMPROVEMENT-006, IMPROVEMENT-007, IMPROVEMENT-008.
+  - Subtasks:
+    - [x] Add protocol/catalog setup profiles for the existing connector library.
+    - [x] Default STDIO-only connectors to disabled rows without companion and mixed HTTP/STDIO connectors to HTTP when companion is absent.
+    - [x] Add connected-connector expansion with redacted config, editable setup, and full tool inventory.
+    - [x] Classify MCP tools from annotations plus curated read/write rules and persist per-tool policy overrides.
+    - [x] Keep non-read-only and unknown tools disabled by default and warn before enabling them.
+    - [x] Update connector provenance/privacy docs and validation coverage.
+  - Acceptance Criteria:
+    - [x] Every existing catalog connector has at least one curated setup profile and no longer relies only on single transport/auth metadata.
+    - [x] Companion availability controls the noob-friendly default path without exposing STDIO/SSE/OAuth jargon first.
+    - [x] Connected connectors can be expanded to inspect config, edit setup, and review enabled/disabled tools.
+    - [x] Disabled, write, destructive, and unknown MCP tools fail closed unless explicitly enabled by policy.
+    - [x] Standard add-in, companion, Office-test, build, bundle, manifest, and browser checks pass.
+  - Notes/Evidence: Initial research found multi-profile needs for Parallel `/mcp` vs `/mcp-oauth`, Parallel Task MCP, LaunchDarkly FM/AI Configs/Observability, Shopify Storefront/Customer/Dev, Microsoft Work IQ, GitHub read-only hosted/local, Atlassian hosted MCP, PostHog US/EU, and local-only Obsidian/PostgreSQL paths. Closed 2026-04-27 by adding `setupProfiles`, connector tool inventory/policy override protocol fields, curated profiles across the existing catalog, connected row expansion, warning-gated non-read tool enablement, companion-side full tool inventory classification, docs/provenance updates, and regression coverage. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (147 tests), `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and in-app browser screenshots for Integrations Library, setup wizard, and connected expansion at `https://localhost:3443/`.
+
+- [x] FEATURE-008: Make connector catalog provenance-driven and support browser-direct hosted MCP
+  - Category: Feature
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 stakeholder review of `FEATURE-007`; Granola exposed companion-only and API-key UI despite being an official hosted OAuth/DCR MCP, and similar honesty risks likely affect other connectors.
+  - Details: The current connector catalog is hardcoded in TypeScript and mixes official, community, local-only, experimental, and planned profiles without enough provenance metadata or UI gating. Remote HTTP MCP connectors are still generally treated as companion-verified/executed even when a hosted Streamable HTTP MCP supports browser CORS and standard MCP OAuth. OAuth profiles also inherit API-key/env controls that are confusing for nontechnical users. The catalog should move to a YAML source of truth with evidence fields, official/community/planned tags, and generated typed TS. Browser-compatible hosted MCP profiles should verify and execute in the taskpane without requiring the optional companion. Community profiles should warn before setup, and planned/unverified profiles should be visible but setup-disabled.
+  - Dependencies: FEATURE-007, SECURITY-001, BUG-011.
+  - Subtasks:
+    - [x] Add connector catalog YAML with generated typed TS and validation for provenance, auth, transport, availability, browser-direct support, and setup gating.
+    - [x] Re-curate existing connector profiles from official/current docs, including Granola OAuth-only, Perplexity official local STDIO/API-key, Obsidian community local-only, PostgreSQL reference/community local-only, and Google Drive planned/unverified.
+    - [x] Add browser-direct Streamable HTTP MCP verification/execution for compatible hosted connectors with read-safe tool classification and fail-closed disabled tools.
+    - [x] Implement generic MCP OAuth discovery/DCR/PKCE callback handling for hosted profiles and remove fake or disabled OAuth states from the wizard.
+    - [x] Update Integrations Library/wizard/connected expansion with official/community/planned badges, community warning suppression, simple OAuth/token paths, companion-only env controls, and advanced-only URL/header fields.
+    - [x] Record provenance notes for risky or ambiguous connector decisions and add regression/browser coverage.
+  - Acceptance Criteria:
+    - [x] Granola setup shows only official browser sign-in, no API-key/env/header simple fields, no companion warning, and browser-direct Verify works when OAuth is available.
+    - [x] Official, community, and planned/unverified profiles are visually distinct and setup-gated according to provenance.
+    - [x] Browser-direct verified hosted MCP tools become model-visible without the companion, while local STDIO/local HTTP profiles still require companion.
+    - [x] Write/destructive/unknown connector tools remain disabled by default and cannot execute directly unless explicitly enabled.
+    - [x] Catalog generation, runtime, UI, and browser tests cover the new behavior and standard validation passes.
+  - Notes/Evidence: Initial research evidence includes Granola docs for Streamable HTTP OAuth/DCR at `https://mcp.granola.ai/mcp`, Perplexity docs for local `@perplexity-ai/mcp-server` with `PERPLEXITY_API_KEY`, Airtable/Notion/Slack/Figma/LaunchDarkly/Stripe/PayPal/Tavily/Exa/GitHub/GitLab/Qdrant official MCP docs, and the absence of sufficient first-party evidence for the exact Google Drive endpoint in the current catalog. Closed 2026-04-27 by moving connector setup data to `addin/packages/pi-office-pack/src/connector-catalog.yaml`, adding generated typed catalog validation, implementing browser-direct Streamable HTTP MCP probing/execution plus MCP OAuth discovery/DCR/PKCE/callback handling, gating execution by read-safe tool classification, and updating Integrations UI for provenance badges, planned/community gating, Granola OAuth-only setup, and companion-only env controls. Browser QA verified Library badges/disabled states, Granola browser-direct OAuth wizard, community warning with suppression, and connected details/tool inventory at `https://localhost:3443/`; live Granola account sign-in was not completed. Validation: `npm --prefix addin run check:connector-catalog`, `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (148 tests), `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 ### Improvements
 
@@ -482,6 +645,63 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] `git status --short` clearly distinguishes product changes from local/generated artifacts.
     - [x] `.gitignore` covers repeatable generated artifacts without hiding important source files.
   - Notes/Evidence: Review observed untracked archive/vendor artifacts while inspecting the worktree. Fixed in `2b5f058` by ignoring `.factory/`; the grouped runtime commit retained archive source while generated `archive/companion/node_modules`, `archive/companion/dist`, and taskpane build output remained ignored. 2026-04-26 history cleanup removed active `.factory/services.yaml` test coupling, ignored future `archive/companion/` recreation, and purged tracked `.factory/` plus `archive/companion/` from branch history.
+
+- [x] IMPROVEMENT-006: Connector setup wizard IA, persistence clarity, and MCP credential/honesty UX
+  - Category: Improvement
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-26 user plan; connector wizard confusion on scope vs companion vs transport vs credentials.
+  - Details: Redesign Integrations connector wizard so availability scope, optional companion requirement for MCP verify/execute, transport (stdio vs hosted HTTP), and credential/header/env flows are understandable. Persist new remote HTTP header fields and stdio env passthrough through protocol, browser storage, export/import, and companion bridge. Split save vs verify actions; gate check-connection when companion is disconnected for MCP transports.
+  - Dependencies: BUG-011 companion-routed MCP; docs/privacy-and-storage for storage disclosure.
+  - Subtasks:
+    - [x] Extend `ConnectorSetupRequest` / `CompanionConnectorDefinition` / export bundle for HTTP headers and stdio passthrough.
+    - [x] Apply merged headers in companion `connector-bridge` remote transport.
+    - [x] Update wizard UI, Settings wiring, docs, and regression tests.
+  - Acceptance Criteria:
+    - [x] Users can save connector config without verifying; verify uses companion when required and fails closed with clear copy when companion is offline.
+    - [x] Library vs custom transport labeling matches execution model; folder/document scope is disabled or explained when the file is unsaved.
+    - [x] Remote static/env headers and stdio passthrough round-trip through storage and export/import without leaking secrets in logs.
+  - Notes/Evidence: `protocol.ts`, `browser-connectors.ts`, `connector-bridge.ts`, `IntegrationsSection.tsx` (scope copy, companion strip, connection-type labels, HTTP header rows, stdio passthrough, save vs check footer), `SettingsPage.tsx` passes `companion`, docs updates, `companion-connector-bridge.test.ts` coverage for passthrough and `buildRemoteHttpRequestHeaders`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`.
+
+- [x] IMPROVEMENT-007: Polish connector library and diagnostics UI
+  - Category: Improvement
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 browser diff comments on Settings -> Integrations; user reported card overlap, off-center search, card-heavy connector browsing, and oversized Diagnostics buttons.
+  - Details: The Integrations Library used equal-height connector cards that caused long names and maturity pills to compete for horizontal space, including `Supermemory` overlapping the `CUSTOM` pill. The Library search was right-aligned under the segmented tabs, and Diagnostics inherited generic button styling that let SVG icons expand the Import/Export controls into oversized circular buttons. The fix should keep connector behavior intact while making the Library a scan-friendly list and Diagnostics a quiet operational panel.
+  - Dependencies: IMPROVEMENT-006 for the current connector wizard IA and diagnostics surface.
+  - Subtasks:
+    - [x] Replace the Library card grid with vertical connector rows that keep icon, name/vendor, status chip, description, and metadata in predictable lanes.
+    - [x] Center the Library search field and widen it enough for connector-discovery queries.
+    - [x] Make generic buttons icon-safe and restyle Diagnostics import/export/audit actions as compact controls.
+    - [x] Preserve existing connector selection, setup wizard launch, import/export, and audit-toggle behavior.
+  - Acceptance Criteria:
+    - [x] Library connectors render as list rows rather than cards.
+    - [x] Search is horizontally centered.
+    - [x] `Supermemory` no longer overlaps the `CUSTOM` status chip.
+    - [x] Diagnostics Import, audit toggle, and Export audit log buttons render as compact aligned buttons.
+    - [x] Responsive CSS stacks row metadata and audit actions without horizontal overlap on narrow viewports.
+  - Notes/Evidence: Implemented in `addin/apps/taskpane/src/app/components/IntegrationsSection.tsx` and `addin/apps/taskpane/src/app/styles.css` by adding `integration-library-*` row classes, centering `.integrations-search`, constraining `.button svg`, and adding compact diagnostics/audit layouts. Browser verification at `https://localhost:3443/` confirmed Library rows, centered search, non-overlapping `Supermemory`/`CUSTOM`, and compact Diagnostics buttons. Validation: `npm run typecheck:addin`; `npm run test:office` passed with 144 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`.
+
+- [x] IMPROVEMENT-008: Compact connector list rows and wizard check messaging
+  - Category: Improvement
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 browser diff comments after `IMPROVEMENT-007`; user wanted tighter Library rows, description text to use available width, compact HTTP/STDIO transport labels, no host-list chip in Check, and cleaner Check-step warning spacing.
+  - Details: The first list-row pass still gave Library rows too much vertical weight and capped descriptions at `68ch`, causing early wrapping despite available horizontal space. Transport chips still used long labels like "Local command (stdio)" and "Hosted URL (Streamable HTTP)". The connector setup Check step also showed a `word / excel / powerpoint` chip and rendered local runtime plus optional companion warnings as adjacent boxes for local STDIO connectors in browser-only mode.
+  - Dependencies: IMPROVEMENT-007.
+  - Subtasks:
+    - [x] Add compact transport labels for row/check metadata: `STDIO` and `HTTP`.
+    - [x] Remove the recommended-host chip from the wizard Check step while leaving host metadata available for catalog sorting.
+    - [x] Coalesce local STDIO browser-only and companion-unavailable diagnostics into one Check-step companion-required note.
+    - [x] Tighten Library row padding, gaps, icon size, and description width behavior.
+  - Acceptance Criteria:
+    - [x] Library rows are visually tighter without returning to card tiles.
+    - [x] Connector descriptions use available row width and avoid premature wrapping on desktop.
+    - [x] Transport chips show only `STDIO` or `HTTP`.
+    - [x] The wizard Check step no longer shows `word / excel / powerpoint`.
+    - [x] The Check-step warning area avoids duplicate adjacent local-runtime/companion warnings.
+  - Notes/Evidence: Implemented in `addin/apps/taskpane/src/app/components/IntegrationsSection.tsx` and `addin/apps/taskpane/src/app/styles.css` by adding `connectionTypeChipLabel`, using compact chips in Library/Connected/Check metadata, removing the recommended-host Check chip, coalescing local STDIO companion diagnostics in `renderDiagnostics`, and reducing row spacing/icon sizes while removing the fixed description max width. Browser verification at `https://localhost:3443/` confirmed denser Library rows, centered search, one-line GitHub desktop description, `STDIO` / `HTTP` chips, no Check-step host chip, and one coalesced `Companion required` warning. A 390px headless Edge pass reported no page or row overflow. Validation: `npm run typecheck:addin`; `npm run test:office` passed with 144 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`.
 
 - [ ] IMPROVEMENT-002: Clarify release packaging and runtime assumptions after the independent taskpane transition
   - Category: Improvement
@@ -537,25 +757,25 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] At least one deck-quality asset workflow is validated in PowerPoint.
   - Notes/Evidence: Review pointed to the small runtime icon catalog and glyph-textbox insertion path in `addin/apps/taskpane/src/lib/office/powerpoint-actions.ts`, plus ChatGPT inspiration assets around generated slide stores and slide screenshots.
 
-- [ ] IMPROVEMENT-005: Simplify provider, model, and settings UX into guided and advanced surfaces
+- [x] IMPROVEMENT-005: Simplify provider, model, and settings UX into guided and advanced surfaces
   - Category: Improvement
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 plan implementation after user noted the current provider/model/settings catalog is overwhelming for nontechnical users and includes regional/legacy models that can scare enterprises.
   - Details: Settings currently exposes a large provider/model list and many toggles without a strong basic/advanced information architecture. Default users should see a guided shortlist of recommended current models and plain-language provider choices. Advanced users should still be able to opt into the full catalog, including legacy, experimental, regional, and higher-risk providers. Provider/model metadata needs to include region/jurisdiction, enterprise-risk messaging, capability flags, auth methods, current-vs-legacy status, and replacement suggestions.
   - Dependencies: FEATURE-002 and BUG-005.
   - Subtasks:
-    - [ ] Define model/provider metadata fields: visibility, status, replacedBy, region, enterpriseRisk, authMethods, capabilities, and companionRequired.
-    - [ ] Curate a default guided shortlist for Word/Excel/PowerPoint professional work.
-    - [ ] Move legacy, experimental, China-hosted/regional, and niche providers behind an explicit advanced catalog.
-    - [ ] Group settings into basic, advanced, privacy/security, providers, companion, and diagnostics using plain-language labels.
-    - [ ] Add tests that default enabled models/providers do not include advanced-only or region-risk entries unless the user opts in.
+    - [x] Define model/provider metadata fields: visibility, status, replacedBy, region, enterpriseRisk, authMethods, capabilities, and companionRequired.
+    - [x] Curate a default guided shortlist for Word/Excel/PowerPoint professional work.
+    - [x] Move legacy, experimental, China-hosted/regional, and niche providers behind an explicit advanced catalog.
+    - [x] Group settings into basic, advanced, privacy/security, providers, companion, and diagnostics using plain-language labels.
+    - [x] Add tests that default enabled models/providers do not include advanced-only or region-risk entries unless the user opts in.
   - Acceptance Criteria:
-    - [ ] A first-time nontechnical user can pick a recommended provider/model without reading a large model catalog.
-    - [ ] Advanced users can still find and enable the complete catalog.
-    - [ ] Regional/enterprise-risk providers are clearly labeled and not enabled by default.
-    - [ ] Model lists avoid stale versions when newer replacements exist unless the user enables advanced/legacy mode.
-  - Notes/Evidence: 2026-04-26 review found default enabled models/providers include broad Pi catalog entries, China-linked/regional providers, and old model revisions in `addin/apps/taskpane/src/hooks/usePreferences.ts`, with Settings rendering all enabled-provider models together. 2026-04-26 hardening narrowed the default shortlist to OpenAI, Anthropic, and Google current/recommended entries and added `addin/scripts/office-tests/src/model-curation.test.ts`; full metadata, regional labeling, and guided/advanced IA remain open.
+    - [x] A first-time nontechnical user can pick a recommended provider/model without reading a large model catalog.
+    - [x] Advanced users can still find and enable the complete catalog.
+    - [x] Regional/enterprise-risk providers are clearly labeled and not enabled by default.
+    - [x] Model lists avoid stale versions when newer replacements exist unless the user enables advanced/legacy mode.
+  - Notes/Evidence: 2026-04-26 review found default enabled models/providers include broad Pi catalog entries, China-linked/regional providers, and old model revisions in `addin/apps/taskpane/src/hooks/usePreferences.ts`, with Settings rendering all enabled-provider models together. 2026-04-26 hardening narrowed the default shortlist to OpenAI, Anthropic, and Google current/recommended entries and added `addin/scripts/office-tests/src/model-curation.test.ts`. Closed 2026-04-26 by adding canonical lab-first model curation in `addin/packages/pi-office-pack/src/provider-model-preferences.yaml`, generated runtime metadata in `provider-model-preferences.generated.ts`, Simple/Advanced provider and model catalog filtering in Settings, user-configurable `defaultModelByProvider`, un-recommended model warnings with suppression, and generated default enabled models. Direct DeepSeek, Z.AI, and Kimi Coding providers stay Advanced-only/direct opt-in, while curated lab models can still appear through gateways such as OpenRouter, Vercel, Groq, and OpenCode. Validation passed: `npm run check:provider-models`, `npm run typecheck:addin`, `npm run test:office` with 129 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 ### Testing
 
@@ -584,20 +804,20 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Priority: P1
   - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` validation matrix.
   - Details: The automated validation matrix was marked complete in the transition plan, but the manual Word desktop first scenarios remain unchecked. These scenarios matter because Office taskpane focus, scroll, OAuth, connector execution, checkpoint rewind, and viewport capture behavior can differ in the real desktop host from browser or unit-test behavior.
-  - Dependencies: BUG-001, BUG-002, SECURITY-001, and BUG-003 for meaningful connector/OAuth validation.
+  - Dependencies: BUG-001, BUG-002, BUG-003, BUG-011, and SECURITY-001 for meaningful connector/OAuth validation.
   - Subtasks:
-    - [ ] Validate taskpane load and reconnect behavior after Word restart.
-    - [ ] Validate chat input focus, keyboard handling, and vertical scrolling during long responses.
+    - [x] Validate taskpane load and reconnect behavior after Word restart.
+    - [x] Validate chat input focus, keyboard handling, and vertical scrolling during long responses.
     - [ ] Validate model switch and thinking-level updates.
     - [ ] Validate OAuth onboarding flow after SECURITY-001 is fixed.
     - [ ] Validate connector setup/test/use flow with at least two connector types after BUG-002 and BUG-003 are fixed.
     - [ ] Validate rewind with checkpoint persistence across refresh/reopen.
     - [ ] Validate viewport capture scenario for formatting/layout prompts.
   - Acceptance Criteria:
-    - [ ] Manual validation results are recorded in this backlog or a linked tracking doc with date, host, and outcome.
-    - [ ] Any failed manual scenario creates or links a separate bug task.
+    - [x] Manual validation results are recorded in this backlog or a linked tracking doc with date, host, and outcome.
+    - [x] Any failed manual scenario creates or links a separate bug task.
     - [ ] Word desktop first validation is complete before claiming release readiness.
-  - Notes/Evidence: Transition plan manual matrix lines remain unchecked.
+  - Notes/Evidence: 2026-04-26 stakeholder Word desktop smoke results: Test 1 taskpane load/reconnect passed; Test 2 rapid selection refresh passed with caveat that final answer quality depends on the model, while Office context refresh did pick up the updated selection; Test 3 focus/keyboard passed; Test 4 streaming scroll passed; Test 5 non-mutating review/visual honesty passed with model-adherence caveat; Test 6 connector failed because Parallel Web MCP was not available to the model and companion discovery/diagnostics were misleading. The connector failure created and closed `BUG-011` with CORS, companion diagnostics, session-resync, and companion-routed remote MCP fixes. Remaining manual items: model/thinking switch, OAuth flow, at least two connector types after `BUG-011`, rewind persistence, and a more explicit viewport capture scenario.
 
 ## Done Or Obsolete Tasks
 

@@ -27,6 +27,56 @@ function isSingleCellAddress(value: string | undefined): boolean {
   return !end || start === end;
 }
 
+function normalizeExcelSheetName(value: unknown): string | undefined {
+  const raw = trimString(value);
+  if (!raw) return undefined;
+  return raw.replace(/^'+|'+$/g, "").toLowerCase();
+}
+
+function normalizeExcelAddress(value: unknown): string | undefined {
+  const raw = trimString(value);
+  if (!raw) return undefined;
+  const address = raw.includes("!") ? raw.split("!").pop() : raw;
+  return address?.replace(/\$/g, "").replace(/\s+/g, "").toUpperCase();
+}
+
+function parseExcelSelectionLabel(value: unknown): { sheetName?: string | undefined; address?: string | undefined } {
+  const label = trimString(value);
+  if (!label) return {};
+  const bangIndex = label.lastIndexOf("!");
+  if (bangIndex === -1) {
+    return { address: normalizeExcelAddress(label) };
+  }
+  return {
+    sheetName: normalizeExcelSheetName(label.slice(0, bangIndex)),
+    address: normalizeExcelAddress(label.slice(bangIndex + 1)),
+  };
+}
+
+function excelSelectionMatchesRequest(
+  selectionLabel: unknown,
+  requestedSheetName: string | undefined,
+  requestedAddress: string | undefined,
+): boolean | undefined {
+  const requestedSheet = normalizeExcelSheetName(requestedSheetName);
+  const requestedRange = normalizeExcelAddress(requestedAddress);
+  if (!requestedSheet && !requestedRange) return true;
+
+  const selection = parseExcelSelectionLabel(selectionLabel);
+  if (!selection.sheetName && !selection.address) return undefined;
+
+  if (requestedSheet && selection.sheetName && requestedSheet !== selection.sheetName) return false;
+  if (requestedRange && selection.address && requestedRange !== selection.address) return false;
+  if (requestedSheet && !selection.sheetName) return undefined;
+  if (requestedRange && !selection.address) return undefined;
+  return true;
+}
+
+function formatExcelRangeHint(sheetName: string | undefined, address: string | undefined): string {
+  if (sheetName && address) return `${sheetName}!${address}`;
+  return sheetName ?? address ?? "the requested range";
+}
+
 function stringifyDetail(value: unknown): string | undefined {
   if (value == null) return undefined;
   if (typeof value === "string" && value.trim()) return value.trim();
@@ -1004,8 +1054,6 @@ function toPowerPointMasterActionType(value: string | undefined): string | undef
     case "applylayout":
     case "setlayout":
     case "editslidelayout":
-    case "setslidemaster":
-    case "applymaster":
       return "applyLayout";
     default:
       return undefined;
@@ -1224,29 +1272,12 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
       }
 
       if (request.toolName === "office_capture_viewport") {
-        if (request.host !== "word") {
-          return {
-            requestId: request.requestId,
-            success: false,
-            error: "office_capture_viewport is only available for Word.",
-          };
-        }
-        const includeFormatting = request.params.includeFormatting !== false;
-        const includeWindowFrameRequested = request.params.includeWindowFrame === true;
-        // FUTURE SCOPE ONLY (owner-gated):
-        // Full Word window-frame capture depended on the removed companion app.
-        // Browser runtime can only access Office.js viewport metadata and selection visuals.
-        // Do not re-enable companion-based window capture without explicit approval from Manan.
-        // const maxImages = includeWindowFrameRequested ? 2 : 1;
-        const result = await dependencies.collectOfficeContext(request.host, {
-          includeFormatting,
-          maxImages: 1,
-          scope: "viewport",
-        });
         return {
           requestId: request.requestId,
-          success: true,
-          content: appendViewportCaptureSummary(result, includeWindowFrameRequested),
+          success: false,
+          error:
+            "office_capture_viewport is a compatibility tool for true viewport/window screenshots and requires companion native capture. " +
+            "Use office_capture_snapshot for Office.js context snapshots, verify_doc_visual for Word metadata/selection visuals, read_range_image for Excel active-selection snapshots, or verify_slide_visual for PowerPoint native slide/shape snapshots.",
         };
       }
 
@@ -1760,36 +1791,67 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
 
         const payloadRecord = isRecord(payloadAware.content) ? payloadAware.content : {};
         const visuals = Array.isArray(payloadRecord.visuals) ? payloadRecord.visuals : [];
+        const requestedSheetName = trimString(request.params.sheetName);
+        const requestedAddress = trimString(request.params.address);
+        const state = isRecord(payloadRecord.state) ? payloadRecord.state : {};
+        const selection = isRecord(state.selection) ? state.selection : {};
+        const activeSelectionLabel = trimString(selection.label);
+        const requestedRangeHonored = excelSelectionMatchesRequest(
+          activeSelectionLabel,
+          requestedSheetName,
+          requestedAddress,
+        );
+        if (requestedRangeHonored === false) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error:
+              `read_range_image can only capture the active Excel selection as an Office.js image snapshot. ` +
+              `The active selection is ${activeSelectionLabel ?? "unknown"}, not ${formatExcelRangeHint(requestedSheetName, requestedAddress)}. ` +
+              "Navigate to or select the target range first, then retry.",
+          };
+        }
         if (!visuals.length) {
           return {
             requestId: request.requestId,
             success: false,
-            error: "read_range_image could not capture a range image in the current Excel selection.",
+            error:
+              "read_range_image could not capture an Office.js image snapshot of the active Excel selection. " +
+              "Browser-only runtime does not render arbitrary ranges by address; select the target range first and retry.",
           };
         }
+
+        const captureNote =
+          requestedRangeHonored === true
+            ? "Captured the active Excel selection through Office.js image coercion."
+            : "Captured the active Excel selection through Office.js image coercion; requested sheet/address values are advisory unless they match the active selection.";
 
         return {
           requestId: request.requestId,
           success: true,
           content: {
-            summary: trimString(payloadRecord.summary) ?? `Excel range image captured (${visuals.length} image${visuals.length === 1 ? "" : "s"}).`,
+            summary:
+              trimString(payloadRecord.summary) ??
+              `Excel active-selection visual snapshot captured (${visuals.length} image${visuals.length === 1 ? "" : "s"}). ${captureNote}`,
             visual: {
-              kind: "excel-range-image",
+              kind: "excel-selection-snapshot",
               captureMode: "officejs-selection-snapshot",
               imageCount: visuals.length,
               scopeRequested: scope,
-              note: "Range imagery uses Office.js selection capture support.",
+              requestedRangeHonored,
+              note: captureNote,
             },
             details: {
-              kind: "excel-range-image-read",
+              kind: "excel-selection-snapshot-read",
               mutating: false,
               host: "excel",
               scope,
               requestedRange: {
-                sheetName: trimString(request.params.sheetName),
-                address: trimString(request.params.address),
+                sheetName: requestedSheetName,
+                address: requestedAddress,
+                honored: requestedRangeHonored,
               },
-              selection: isRecord(payloadRecord.state) ? payloadRecord.state.selection : undefined,
+              selection,
               formatting: payloadRecord.formatting,
             },
             visuals,
@@ -2138,7 +2200,8 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
           return {
             requestId: request.requestId,
             success: false,
-            error: "edit_slide_master currently supports apply_layout operations.",
+            error:
+              "edit_slide_master is a legacy-named layout application tool. It currently supports only apply_layout/set_layout; it does not edit slide masters.",
           };
         }
 

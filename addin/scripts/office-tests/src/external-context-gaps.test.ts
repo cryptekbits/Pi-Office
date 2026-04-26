@@ -235,7 +235,7 @@ test("connector refresh stays runtime/UI scoped through reverify route with save
   );
 });
 
-test("remote HTTP connectors are marked setup-only until browser execution exists", async () => {
+test("hosted HTTP connectors default to taskpane verification while local HTTP stays companion-routed", async () => {
   const runtime = await loadKernelModule();
   const setup = await runtime.dispatchKernelRequest("/v1/connectors/setup/connect", {
     method: "POST",
@@ -279,6 +279,32 @@ test("remote HTTP connectors are marked setup-only until browser execution exist
   assert.ok(saved, "saved remote connector should be returned by status route");
   assert.equal(saved.executionEnvironment, "browser");
   assert.equal(saved.executionAvailable, false);
+
+  const localHttp = await runtime.dispatchKernelRequest("/v1/connectors/setup/connect", {
+    method: "POST",
+    body: JSON.stringify({
+      connectorId: "custom",
+      name: "Local HTTP MCP",
+      enabled: true,
+      favorite: false,
+      scopeTarget: "global",
+      setupKind: "remote_url_token",
+      authMethod: "none",
+      transport: "remote_http",
+      credentialSource: "none",
+      url: "http://localhost:4899/mcp",
+    }),
+  }) as {
+    ok: boolean;
+    status: {
+      id: string;
+      executionEnvironment?: string;
+      executionAvailable?: boolean;
+    };
+  };
+  assert.equal(localHttp.ok, true);
+  assert.equal(localHttp.status.executionEnvironment, "companion");
+  assert.equal(localHttp.status.executionAvailable, false);
 });
 
 test("connector OAuth callbacks cannot create connected state without a credential handoff", async () => {

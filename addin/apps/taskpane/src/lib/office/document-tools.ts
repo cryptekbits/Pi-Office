@@ -20,9 +20,88 @@ export interface DocumentSnapshotData {
     usedRangeAddress: string;
     values: unknown[][];
     numberFormats: string[][];
-    formulas: string[][];
+    formulas: unknown[][];
   }>;
   presentationBase64?: string;
+}
+
+export interface DocumentRestoreResult {
+  warnings: string[];
+}
+
+type ExcelCellRestoreValue = string | number | boolean | null;
+type ExcelSnapshotSheetData = NonNullable<DocumentSnapshotData["sheets"]>[number];
+
+const EXCEL_RESTORE_SCOPE_WARNING =
+  "Excel checkpoint restore covers used-range formulas, constants, and number formats only; tables, charts, data validation, and workbook structure are not fully replayed.";
+
+function getMatrixShape(matrix: unknown[][] | undefined): { rows: number; columns: number } | undefined {
+  if (!Array.isArray(matrix) || !matrix.length || !Array.isArray(matrix[0])) {
+    return undefined;
+  }
+  const columns = matrix[0].length;
+  if (columns <= 0) {
+    return undefined;
+  }
+  if (matrix.some((row) => !Array.isArray(row) || row.length !== columns)) {
+    return undefined;
+  }
+  return { rows: matrix.length, columns };
+}
+
+function sameMatrixShape(
+  left: unknown[][] | undefined,
+  right: { rows: number; columns: number },
+): left is unknown[][] {
+  const shape = getMatrixShape(left);
+  return Boolean(shape && shape.rows === right.rows && shape.columns === right.columns);
+}
+
+function normalizeExcelCell(value: unknown, fallback: unknown): ExcelCellRestoreValue {
+  const candidate = value === undefined ? fallback : value;
+  if (candidate === null || typeof candidate === "string" || typeof candidate === "number" || typeof candidate === "boolean") {
+    return candidate;
+  }
+  if (candidate === undefined) {
+    return null;
+  }
+  return String(candidate);
+}
+
+export function buildExcelRestoreContent(sheetData: ExcelSnapshotSheetData): {
+  property: "formulas" | "values";
+  matrix: ExcelCellRestoreValue[][];
+  warnings: string[];
+} {
+  const warnings = [EXCEL_RESTORE_SCOPE_WARNING];
+  const formulaShape = getMatrixShape(sheetData.formulas);
+  const valueShape = getMatrixShape(sheetData.values);
+
+  if (formulaShape && (!valueShape || sameMatrixShape(sheetData.values, formulaShape))) {
+    return {
+      property: "formulas",
+      matrix: sheetData.formulas.map((row, rowIndex) =>
+        row.map((cell, columnIndex) => normalizeExcelCell(cell, sheetData.values[rowIndex]?.[columnIndex]))
+      ),
+      warnings,
+    };
+  }
+
+  if (valueShape) {
+    warnings.unshift("Excel checkpoint did not include a matching formula matrix; restored cell values only.");
+    return {
+      property: "values",
+      matrix: sheetData.values.map((row) => row.map((cell) => normalizeExcelCell(cell, null))),
+      warnings,
+    };
+  }
+
+  warnings.unshift(`Excel sheet "${sheetData.name}" had no restorable cell matrix.`);
+  return {
+    property: "values",
+    matrix: [],
+    warnings,
+  };
 }
 
 function encodePowerPointSliceChunk(raw: unknown): string | undefined {
@@ -166,16 +245,18 @@ export async function captureDocumentSnapshot(host: OfficeHost): Promise<Documen
   return {};
 }
 
-export async function restoreDocumentSnapshot(host: OfficeHost, data: DocumentSnapshotData): Promise<void> {
+export async function restoreDocumentSnapshot(host: OfficeHost, data: DocumentSnapshotData): Promise<DocumentRestoreResult> {
   if (host === "word" && data.ooxml) {
     return Word.run(async (context) => {
       context.document.body.insertOoxml(data.ooxml!, "Replace");
       await context.sync();
+      return { warnings: [] };
     });
   }
 
   if (host === "excel" && data.sheets?.length) {
     return Excel.run(async (context) => {
+      const warnings = new Set<string>();
       for (const sheetData of data.sheets!) {
         let sheet: Excel.Worksheet;
         try {
@@ -188,10 +269,24 @@ export async function restoreDocumentSnapshot(host: OfficeHost, data: DocumentSn
           : sheetData.usedRangeAddress;
         if (!addr) continue;
         const range = sheet.getRange(addr);
-        range.values = sheetData.values as (string | number | boolean)[][];
-        range.numberFormat = sheetData.numberFormats as string[][];
+        const content = buildExcelRestoreContent(sheetData);
+        for (const warning of content.warnings) warnings.add(warning);
+        if (!content.matrix.length) {
+          continue;
+        }
+        if (content.property === "formulas") {
+          range.formulas = content.matrix;
+        } else {
+          range.values = content.matrix;
+        }
+        if (sameMatrixShape(sheetData.numberFormats, { rows: content.matrix.length, columns: content.matrix[0]?.length ?? 0 })) {
+          range.numberFormat = sheetData.numberFormats;
+        } else {
+          warnings.add(`Excel number formats were not restored for "${sheetData.name}" because the checkpoint format matrix did not match the restored range.`);
+        }
         await context.sync();
       }
+      return { warnings: Array.from(warnings) };
     });
   }
 
@@ -208,8 +303,11 @@ export async function restoreDocumentSnapshot(host: OfficeHost, data: DocumentSn
         formatting: "UseDestinationTheme" as PowerPoint.InsertSlideFormatting,
       });
       await context.sync();
+      return { warnings: [] };
     });
   }
+
+  return { warnings: [] };
 }
 
 // ---------------------------------------------------------------------------

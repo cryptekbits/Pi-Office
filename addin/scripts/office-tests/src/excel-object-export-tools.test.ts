@@ -187,9 +187,9 @@ test("createOfficeExtension registers first-class Excel object/data and export/v
       invocations.push({ toolName, params });
       if (toolName === "read_range_image") {
         return {
-          summary: "Excel range image captured.",
-          visual: { kind: "excel-range-image", imageCount: 1 },
-          details: { kind: "excel-range-image-read", mutating: false },
+          summary: "Excel active-selection visual snapshot captured.",
+          visual: { kind: "excel-selection-snapshot", imageCount: 1 },
+          details: { kind: "excel-selection-snapshot-read", mutating: false },
           visuals: [{ kind: "worksheet", data: "ZmFrZQ==", mimeType: "image/png" }],
         };
       }
@@ -237,7 +237,7 @@ test("createOfficeExtension registers first-class Excel object/data and export/v
   assert.equal(invocations[3]?.toolName, "get_range_as_csv");
   assert.equal(invocations[4]?.toolName, "read_range_image");
   assert.equal(invocations[5]?.toolName, "extract_chart_xml");
-  assert.equal((rangeImageResult.details as { details: { kind: string } }).details.kind, "excel-range-image-read");
+  assert.equal((rangeImageResult.details as { details: { kind: string } }).details.kind, "excel-selection-snapshot-read");
 });
 
 test("in-process runtime publishes first-class Excel object/data and export/visualization tools", async () => {
@@ -446,9 +446,9 @@ test("createOfficeToolExecutor dispatches first-class Excel object/data and expo
     details: { kind: string; mutating: boolean };
     visuals: unknown[];
   };
-  assert.equal(imagePayload.visual.kind, "excel-range-image");
+  assert.equal(imagePayload.visual.kind, "excel-selection-snapshot");
   assert.equal(imagePayload.visual.imageCount, 1);
-  assert.equal(imagePayload.details.kind, "excel-range-image-read");
+  assert.equal(imagePayload.details.kind, "excel-selection-snapshot-read");
   assert.equal(imagePayload.details.mutating, false);
   assert.equal(Array.isArray(imagePayload.visuals), true);
   assert.deepEqual(contextCalls[0], {
@@ -489,6 +489,40 @@ test("createOfficeToolExecutor dispatches first-class Excel object/data and expo
   assert.match(String(unsupportedResult.error), /only available for Excel/);
 });
 
+test("read_range_image reports requested range mismatch instead of pretending to render offscreen ranges", async () => {
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({
+      summary: "Excel context captured.",
+      state: {
+        selection: {
+          label: "Summary!C1:D4",
+        },
+      },
+      visuals: [{ kind: "worksheet", data: "ZmFrZQ==", mimeType: "image/png" }],
+    }),
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const result = await executeOfficeTool({
+    requestId: "excel-read-image-mismatch",
+    toolName: "read_range_image" as OfficeToolRequest["toolName"],
+    host: "excel",
+    params: {
+      sheetName: "Summary",
+      address: "A1:B3",
+    },
+  } as OfficeToolRequest);
+
+  assert.equal(result.success, false);
+  assert.match(String(result.error), /active Excel selection/i);
+  assert.match(String(result.error), /Summary!C1:D4/);
+  assert.match(String(result.error), /Summary!A1:B3/);
+});
+
 test("Excel guidance aligns formula-first, auditable-cell expectations with runtime tools", () => {
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bmodify_object\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bget_all_objects\b/);
@@ -498,6 +532,8 @@ test("Excel guidance aligns formula-first, auditable-cell expectations with runt
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bextract_chart_xml\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /formula-first/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /auditable[-\s]cell/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /active selection/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /not an arbitrary offscreen range render/i);
 
   const officeHostSkillPath = join(process.cwd(), "packages", "pi-office-pack", "skills", "office-host.SKILL.md");
   const officeHostSkillText = readFileSync(officeHostSkillPath, "utf8");
@@ -509,6 +545,8 @@ test("Excel guidance aligns formula-first, auditable-cell expectations with runt
   assert.match(officeHostSkillText, /\bextract_chart_xml\b/);
   assert.match(officeHostSkillText, /formula-first/i);
   assert.match(officeHostSkillText, /auditable[-\s]cell/i);
+  assert.match(officeHostSkillText, /active selection/i);
+  assert.match(officeHostSkillText, /does not render arbitrary offscreen ranges/i);
 });
 
 test("investigation artifact includes Excel manual checklist scenarios for workbook context, formatting/tables, charts/pivots, and taskpane stability", () => {

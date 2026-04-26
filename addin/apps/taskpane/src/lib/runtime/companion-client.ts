@@ -1,11 +1,15 @@
 import type {
   CompanionConnectorDefinition,
+  CompanionDiscoveryAttempt,
   CompanionHealthResponse,
+  CompanionNativeCaptureRequest,
+  CompanionNativeCaptureResponse,
   CompanionShellCapability,
   CompanionShellExecuteRequest,
   CompanionShellExecuteResponse,
   CompanionSessionOpenResponse,
   CompanionState,
+  ConnectorDiagnosticsResponse,
   ConnectorDiagnostic,
   ConnectorStatus,
   OfficeStateUpdate,
@@ -15,7 +19,8 @@ import { DEFAULT_COMPANION_HOST, DEFAULT_COMPANION_PORT } from "@pi-office/pi-of
 const MANUAL_ENDPOINT_KEY = "pi-office-companion-manual-endpoint";
 const LAST_SUCCESSFUL_ENDPOINT_KEY = "pi-office-companion-last-endpoint";
 const DEFAULT_ENDPOINT = `https://${DEFAULT_COMPANION_HOST}:${DEFAULT_COMPANION_PORT}`;
-const DISCOVERY_TIMEOUT_MS = 1_200;
+const LOOPBACK_ENDPOINT = `https://127.0.0.1:${DEFAULT_COMPANION_PORT}`;
+export const COMPANION_DISCOVERY_TIMEOUT_MS = 5_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 export interface CompanionSessionBinding {
@@ -58,6 +63,56 @@ function normalizeEndpoint(value: string | undefined): string | undefined {
   return next;
 }
 
+export function buildCompanionDiscoveryCandidates(
+  manualEndpoint: string | undefined,
+  lastSuccessfulEndpoint: string | undefined,
+): string[] {
+  return [
+    normalizeEndpoint(manualEndpoint),
+    normalizeEndpoint(lastSuccessfulEndpoint),
+    DEFAULT_ENDPOINT,
+    LOOPBACK_ENDPOINT,
+  ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+}
+
+function errorName(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "name" in error
+    ? String((error as { name?: unknown }).name ?? "")
+    : undefined;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+export function describeCompanionDiscoveryError(error: unknown, endpoint: string, timeoutMs: number): string {
+  const name = errorName(error);
+  const message = errorMessage(error);
+  if (name === "AbortError" || /signal is aborted|aborted without reason|operation was aborted/i.test(message)) {
+    return `Timed out contacting the Pi-Office companion at ${endpoint} after ${Math.round(timeoutMs / 1000)}s. Start it with npm run dev:companion and confirm it is listening on port ${DEFAULT_COMPANION_PORT}.`;
+  }
+  if (/failed to fetch|networkerror|load failed|could not connect|connection refused|err_connection/i.test(message)) {
+    return `Could not reach the Pi-Office companion at ${endpoint}. The taskpane dev server uses https://localhost:3443; the optional companion must be started separately with npm run dev:companion on ${DEFAULT_COMPANION_PORT}.`;
+  }
+  if (/certificate|cert_authority|ssl|tls|self[- ]signed|err_cert/i.test(message)) {
+    return `Could not establish a trusted HTTPS connection to the Pi-Office companion at ${endpoint}. Re-run npm run prepare:certs, trust the local certificate, then restart npm run dev:companion.`;
+  }
+  if (/not pi-office companion|not as pi-office companion/i.test(message)) {
+    return message;
+  }
+  return `Companion discovery failed at ${endpoint}: ${message}`;
+}
+
+export function isCompanionHealthResponse(value: unknown): value is CompanionHealthResponse {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<CompanionHealthResponse>;
+  return candidate.ok === true &&
+    typeof candidate.endpoint === "string" &&
+    typeof candidate.identity === "string" &&
+    Boolean(candidate.capabilities && typeof candidate.capabilities === "object");
+}
+
 function defaultCompanionState(): CompanionState {
   const manualEndpoint = readStorage(MANUAL_ENDPOINT_KEY);
   const lastSuccessfulEndpoint = readStorage(LAST_SUCCESSFUL_ENDPOINT_KEY);
@@ -68,6 +123,41 @@ function defaultCompanionState(): CompanionState {
     capabilities: {
       fileRead: false,
       localMcp: false,
+      version: "companion-capabilities-v1",
+      agent: {
+        state: "unavailable",
+        available: false,
+        officeToolProxy: true,
+        providerAuth: false,
+        smartAuto: true,
+        reason: "Optional companion is not connected.",
+      },
+      providerAuth: {
+        state: "unavailable",
+        available: false,
+        explicitMigrationRequired: true,
+        reason: "Optional companion is not connected.",
+      },
+      nativeCapture: {
+        state: "unavailable",
+        available: false,
+        hosts: [],
+        trueViewportScreenshot: false,
+        includeWindowFrame: false,
+        reason: "Optional companion is not connected.",
+      },
+      mcp: {
+        state: "unavailable",
+        available: false,
+        readOnly: true,
+        toolCount: 0,
+        reason: "Optional companion is not connected.",
+      },
+      memory: {
+        state: "unavailable",
+        available: false,
+        reason: "Optional companion is not connected.",
+      },
     },
   };
 }
@@ -117,27 +207,34 @@ export class CompanionClient {
     this.hasInitialized = true;
     const manualEndpoint = normalizeEndpoint(readStorage(MANUAL_ENDPOINT_KEY));
     const lastSuccessfulEndpoint = normalizeEndpoint(readStorage(LAST_SUCCESSFUL_ENDPOINT_KEY));
-    const candidates = [manualEndpoint, lastSuccessfulEndpoint, DEFAULT_ENDPOINT]
-      .filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+    const candidates = buildCompanionDiscoveryCandidates(manualEndpoint, lastSuccessfulEndpoint);
 
     this.state = {
       ...this.state,
       status: "discovering",
       manualEndpoint,
       lastSuccessfulEndpoint,
+      lastDiscoveryAttempts: [],
       lastError: undefined,
     };
 
     let lastError: string | undefined;
+    const attempts: CompanionDiscoveryAttempt[] = [];
     for (const endpoint of candidates) {
+      const started = Date.now();
       try {
-        const health = await fetchJsonWithTimeout<CompanionHealthResponse>(`${endpoint}/v1/health`, undefined, DISCOVERY_TIMEOUT_MS);
+        const health = await fetchJsonWithTimeout<CompanionHealthResponse>(`${endpoint}/v1/health`, undefined, COMPANION_DISCOVERY_TIMEOUT_MS);
+        if (!isCompanionHealthResponse(health)) {
+          throw new Error(`Endpoint ${endpoint} responded, but not as Pi-Office companion.`);
+        }
+        attempts.push({ endpoint, ok: true, durationMs: Date.now() - started });
         this.state = {
           status: "connected",
           endpoint: health.endpoint,
           identity: health.identity,
           manualEndpoint,
           lastSuccessfulEndpoint: health.endpoint,
+          lastDiscoveryAttempts: attempts,
           capabilities: {
             ...health.capabilities,
             endpoint: health.endpoint,
@@ -147,7 +244,9 @@ export class CompanionClient {
         this.bindings.clear();
         return this.getState();
       } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error);
+        const message = describeCompanionDiscoveryError(error, endpoint, COMPANION_DISCOVERY_TIMEOUT_MS);
+        attempts.push({ endpoint, ok: false, message, durationMs: Date.now() - started });
+        lastError = message;
       }
     }
 
@@ -156,6 +255,7 @@ export class CompanionClient {
       ...defaultCompanionState(),
       manualEndpoint,
       lastSuccessfulEndpoint,
+      lastDiscoveryAttempts: attempts,
       lastError,
       status: manualEndpoint ? "error" : "unavailable",
     };
@@ -220,6 +320,11 @@ export class CompanionClient {
           fileRead: false,
           localMcp: false,
           endpoint: this.state.capabilities.endpoint ?? this.state.endpoint,
+          agent: defaultCompanionState().capabilities.agent,
+          providerAuth: defaultCompanionState().capabilities.providerAuth,
+          nativeCapture: defaultCompanionState().capabilities.nativeCapture,
+          mcp: defaultCompanionState().capabilities.mcp,
+          memory: defaultCompanionState().capabilities.memory,
         },
       };
       return undefined;
@@ -244,6 +349,15 @@ export class CompanionClient {
       method: "POST",
       body: JSON.stringify(definition),
     });
+  }
+
+  async getConnectorDiagnostics(): Promise<ConnectorDiagnosticsResponse | undefined> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      return undefined;
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/diagnostics`);
   }
 
   async executeFileTool(
@@ -304,6 +418,21 @@ export class CompanionClient {
     }
 
     return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/shell/execute`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  async captureNativeViewport(
+    browserSessionId: string,
+    request: CompanionNativeCaptureRequest,
+  ): Promise<CompanionNativeCaptureResponse> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      throw new Error("Optional companion native capture is not connected for this taskpane session.");
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/native-capture/viewport`, {
       method: "POST",
       body: JSON.stringify(request),
     });

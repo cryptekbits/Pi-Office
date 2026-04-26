@@ -381,7 +381,7 @@ Entry format is strict: `ID: status - note`.
 - GAP-PPT-03: resolved - First-class slide text editing is exposed (`edit_slide_text` equivalent).
 - GAP-PPT-04: resolved - First-class slide XML editing is exposed (`edit_slide_xml` equivalent).
 - GAP-PPT-05: resolved - First-class slide chart editing is exposed (`edit_slide_chart` equivalent).
-- GAP-PPT-06: resolved - First-class layout/master editing is exposed (`edit_slide_master` equivalent).
+- GAP-PPT-06: partially resolved - First-class layout application is exposed through the legacy-named `edit_slide_master` tool. It applies existing layouts via native resolution; it does not edit slide masters or layout definitions.
 - GAP-PPT-07: resolved - First-class slide duplication is exposed (`duplicate_slide` equivalent).
 - GAP-PPT-08: resolved - First-class image copy between slides is exposed.
 - GAP-PPT-09: resolved - First-class slide-element insertion is exposed (`insert_slide_element` equivalent).
@@ -403,7 +403,7 @@ Entry format is strict: `ID: status - note`.
 - GAP-XLS-06: resolved - First-class Excel object mutation is exposed (`modify_object` equivalent).
 - GAP-XLS-07: resolved - First-class sheet/workbook structure mutation is exposed (`modify_sheet_structure` equivalent).
 - GAP-XLS-08: resolved - First-class CSV export is exposed (`get_range_as_csv` equivalent).
-- GAP-XLS-09: resolved - First-class range imagery export is exposed (`read_range_image` equivalent).
+- GAP-XLS-09: partially resolved - `read_range_image` exposes an Office.js active-selection image snapshot. It is not an arbitrary offscreen range renderer; navigate/select the target range first.
 - GAP-XLS-10: resolved - First-class workbook data/object search is exposed (`search_data` equivalent).
 - GAP-XLS-11: resolved - First-class workbook object inventory is exposed (`get_all_objects` equivalent).
 - GAP-XLS-12: resolved - First-class chart XML extraction is exposed (`extract_chart_xml` equivalent).
@@ -482,10 +482,10 @@ The following Excel checklist is aligned to `npm run smoke:office -- --list` sce
   1. Select a populated range and run `modify_object` with `operation=format_range` using font/fill/alignment/border options.
   2. Run `modify_object` with `operation=format_table` (or table-filter operations) against an existing table.
   3. Run `get_range_as_csv` for the edited range with `includeFormulas=true` to capture a formula-first auditable export snapshot.
-  4. Run `read_range_image` and confirm visual payload plus `visuals` image data are returned.
+  4. Select the edited range, run `read_range_image`, and confirm active-selection visual payload plus `visuals` image data are returned.
 - Expected:
   - Range and table updates remain native Excel object mutations.
-  - CSV export and range imagery provide auditable cell-level evidence for the edited region.
+  - CSV export and active-selection imagery provide auditable cell-level evidence for the edited region without implying offscreen range rendering.
 
 #### Scenario: `excel-charts-and-pivots` — Existing chart and PivotTable editing
 
@@ -516,11 +516,11 @@ The following PowerPoint checklist is aligned to `npm run smoke:office -- --list
 
 - Steps:
   1. Open a deck with notes and at least one named shape on the selected slide.
-  2. Run `office_get_context` with `includeFormatting=true` and confirm anchors include slide/shape/layout/master/notes targets.
+  2. Run `office_get_context` with `includeFormatting=true` and confirm anchors include slide/shape/layout/master/notes targets. For selected shapes on non-first slides, confirm the shape anchor's `slideId`/`slideIndex` match the owning slide.
   3. Run `office_navigate` with one anchor from each anchor family above.
 - Expected:
   - Slide and shape anchors navigate to the exact target.
-  - Layout/master/notes anchors report explicit fallback behavior when native direct navigation is partial.
+  - Layout/master/notes anchors report explicit fallback behavior when native direct navigation is partial, and layout editing is described as apply-existing-layout only.
 
 #### Scenario: `powerpoint-slide-and-shape-authoring` — Native slide and shape operations
 

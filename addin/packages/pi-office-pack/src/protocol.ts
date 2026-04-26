@@ -18,6 +18,19 @@ export interface CompanionCapabilities {
   localMcp: boolean;
   endpoint?: string | undefined;
   shell?: CompanionShellCapability | undefined;
+  version?: string | undefined;
+  agent?: CompanionAgentCapability | undefined;
+  providerAuth?: CompanionProviderAuthCapability | undefined;
+  nativeCapture?: CompanionNativeCaptureCapability | undefined;
+  mcp?: CompanionMcpCapability | undefined;
+  memory?: CompanionSimpleCapability | undefined;
+}
+
+export interface CompanionDiscoveryAttempt {
+  endpoint: string;
+  ok: boolean;
+  message?: string | undefined;
+  durationMs?: number | undefined;
 }
 
 export interface CompanionState {
@@ -27,6 +40,7 @@ export interface CompanionState {
   lastError?: string | undefined;
   manualEndpoint?: string | undefined;
   lastSuccessfulEndpoint?: string | undefined;
+  lastDiscoveryAttempts?: CompanionDiscoveryAttempt[] | undefined;
   sessionId?: string | undefined;
   connectorToolNames?: string[] | undefined;
   capabilities: CompanionCapabilities;
@@ -237,6 +251,51 @@ export interface CompanionSessionOpenResponse {
   connectors: ConnectorStatus[];
 }
 
+export const COMPANION_CAPABILITY_STATES = ["unavailable", "available", "degraded"] as const;
+export type CompanionCapabilityState = (typeof COMPANION_CAPABILITY_STATES)[number];
+
+export interface CompanionSimpleCapability {
+  state: CompanionCapabilityState;
+  available: boolean;
+  reason?: string | undefined;
+  version?: string | undefined;
+}
+
+export interface CompanionAgentCapability extends CompanionSimpleCapability {
+  officeToolProxy: boolean;
+  providerAuth: boolean;
+  smartAuto: boolean;
+}
+
+export interface CompanionProviderAuthCapability extends CompanionSimpleCapability {
+  explicitMigrationRequired: boolean;
+  supportedAuthMethods?: ProviderAuthMethod[] | undefined;
+}
+
+export interface CompanionMcpCapability extends CompanionSimpleCapability {
+  readOnly: boolean;
+  toolCount?: number | undefined;
+}
+
+export interface CompanionNativeCaptureCapability extends CompanionSimpleCapability {
+  hosts: OfficeHost[];
+  platform?: string | undefined;
+  trueViewportScreenshot: boolean;
+  includeWindowFrame: boolean;
+}
+
+export interface CompanionNativeCaptureRequest {
+  host?: OfficeHost | undefined;
+  includeWindowFrame?: boolean | undefined;
+}
+
+export interface CompanionNativeCaptureResponse {
+  ok: boolean;
+  visual?: OfficeVisualSnapshot | undefined;
+  details?: Record<string, unknown> | undefined;
+  error?: string | undefined;
+}
+
 export const COMPANION_SHELL_STATES = ["unavailable", "available", "degraded"] as const;
 export type CompanionShellState = (typeof COMPANION_SHELL_STATES)[number];
 
@@ -437,6 +496,18 @@ export interface ConnectorEnvHint {
   required?: boolean | undefined;
 }
 
+/** Static HTTP header for remote MCP (applied by the companion). */
+export interface ConnectorRemoteHttpHeader {
+  name: string;
+  value: string;
+}
+
+/** HTTP header whose value is read from the companion process environment. */
+export interface ConnectorRemoteHttpHeaderFromEnv {
+  name: string;
+  envVarName: string;
+}
+
 export interface ConnectorReadPolicy {
   mode: "hard-read-only";
   allowResources: boolean;
@@ -454,6 +525,89 @@ export interface ConnectorConfigTemplate {
   cwd?: string | undefined;
   url?: string | undefined;
   env?: Record<string, string> | undefined;
+}
+
+export type ConnectorSetupProfileOfficialness =
+  | "official"
+  | "official_preview"
+  | "community"
+  | "provider_reference"
+  | "deprecated"
+  | "experimental"
+  | "planned";
+
+export type ConnectorSetupProfileAvailability = "available" | "needs_companion" | "planned" | "advanced";
+export type ConnectorBrowserDirectSupport = "supported" | "unsupported" | "unknown";
+
+export interface ConnectorSetupProfile {
+  id: string;
+  label: string;
+  description?: string | undefined;
+  transport: ConnectorTransport;
+  setupKind?: ConnectorSetupKind | undefined;
+  authMethod: ConnectorAuthMethod;
+  /** Hosted MCP endpoint for remote profiles. */
+  endpoint?: string | undefined;
+  command?: string | undefined;
+  args?: string[] | undefined;
+  cwd?: string | undefined;
+  env?: Record<string, string> | undefined;
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
+  credentialEnvKey?: string | undefined;
+  requiresCompanion: boolean;
+  officialness: ConnectorSetupProfileOfficialness;
+  availability?: ConnectorSetupProfileAvailability | undefined;
+  browserDirect?: ConnectorBrowserDirectSupport | undefined;
+  docsUrl?: string | undefined;
+  endpointEvidenceUrl?: string | undefined;
+  authEvidenceUrl?: string | undefined;
+  checkedAt?: string | undefined;
+  setupDisabled?: boolean | undefined;
+  riskNotes?: string[] | undefined;
+  defaultWhenCompanionAbsent?: boolean | undefined;
+  defaultWhenCompanionPresent?: boolean | undefined;
+  privacyNotes?: string[] | undefined;
+  simpleFields: string[];
+  advancedFields: string[];
+}
+
+export const CONNECTOR_TOOL_CLASSIFICATIONS = [
+  "read",
+  "sensitive_read",
+  "costly_read",
+  "write",
+  "destructive",
+  "unknown",
+] as const;
+export type ConnectorToolClassification = (typeof CONNECTOR_TOOL_CLASSIFICATIONS)[number];
+
+export interface ConnectorMcpToolAnnotations {
+  title?: string | undefined;
+  readOnlyHint?: boolean | undefined;
+  destructiveHint?: boolean | undefined;
+  idempotentHint?: boolean | undefined;
+  openWorldHint?: boolean | undefined;
+}
+
+export interface ConnectorToolInventoryItem {
+  name: string;
+  rawName?: string | undefined;
+  description?: string | undefined;
+  inputSchema?: unknown;
+  annotations?: ConnectorMcpToolAnnotations | undefined;
+  classification: ConnectorToolClassification;
+  defaultEnabled: boolean;
+  enabled: boolean;
+  reason: string;
+  source: "mcp_tool" | "resource" | "catalog_hint";
+}
+
+export interface ConnectorToolPolicyOverride {
+  toolName: string;
+  enabled: boolean;
+  warningAcknowledged?: boolean | undefined;
+  updatedAt?: string | undefined;
 }
 
 export interface ConnectorCatalogItem {
@@ -476,6 +630,7 @@ export interface ConnectorCatalogItem {
   envHints: ConnectorEnvHint[];
   readPolicy: ConnectorReadPolicy;
   template?: ConnectorConfigTemplate | undefined;
+  setupProfiles?: ConnectorSetupProfile[] | undefined;
   docsUrl?: string | undefined;
   authUrl?: string | undefined;
   setupNotes?: string[] | undefined;
@@ -499,12 +654,20 @@ export interface CompanionConnectorDefinition {
   command?: string | undefined;
   args?: string[] | undefined;
   cwd?: string | undefined;
+  setupProfileId?: string | undefined;
   env?: Record<string, string> | undefined;
+  /** Extra host env var names copied into the stdio child (companion), in addition to SDK safe inherited vars. */
+  stdioEnvPassthrough?: string[] | undefined;
+  /** Static request headers for Streamable HTTP / SSE MCP (companion). */
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  /** Request headers populated from companion environment variable values. */
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
   secret?: string | undefined;
   secretEnvKey?: string | undefined;
   useDetectedEnvKey?: string | undefined;
   readOnly: boolean;
   readPolicy: ConnectorReadPolicy;
+  toolPolicyOverrides?: ConnectorToolPolicyOverride[] | undefined;
   catalogRevision?: string | undefined;
 }
 
@@ -512,6 +675,7 @@ export interface ConnectorCapabilitySummary {
   tools: string[];
   allowedTools: string[];
   blockedTools: string[];
+  toolInventory?: ConnectorToolInventoryItem[] | undefined;
   resourceToolNames: string[];
   promptNames: string[];
   allowedPrompts: string[];
@@ -546,6 +710,7 @@ export interface ConnectorVerificationSnapshot {
   toolNames: string[];
   allowedTools: string[];
   blockedTools: string[];
+  toolInventory?: ConnectorToolInventoryItem[] | undefined;
   resourceToolNames: string[];
   promptNames: string[];
   allowedPrompts: string[];
@@ -606,6 +771,7 @@ export interface ConnectorStatus {
   setupKind: ConnectorSetupKind;
   authMethod: ConnectorAuthMethod;
   transport: ConnectorTransport;
+  setupProfileId?: string | undefined;
   credentialSource: ConnectorCredentialSource;
   detectedEnvKey?: string | undefined;
   usesDetectedCredential?: boolean | undefined;
@@ -626,6 +792,7 @@ export interface ConnectorStatus {
   capabilities?: ConnectorCapabilitySummary | undefined;
   executionEnvironment?: ConnectorExecutionEnvironment | undefined;
   executionAvailable?: boolean | undefined;
+  suppressNonReadToolWarning?: boolean | undefined;
 }
 
 export interface ConnectorRuntimeCheck {
@@ -685,6 +852,7 @@ export interface ConnectorSetupRequest {
   setupKind?: ConnectorSetupKind | undefined;
   authMethod?: ConnectorAuthMethod | undefined;
   transport?: ConnectorTransport | undefined;
+  setupProfileId?: string | undefined;
   credentialSource?: ConnectorCredentialSource | undefined;
   secret?: string | undefined;
   secretEnvKey?: string | undefined;
@@ -694,6 +862,9 @@ export interface ConnectorSetupRequest {
   args?: string[] | undefined;
   cwd?: string | undefined;
   env?: Record<string, string> | undefined;
+  stdioEnvPassthrough?: string[] | undefined;
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
   preserveStoredSecret?: boolean | undefined;
   replaceExisting?: boolean | undefined;
   favorite?: boolean | undefined;
@@ -723,6 +894,7 @@ export interface ConnectorOAuthStartResponse {
   ok: true;
   connectorId: string;
   url?: string | undefined;
+  callbackUrl?: string | undefined;
   state: string;
   expiresAt: string;
 }
@@ -737,8 +909,9 @@ export interface ConnectorOAuthCredentialHandoff {
 }
 
 export interface ConnectorOAuthCallbackRequest {
-  connectorId: string;
+  connectorId?: string | undefined;
   state: string;
+  code?: string | undefined;
   error?: string | undefined;
   credential?: ConnectorOAuthCredentialHandoff | undefined;
   expiresAt?: string | undefined;
@@ -756,6 +929,20 @@ export interface ConnectorScopeUpdateRequest {
   enabled: boolean;
   scopeTarget: ConnectorScopeTarget;
   scopeContext?: ConnectorScopeContext | undefined;
+}
+
+export interface ConnectorToolPolicyUpdateRequest {
+  connectorId: string;
+  toolName: string;
+  enabled: boolean;
+  warningAcknowledged?: boolean | undefined;
+  suppressWarning?: boolean | undefined;
+  scopeContext?: ConnectorScopeContext | undefined;
+}
+
+export interface ConnectorToolPolicyUpdateResponse {
+  ok: true;
+  status: ConnectorStatus;
 }
 
 export interface ConnectorFavoriteRequest {
@@ -783,6 +970,7 @@ export interface ConnectorExportItem {
   setupKind: ConnectorSetupKind;
   authMethod: ConnectorAuthMethod;
   transport: ConnectorTransport;
+  setupProfileId?: string | undefined;
   credentialSource: ConnectorCredentialSource;
   secretEnvKey?: string | undefined;
   useDetectedEnvKey?: string | undefined;
@@ -791,6 +979,11 @@ export interface ConnectorExportItem {
   args?: string[] | undefined;
   cwd?: string | undefined;
   env?: Record<string, string> | undefined;
+  stdioEnvPassthrough?: string[] | undefined;
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
+  toolPolicyOverrides?: ConnectorToolPolicyOverride[] | undefined;
+  suppressNonReadToolWarning?: boolean | undefined;
   defaultEnabled: boolean;
 }
 
@@ -837,6 +1030,27 @@ export interface ProviderModelDescriptor {
   providerLabel: string;
   modelId: string;
   modelName: string;
+  settingsVisibility: SettingsVisibility;
+  lab: string;
+  family?: string | undefined;
+  recommended: boolean;
+  recommendationReason?: string | undefined;
+  defaultForProvider: boolean;
+  requiresUnrecommendedWarning: boolean;
+  supportStatus: ProviderSupportStatus;
+  runtimeSurface: ProviderRuntimeSurface;
+  authMethods: ProviderAuthMethod[];
+  apiKeySupported: boolean;
+  browserCallable: boolean;
+  companionRequired: boolean;
+  subscriptionBacked: boolean;
+  imageGenerationSupported: boolean;
+  capabilityNote?: string | undefined;
+  authState: ProviderAuthState;
+  credentialStored: boolean;
+  verifiedUsable: boolean;
+  verificationError?: string | undefined;
+  verifiedAt?: string | undefined;
   configured: boolean;
   oauthSupported: boolean;
   usesApiKey: boolean;
@@ -960,6 +1174,11 @@ export interface ImageModelDescriptor {
   modelId: string;
   modelName: string;
   apiType: ImageApiType;
+  authState: ProviderAuthState;
+  credentialStored: boolean;
+  verifiedUsable: boolean;
+  verificationError?: string | undefined;
+  verifiedAt?: string | undefined;
   supportsReasoningEffort: boolean;
   supportedAspectRatios: string[];
   supportedSizes: string[];
@@ -990,6 +1209,8 @@ export interface UserPreferences {
   defaultThinkingLevel: ThinkingLevel;
   imageGenerationEnabled: boolean;
   defaultImageModel: string;
+  defaultModelByProvider: Record<string, string>;
+  suppressUnrecommendedModelWarning: boolean;
   imageReasoningEffort: ImageReasoningEffort;
   experimentalRewindSnapshots: boolean;
   nextPromptSuggestionsEnabled: boolean;
@@ -1005,6 +1226,8 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   defaultThinkingLevel: "high",
   imageGenerationEnabled: false,
   defaultImageModel: "",
+  defaultModelByProvider: {},
+  suppressUnrecommendedModelWarning: false,
   imageReasoningEffort: "high",
   experimentalRewindSnapshots: false,
   nextPromptSuggestionsEnabled: true,
@@ -1012,9 +1235,39 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   toolPermissionOverrides: [],
 };
 
+export const PROVIDER_AUTH_STATES = ["not_configured", "credential_stored", "verified_usable", "verification_failed"] as const;
+export type ProviderAuthState = (typeof PROVIDER_AUTH_STATES)[number];
+
+export interface ProviderAuthDescriptor {
+  provider: string;
+  state: ProviderAuthState;
+  credentialStored: boolean;
+  verifiedUsable: boolean;
+  verifiedAt?: string | undefined;
+  lastVerificationAttemptAt?: string | undefined;
+  lastVerificationError?: string | undefined;
+}
+
 export interface ProviderDescriptor {
   provider: string;
   label: string;
+  settingsVisibility: SettingsVisibility;
+  lab: string;
+  defaultModelId?: string | undefined;
+  supportStatus: ProviderSupportStatus;
+  runtimeSurface: ProviderRuntimeSurface;
+  authMethods: ProviderAuthMethod[];
+  apiKeySupported: boolean;
+  browserCallable: boolean;
+  companionRequired: boolean;
+  subscriptionBacked: boolean;
+  imageGenerationSupported: boolean;
+  capabilityNote?: string | undefined;
+  authState: ProviderAuthState;
+  credentialStored: boolean;
+  verifiedUsable: boolean;
+  verificationError?: string | undefined;
+  verifiedAt?: string | undefined;
   configured: boolean;
   oauthSupported: boolean;
   models: ProviderModelDescriptor[];
@@ -1024,10 +1277,24 @@ export interface ProviderCatalogResponse {
   providers: ProviderDescriptor[];
 }
 
+export type ProviderSupportStatus = "supported" | "planned" | "blocked" | "research_only";
+export type ProviderRuntimeSurface = "browser_taskpane" | "companion" | "not_implemented";
+export type SettingsVisibility = "simple" | "advanced";
+export type ProviderAuthMethod =
+  | "api_key"
+  | "oauth"
+  | "manual_token"
+  | "cloud_identity"
+  | "aws_credentials";
+
 export interface AuthStatusResponse {
   storedProviders: string[];
   oauthProviders: string[];
   configuredProviders: string[];
+  verifiedProviders: string[];
+  unverifiedProviders: string[];
+  verificationFailedProviders: string[];
+  providerStates: ProviderAuthDescriptor[];
 }
 
 export interface SessionUsageTotals {
@@ -1254,7 +1521,7 @@ export interface DocumentCheckpointPayload {
     usedRangeAddress: string;
     values: unknown[][];
     numberFormats: string[][];
-    formulas: string[][];
+    formulas: unknown[][];
   }>;
   presentationBase64?: string;
 }

@@ -1,4 +1,5 @@
 import type { OfficeStateUpdate, PromptImagePayload } from "@pi-office/pi-office-pack/protocol";
+import { getWorkflowQuickPrompts } from "@pi-office/pi-office-pack/workflow-packs";
 
 export type ChatRole = "user" | "assistant" | "system" | "error";
 
@@ -46,11 +47,15 @@ export interface RemoteQueueEntry {
   mode: "steer" | "followUp";
 }
 
-export const quickPrompts = [
-  "Summarize the current selection and identify gaps.",
-  "Rewrite the current selection for a more executive tone.",
-  "Turn the current content into a review checklist.",
-];
+export function getQuickPrompts(officeState: OfficeStateUpdate | undefined): string[] {
+  const workflowPrompts = getWorkflowQuickPrompts(officeState?.host, 3);
+  if (workflowPrompts.length) return workflowPrompts;
+  return [
+    "Summarize the current selection and identify gaps.",
+    "Rewrite the current selection for a more executive tone.",
+    "Turn the current content into a review checklist.",
+  ];
+}
 
 const visualPromptPattern =
   /\b(image|figure|chart|diagram|format|formatting|style|spacing|margin|margins|tab|tabs|ruler|layout|visual|theme|align|alignment|slide|screenshot|snapshot)\b/i;

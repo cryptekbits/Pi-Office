@@ -14,6 +14,7 @@ import type {
   ConnectorScopeContext,
   ConnectorScopeUpdateRequest,
   ConnectorSetupRequest,
+  ConnectorToolPolicyUpdateRequest,
   ImageModelDescriptor,
   ImageModelCatalogResponse,
   ImageReasoningEffort,
@@ -23,6 +24,7 @@ import type {
   CompanionState,
   OfficeDocumentState,
   OfficeStateUpdate,
+  ProviderAuthMethod,
   ProviderDescriptor,
   SessionStatsResponse,
   UserPreferences,
@@ -40,6 +42,12 @@ import {
   type ToolCategory,
   type ToolPermissionOverride,
 } from "@pi-office/pi-office-pack/protocol";
+import {
+  getAvailableToolNames,
+  resolvePiOfficeCapabilities,
+  type CapabilityGroup,
+  type CapabilityResolution,
+} from "@pi-office/pi-office-pack/capabilities";
 import { fetchJson, type RuntimeRequestFailureDiagnostic } from "../../lib/api";
 import { HOST_LABELS } from "@pi-office/pi-office-pack/defaults";
 import {
@@ -51,11 +59,13 @@ import {
   PrefsIcon,
   IntegrationIcon,
   DiagnosticsIcon,
+  ShieldIcon,
 } from "../../lib/icons";
 import { formatTokenCount } from "../../lib/helpers";
 import { IntegrationsSection } from "./IntegrationsSection";
 
-type SettingsTab = "profile" | "companion" | "providers" | "models" | "integrations" | "tools" | "preferences" | "diagnostics";
+type SettingsTab = "profile" | "companion" | "providers" | "models" | "integrations" | "privacy" | "tools" | "preferences" | "diagnostics";
+type SettingsDetailLevel = "simple" | "advanced";
 
 const TABS: { key: SettingsTab; label: string; Icon: () => React.JSX.Element }[] = [
   { key: "profile", label: "Profile", Icon: UserIcon },
@@ -63,6 +73,7 @@ const TABS: { key: SettingsTab; label: string; Icon: () => React.JSX.Element }[]
   { key: "providers", label: "AI Providers", Icon: ProviderIcon },
   { key: "models", label: "Models", Icon: ModelIcon },
   { key: "integrations", label: "Integrations", Icon: IntegrationIcon },
+  { key: "privacy", label: "Privacy", Icon: ShieldIcon },
   { key: "diagnostics", label: "Diagnostics", Icon: DiagnosticsIcon },
   { key: "tools", label: "Tools", Icon: ToolIcon },
   { key: "preferences", label: "Preferences", Icon: PrefsIcon },
@@ -73,7 +84,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   office_apply_edit: "Apply text edits, formatting changes, and insertions to the active document.",
   office_navigate: "Navigate to specific locations within the document (sections, pages, ranges).",
   office_capture_snapshot: "Capture selection and document context metadata from the current document state.",
-  office_capture_viewport: "Capture Word viewport metadata from Office.js context (not a pixel-perfect OS/window screenshot).",
+  office_capture_viewport: "Capture a true viewport/window screenshot through companion native capture when advertised.",
   office_read_section: "Read a paginated section of the document by paragraph index.",
   office_execute_js: "Manual-only escape hatch for direct Office.js snippets when structured tools are insufficient.",
   office_propose_edits: "Propose batch edits for user review before applying.",
@@ -81,7 +92,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   grep: "Search file contents from the saved document folder through the optional companion.",
   find: "Find files by name inside the saved document folder through the optional companion.",
   ls: "List directory contents from the saved document folder through the optional companion.",
-  mcp: "Execute a verified read-only local MCP tool through the optional companion.",
+  mcp: "Execute a verified read-only MCP tool through the optional companion.",
   bash: "Execute a companion-sandboxed shell command only after isolation detection and destructive probes pass.",
 };
 
@@ -128,11 +139,15 @@ interface SettingsPageProps {
   onRemoveConnector: (storedConnectorId: string) => Promise<void>;
   onSetConnectorFavorite: (request: ConnectorFavoriteRequest) => Promise<void>;
   onUpdateConnectorScope: (request: ConnectorScopeUpdateRequest) => Promise<void>;
+  onUpdateConnectorToolPolicy: (request: ConnectorToolPolicyUpdateRequest) => Promise<void>;
   onLoadConnectorLogs: (connectorId: string) => Promise<ConnectorLogResponse>;
   onExportConnectors: () => Promise<ConnectorExportBundle>;
   onPreviewConnectorImport: (bundle: ConnectorExportBundle) => Promise<ConnectorImportPreviewResponse>;
   onApplyConnectorImport: (bundle: ConnectorExportBundle, resolutions?: Record<string, "skip" | "replace">) => Promise<ConnectorImportApplyResponse>;
   onSetConnectorAuditPreference: (preference: ConnectorAuditPreference) => Promise<ConnectorAuditPreference>;
+  onClearAllProviderAuth: () => Promise<void>;
+  onClearConnectorData: () => Promise<void>;
+  onClearChatHistory: () => void;
   onRetryCompanion: () => Promise<void> | void;
   onSaveCompanionEndpoint: (endpoint: string) => Promise<void> | void;
   onClearRuntimeDiagnostics: () => void;
@@ -169,16 +184,21 @@ export function SettingsPage({
   onRemoveConnector,
   onSetConnectorFavorite,
   onUpdateConnectorScope,
+  onUpdateConnectorToolPolicy,
   onLoadConnectorLogs,
   onExportConnectors,
   onPreviewConnectorImport,
   onApplyConnectorImport,
   onSetConnectorAuditPreference,
+  onClearAllProviderAuth,
+  onClearConnectorData,
+  onClearChatHistory,
   onRetryCompanion,
   onSaveCompanionEndpoint,
   onClearRuntimeDiagnostics,
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const [settingsDetailLevel, setSettingsDetailLevel] = useState<SettingsDetailLevel>("simple");
   const pageRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -249,6 +269,7 @@ export function SettingsPage({
           )}
           {activeTab === "companion" && (
             <CompanionSection
+              officeState={officeState}
               companion={companion}
               onRetryCompanion={onRetryCompanion}
               onSaveCompanionEndpoint={onSaveCompanionEndpoint}
@@ -259,6 +280,8 @@ export function SettingsPage({
               providers={providers}
               authStatus={authStatus}
               enabledProviders={enabledProviders}
+              detailLevel={settingsDetailLevel}
+              onDetailLevelChange={setSettingsDetailLevel}
               onToggleProvider={onToggleProvider}
               onSaveApiKey={onSaveApiKey}
               onStartOAuth={onStartOAuth}
@@ -270,12 +293,17 @@ export function SettingsPage({
               providers={providers}
               enabledModels={enabledModels}
               enabledProviders={enabledProviders}
+              preferences={preferences}
+              detailLevel={settingsDetailLevel}
+              onDetailLevelChange={setSettingsDetailLevel}
+              onUpdatePreferences={onUpdatePreferences}
               onToggleModel={onToggleModel}
             />
           )}
           {activeTab === "integrations" && (
             <IntegrationsSection
               host={officeState?.host}
+              companion={companion}
               connectors={connectors}
               statuses={connectorStatuses}
               diagnostics={connectorDiagnostics}
@@ -289,11 +317,19 @@ export function SettingsPage({
               onRemoveConnector={onRemoveConnector}
               onSetFavorite={onSetConnectorFavorite}
               onUpdateScope={onUpdateConnectorScope}
+              onUpdateToolPolicy={onUpdateConnectorToolPolicy}
               onLoadLogs={onLoadConnectorLogs}
               onExportConnectors={onExportConnectors}
               onPreviewImport={onPreviewConnectorImport}
               onApplyImport={onApplyConnectorImport}
               onSetAuditPreference={onSetConnectorAuditPreference}
+            />
+          )}
+          {activeTab === "privacy" && (
+            <PrivacySection
+              onClearAllProviderAuth={onClearAllProviderAuth}
+              onClearConnectorData={onClearConnectorData}
+              onClearChatHistory={onClearChatHistory}
             />
           )}
           {activeTab === "diagnostics" && (
@@ -304,6 +340,7 @@ export function SettingsPage({
           )}
           {activeTab === "tools" && (
             <ToolsSection
+              officeState={officeState}
               documentState={documentState}
               companion={companion}
               preferences={preferences}
@@ -319,11 +356,121 @@ export function SettingsPage({
   );
 }
 
+function SettingsDetailToggle({
+  value,
+  onChange,
+}: {
+  value: SettingsDetailLevel;
+  onChange: (value: SettingsDetailLevel) => void;
+}) {
+  return (
+    <div className="segmented-control settings-detail-toggle" aria-label="Catalog detail level">
+      <button
+        type="button"
+        className={`segmented-item ${value === "simple" ? "segmented-active" : ""}`}
+        onClick={() => onChange("simple")}
+      >
+        Simple
+      </button>
+      <button
+        type="button"
+        className={`segmented-item ${value === "advanced" ? "segmented-active" : ""}`}
+        onClick={() => onChange("advanced")}
+      >
+        Advanced
+      </button>
+    </div>
+  );
+}
+
 const DIAGNOSTIC_SOURCE_LABELS: Record<RuntimeRequestFailureDiagnostic["source"], string> = {
   route: "Route",
   auth: "Auth",
   connector: "Connector",
 };
+
+function PrivacySection({
+  onClearAllProviderAuth,
+  onClearConnectorData,
+  onClearChatHistory,
+}: {
+  onClearAllProviderAuth: () => Promise<void>;
+  onClearConnectorData: () => Promise<void>;
+  onClearChatHistory: () => void;
+}) {
+  const confirmAndRun = useCallback((message: string, action: () => Promise<void> | void) => {
+    if (window.confirm(message)) {
+      void action();
+    }
+  }, []);
+
+  return (
+    <section className="settings-section privacy-section">
+      <h3>Privacy & Storage</h3>
+      <p className="settings-note">
+        Pi-Office keeps the Office bridge local to the taskpane. Provider and connector requests leave the taskpane only when a configured runtime or connector is used.
+      </p>
+
+      <div className="privacy-disclosure-list">
+        <article className="privacy-disclosure-row">
+          <div>
+            <strong>Provider calls</strong>
+            <p>Prompts, selected Office context, generated images, and tool results are sent to the selected AI provider when a request runs. Provider credentials are stored in this browser origin.</p>
+          </div>
+          <button
+            type="button"
+            className="button"
+            onClick={() => confirmAndRun("Clear all stored provider credentials from this taskpane?", onClearAllProviderAuth)}
+          >
+            Clear provider auth
+          </button>
+        </article>
+
+        <article className="privacy-disclosure-row">
+          <div>
+            <strong>Connectors</strong>
+            <p>Connector calls can contact external services or the optional local companion. Connector config, secrets, OAuth handoffs, scope settings, and redacted audit entries are stored locally.</p>
+          </div>
+          <button
+            type="button"
+            className="button"
+            onClick={() => confirmAndRun("Remove all connector configuration, secrets, OAuth state, scopes, and logs?", onClearConnectorData)}
+          >
+            Clear connectors
+          </button>
+        </article>
+
+        <article className="privacy-disclosure-row">
+          <div>
+            <strong>Chat history</strong>
+            <p>Saved chats may include prompts, document snippets, model responses, and metadata for the current Office host. They are stored in localStorage for this taskpane origin.</p>
+          </div>
+          <button
+            type="button"
+            className="button"
+            onClick={() => confirmAndRun("Clear saved local chat history from this taskpane?", onClearChatHistory)}
+          >
+            Clear saved chats
+          </button>
+        </article>
+
+        <article className="privacy-disclosure-row privacy-disclosure-row-static">
+          <div>
+            <strong>Telemetry</strong>
+            <p>Pi-Office does not enable product analytics or telemetry by default. AI providers, connectors, and hosted services may keep their own request logs under their policies.</p>
+          </div>
+        </article>
+
+        <article className="privacy-disclosure-row privacy-disclosure-row-static">
+          <div>
+            <strong>Local encryption limit</strong>
+            <p>Provider and connector envelopes use AES-GCM, but the encryption keys are also stored in localStorage. Treat this as local obfuscation, not protection from same-origin script access.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
 
 function formatDiagnosticTimestamp(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour12: false });
@@ -371,15 +518,22 @@ function DiagnosticsSection({
 }
 
 function CompanionSection({
+  officeState,
   companion,
   onRetryCompanion,
   onSaveCompanionEndpoint,
 }: {
+  officeState: OfficeStateUpdate | undefined;
   companion: CompanionState;
   onRetryCompanion: () => Promise<void> | void;
   onSaveCompanionEndpoint: (endpoint: string) => Promise<void> | void;
 }) {
   const [manualEndpoint, setManualEndpoint] = useState("");
+  const capabilities = resolvePiOfficeCapabilities({
+    host: officeState?.host ?? "word",
+    documentSaved: officeState?.document.saved ?? false,
+    companion,
+  });
 
   useEffect(() => {
     setManualEndpoint(companion.manualEndpoint ?? companion.endpoint ?? companion.lastSuccessfulEndpoint ?? "");
@@ -393,6 +547,7 @@ function CompanionSection({
         : companion.status === "error"
           ? "Error"
           : "Unavailable";
+  const discoveryAttempts = companion.lastDiscoveryAttempts ?? [];
 
   return (
     <section className="settings-section">
@@ -403,8 +558,10 @@ function CompanionSection({
         </button>
       </div>
       <p className="settings-note">
-        Pi-Office works without the companion. The companion adds read-only local file access and read-only local MCP execution. Sandboxed shell stays hidden unless isolation detection and destructive probes pass.
+        Pi-Office works without the companion. Smart Auto prefers companion execution for eligible non-Office capabilities only when the companion advertises them; Office.js document execution stays in the taskpane.
       </p>
+
+      <CapabilityGroups capabilities={capabilities} />
 
       <div className="settings-card-grid">
         <div className="settings-card">
@@ -420,7 +577,13 @@ function CompanionSection({
           <p>
             Files: {companion.capabilities.fileRead ? "Read-only ready" : "Unavailable"}
             <br />
-            Local MCP: {companion.capabilities.localMcp ? "Read-only ready" : "Unavailable"}
+            MCP: {companion.capabilities.localMcp ? "Read-only ready" : "Unavailable"}
+            <br />
+            Native capture: {companion.capabilities.nativeCapture?.state === "available"
+              ? `Ready for ${companion.capabilities.nativeCapture.hosts.join(", ")}`
+              : "Unavailable"}
+            <br />
+            Agent: {companion.capabilities.agent?.state === "available" ? "Companion owned" : "Taskpane fallback"}
             <br />
             Shell: {companion.capabilities.shell?.state === "available"
               ? "Sandbox ready"
@@ -442,6 +605,28 @@ function CompanionSection({
         <div className="settings-card">
           <span className="label">Last error</span>
           <p>{companion.lastError}</p>
+        </div>
+      )}
+
+      {discoveryAttempts.length > 0 && (
+        <div className="settings-card">
+          <span className="label">Discovery attempts</span>
+          <div className="settings-note-list">
+            {discoveryAttempts.map((attempt) => (
+              <p key={`${attempt.endpoint}-${attempt.durationMs ?? "n"}`}>
+                <strong>{attempt.ok ? "Connected" : "Failed"}</strong>
+                {" · "}
+                {attempt.endpoint}
+                {typeof attempt.durationMs === "number" ? ` · ${attempt.durationMs}ms` : ""}
+                {attempt.message ? (
+                  <>
+                    <br />
+                    {attempt.message}
+                  </>
+                ) : null}
+              </p>
+            ))}
+          </div>
         </div>
       )}
 
@@ -478,14 +663,47 @@ function CompanionSection({
         </div>
         <div className="settings-card">
           <span className="label">2. Start</span>
-          <p>Run the companion on your machine and keep it listening on `https://localhost:3444` or your chosen loopback endpoint.</p>
+          <p>
+            In local development, run <code>npm run dev</code> for the taskpane on <code>https://localhost:3443</code> and run <code>npm run dev:companion</code> separately for the companion on <code>https://localhost:3444</code>.
+          </p>
         </div>
         <div className="settings-card">
           <span className="label">3. Use</span>
-          <p>When discovery succeeds, saved documents gain read-only file tools and local stdio MCP execution. Sandboxed shell appears only after the companion policy passes. Without it, the add-in still works normally.</p>
+          <p>When discovery succeeds, saved documents gain read-only file tools plus verified local stdio and remote HTTP MCP execution. Native viewport screenshots appear only when the companion reports support. Without it, the add-in still works normally.</p>
         </div>
       </div>
     </section>
+  );
+}
+
+const CAPABILITY_GROUP_LABELS: Record<CapabilityGroup, string> = {
+  works_without_companion: "Works without companion",
+  enhanced_by_companion: "Enhanced by companion",
+  requires_companion: "Requires companion",
+};
+
+function CapabilityGroups({ capabilities }: { capabilities: CapabilityResolution[] }) {
+  const groups: CapabilityGroup[] = ["works_without_companion", "enhanced_by_companion", "requires_companion"];
+  return (
+    <div className="settings-card-grid">
+      {groups.map((group) => (
+        <div key={group} className="settings-card">
+          <span className="label">{CAPABILITY_GROUP_LABELS[group]}</span>
+          <div className="settings-note-list">
+            {capabilities.filter((capability) => capability.group === group).map((capability) => (
+              <p key={capability.id}>
+                <strong>{capability.label}</strong>
+                <br />
+                {capability.available ? "Available" : "Unavailable"} · active: {capability.activeRuntime ?? "none"} · preferred: {capability.preferredRuntime}
+                {capability.fallbackRuntime ? ` · fallback: ${capability.fallbackRuntime}` : ""}
+                <br />
+                {capability.reason ?? capability.honestyLabel}
+              </p>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -576,6 +794,8 @@ function ProvidersSection({
   providers,
   authStatus,
   enabledProviders,
+  detailLevel,
+  onDetailLevelChange,
   onToggleProvider,
   onSaveApiKey,
   onStartOAuth,
@@ -584,31 +804,41 @@ function ProvidersSection({
   providers: ProviderDescriptor[];
   authStatus: AuthStatusResponse | undefined;
   enabledProviders: Set<string>;
+  detailLevel: SettingsDetailLevel;
+  onDetailLevelChange: (value: SettingsDetailLevel) => void;
   onToggleProvider: (provider: string) => void;
   onSaveApiKey: (provider: string, key: string) => void;
   onStartOAuth: (provider: string) => void;
   onClearAuth: (provider: string) => void;
 }) {
   const stored = authStatus?.storedProviders ?? [];
+  const providerStates = new Map((authStatus?.providerStates ?? []).map((entry) => [entry.provider, entry]));
+  const visibleProviders = providers.filter((provider) =>
+    detailLevel === "advanced" || provider.settingsVisibility === "simple",
+  );
 
   return (
     <div className="settings-section">
-      <h3>AI Providers</h3>
+      <div className="settings-section-header">
+        <h3>AI Providers</h3>
+        <SettingsDetailToggle value={detailLevel} onChange={onDetailLevelChange} />
+      </div>
       <div className="provider-list">
-        {providers.map((provider) => (
+        {visibleProviders.map((provider) => (
           <ProviderCard
             key={provider.provider}
             isEnabled={enabledProviders.has(provider.provider)}
             onToggleEnabled={() => onToggleProvider(provider.provider)}
             provider={provider}
             hasAuth={stored.includes(provider.provider)}
+            lastVerificationError={providerStates.get(provider.provider)?.lastVerificationError}
             onSaveApiKey={(key) => onSaveApiKey(provider.provider, key)}
             onStartOAuth={() => onStartOAuth(provider.provider)}
             onClearAuth={() => onClearAuth(provider.provider)}
           />
         ))}
-        {providers.length === 0 && (
-          <p className="settings-note">No providers discovered yet. Pi-Office uses provider credentials directly from the taskpane, so no companion is required for this section.</p>
+        {visibleProviders.length === 0 && (
+          <p className="settings-note">No providers discovered yet. Browser API-key providers stay taskpane-local; companion-owned provider auth appears only after explicit companion setup.</p>
         )}
       </div>
     </div>
@@ -618,6 +848,7 @@ function ProvidersSection({
 function ProviderCard({
   provider,
   hasAuth,
+  lastVerificationError,
   isEnabled,
   onToggleEnabled,
   onSaveApiKey,
@@ -626,6 +857,7 @@ function ProviderCard({
 }: {
   provider: ProviderDescriptor;
   hasAuth: boolean;
+  lastVerificationError?: string | undefined;
   isEnabled: boolean;
   onToggleEnabled: () => void;
   onSaveApiKey: (key: string) => void;
@@ -634,14 +866,52 @@ function ProviderCard({
 }) {
   const [apiKey, setApiKey] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const readyCount = provider.models.filter((m) => m.configured).length;
+  const verifiedCount = provider.models.filter((m) => m.verifiedUsable).length;
+  const providerCallable = provider.browserCallable;
+  const statusLabel = !providerCallable
+    ? providerSupportLabel(provider)
+    : provider.verifiedUsable
+    ? "Verified"
+    : provider.authState === "verification_failed"
+      ? "Auth failed"
+      : provider.credentialStored
+        ? "Unverified"
+        : "Not configured";
+  const statusClass = !providerCallable
+    ? provider.supportStatus === "blocked" || provider.supportStatus === "research_only"
+      ? "provider-status-error"
+      : "provider-status-pending"
+    : provider.verifiedUsable
+    ? "provider-status-ready"
+    : provider.authState === "verification_failed"
+      ? "provider-status-error"
+      : provider.credentialStored
+        ? "provider-status-pending"
+        : "";
+  const authStatusText = !providerCallable
+    ? provider.capabilityNote ?? "This provider is not callable from the browser taskpane yet."
+    : provider.verifiedUsable
+    ? "Verified credentials found."
+    : provider.authState === "verification_failed"
+      ? `Stored credential failed verification${lastVerificationError ? `: ${lastVerificationError}` : "."}`
+      : hasAuth
+        ? "Credential stored. It will be marked verified after the first successful provider request."
+        : "No stored credentials.";
+  const providerMeta = providerCallable
+    ? `${verifiedCount}/${provider.models.length} verified`
+    : provider.companionRequired
+      ? "Companion required"
+      : "Not available";
+  const authMethodSummary = provider.authMethods.length
+    ? provider.authMethods.map(authMethodLabel).join(" + ")
+    : "No supported auth path";
 
   const handleSave = useCallback(() => {
-    if (apiKey.trim()) {
+    if (provider.apiKeySupported && apiKey.trim()) {
       onSaveApiKey(apiKey.trim());
       setApiKey("");
     }
-  }, [apiKey, onSaveApiKey]);
+  }, [apiKey, onSaveApiKey, provider.apiKeySupported]);
 
   return (
     <div className={`provider-card ${!isEnabled ? "provider-card-disabled" : ""}`}>
@@ -653,21 +923,23 @@ function ProviderCard({
         >
           <div className="provider-card-info">
             <strong>{provider.label}</strong>
-            <span className={`provider-status ${provider.configured ? "provider-status-ready" : ""}`}>
-              {provider.configured ? "Ready" : "Not configured"}
+            <span className={`provider-status ${statusClass}`}>
+              {statusLabel}
             </span>
           </div>
           <span className="provider-card-meta">
-            {readyCount}/{provider.models.length} models
+            {providerMeta}
           </span>
         </button>
         <button
           type="button"
           className={`toggle-switch toggle-sm ${isEnabled ? "toggle-on" : ""}`}
           onClick={onToggleEnabled}
+          disabled={!providerCallable}
           role="switch"
-          aria-checked={isEnabled}
+          aria-checked={providerCallable && isEnabled}
           aria-label={`${isEnabled ? "Disable" : "Enable"} ${provider.label}`}
+          title={providerCallable ? undefined : provider.capabilityNote ?? "This provider is not callable yet."}
         >
           <span className="toggle-thumb" />
         </button>
@@ -676,21 +948,37 @@ function ProviderCard({
       {expanded && (
         <div className="provider-card-body">
           <div className="provider-auth-status">
-            {hasAuth ? "Stored credentials found." : "No stored credentials."}
+            {authStatusText}
           </div>
 
-          <div className="field">
-            <span>API Key</span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={provider.oauthSupported ? "Optional key override" : "Paste provider API key"}
-            />
+          <div className="provider-capability-row">
+            <span className="settings-model-tag">{providerCallable ? "Browser callable" : providerSupportLabel(provider)}</span>
+            {provider.companionRequired && <span className="settings-model-tag">Companion</span>}
+            {provider.subscriptionBacked && <span className="settings-model-tag">Subscription</span>}
+            <span className="settings-model-tag">{authMethodSummary}</span>
+            {provider.imageGenerationSupported && <span className="settings-model-tag">Images</span>}
           </div>
+
+          {provider.apiKeySupported ? (
+            <div className="field">
+              <span>API Key</span>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Paste provider API key"
+              />
+            </div>
+          ) : (
+            <p className="settings-note">
+              {provider.companionRequired
+                ? "This provider needs companion-owned auth before setup can be enabled here."
+                : "Pi-Office does not support direct browser auth for this provider yet."}
+            </p>
+          )}
 
           <div className="settings-actions">
-            <button type="button" className="button button-solid" onClick={handleSave}>
+            <button type="button" className="button button-solid" onClick={handleSave} disabled={!provider.apiKeySupported}>
               Save Key
             </button>
             {provider.oauthSupported && (
@@ -708,37 +996,100 @@ function ProviderCard({
   );
 }
 
+function providerSupportLabel(provider: ProviderDescriptor): string {
+  if (provider.supportStatus === "supported") return "Supported";
+  if (provider.supportStatus === "planned") return "Planned";
+  if (provider.supportStatus === "blocked") return "Blocked";
+  return "Research";
+}
+
+function authMethodLabel(method: ProviderAuthMethod): string {
+  if (method === "api_key") return "API key";
+  if (method === "oauth") return "OAuth";
+  if (method === "manual_token") return "Manual token";
+  if (method === "cloud_identity") return "Cloud identity";
+  if (method === "aws_credentials") return "AWS credentials";
+  return method;
+}
+
 function ModelsSection({
   providers,
   enabledModels,
   enabledProviders,
+  preferences,
+  detailLevel,
+  onDetailLevelChange,
+  onUpdatePreferences,
   onToggleModel,
 }: {
   providers: ProviderDescriptor[];
   enabledModels: Set<string>;
   enabledProviders: Set<string>;
+  preferences: UserPreferences;
+  detailLevel: SettingsDetailLevel;
+  onDetailLevelChange: (value: SettingsDetailLevel) => void;
+  onUpdatePreferences: (patch: Partial<UserPreferences>) => void;
   onToggleModel: (key: string) => void;
 }) {
-  const activeProviders = providers.filter((p) => enabledProviders.has(p.provider));
+  const visibleProviders = providers
+    .map((provider) => ({
+      provider,
+      models: provider.models.filter((model) =>
+        detailLevel === "advanced" || (model.settingsVisibility === "simple" && model.recommended),
+      ),
+    }))
+    .filter(({ provider, models }) =>
+      models.length > 0 && (detailLevel === "advanced" || provider.settingsVisibility === "simple"),
+    );
+
+  const setProviderDefault = useCallback(
+    (provider: string, modelId: string) => {
+      onUpdatePreferences({
+        defaultModelByProvider: {
+          ...preferences.defaultModelByProvider,
+          [provider]: modelId,
+        },
+      });
+    },
+    [onUpdatePreferences, preferences.defaultModelByProvider],
+  );
 
   return (
     <div className="settings-section">
-      <h3>Available Models</h3>
+      <div className="settings-section-header">
+        <h3>Available Models</h3>
+        <SettingsDetailToggle value={detailLevel} onChange={onDetailLevelChange} />
+      </div>
       <p className="settings-note">
-        Toggle models on or off to control which appear in the model selector.
-        Only models from enabled providers are shown.
+        Simple shows curated recommended models. Advanced shows the full Pi catalog and asks for confirmation before un-recommended selections run.
       </p>
-      {activeProviders.length === 0 && (
-        <p className="settings-note">Enable a provider in the Providers tab first.</p>
+      {visibleProviders.length === 0 && (
+        <p className="settings-note">No models match this catalog view yet.</p>
       )}
-      {activeProviders.map((provider) => (
-        <div key={provider.provider} className="settings-model-group">
-          <h4>{provider.label}</h4>
+      {visibleProviders.map(({ provider, models }) => {
+        const providerEnabled = enabledProviders.has(provider.provider);
+        const selectedDefault = preferences.defaultModelByProvider[provider.provider] ?? provider.defaultModelId;
+        return (
+        <div key={provider.provider} className={`settings-model-group ${!provider.browserCallable ? "settings-model-group-disabled" : ""}`}>
+          <div className="settings-model-group-header">
+            <h4>{provider.label}</h4>
+            <span className="settings-model-group-meta">
+              {provider.lab}
+              {!provider.browserCallable ? " · setup-only" : !providerEnabled ? " · provider off" : ""}
+            </span>
+          </div>
           <div className="settings-model-list">
-            {provider.models.map((model) => {
+            {models.map((model) => {
               const modelKey = `${model.provider}::${model.modelId}`;
               const isEnabled = enabledModels.has(modelKey);
-              const isReady = model.configured;
+              const isProviderDefault = selectedDefault === model.modelId;
+              const stateLabel = model.verifiedUsable
+                ? ""
+                : model.authState === "verification_failed"
+                  ? "Auth failed"
+                  : model.credentialStored
+                    ? "Unverified"
+                    : "Locked";
               return (
                 <div
                   key={modelKey}
@@ -747,6 +1098,15 @@ function ModelsSection({
                   <div className="settings-model-info">
                     <span>{model.modelName}</span>
                     <span className="settings-model-badges">
+                      <span className="settings-model-tag">{model.lab}</span>
+                      {model.family ? (
+                        <span className="settings-model-tag">{model.family}</span>
+                      ) : null}
+                      {model.recommended ? (
+                        <span className="settings-model-tag">Recommended</span>
+                      ) : (
+                        <span className="settings-model-tag settings-model-tag-warning">Advanced</span>
+                      )}
                       {model.contextWindow ? (
                         <span className="settings-model-ctx">
                           {Math.round(model.contextWindow / 1000)}K
@@ -761,15 +1121,24 @@ function ModelsSection({
                     </span>
                   </div>
                   <div className="settings-model-actions">
-                    {!isReady && (
-                      <span className="settings-model-state">Locked</span>
+                    <button
+                      type="button"
+                      className={`settings-inline-action ${isProviderDefault ? "settings-inline-action-active" : ""}`}
+                      onClick={() => setProviderDefault(provider.provider, model.modelId)}
+                      disabled={!provider.browserCallable}
+                    >
+                      {isProviderDefault ? "Default" : "Make default"}
+                    </button>
+                    {stateLabel && (
+                      <span className="settings-model-state">{stateLabel}</span>
                     )}
                     <button
                       type="button"
                       className={`toggle-switch toggle-sm ${isEnabled ? "toggle-on" : ""}`}
                       onClick={() => onToggleModel(modelKey)}
+                      disabled={!provider.browserCallable || !providerEnabled}
                       role="switch"
-                      aria-checked={isEnabled}
+                      aria-checked={provider.browserCallable && providerEnabled && isEnabled}
                       aria-label={`${isEnabled ? "Disable" : "Enable"} ${model.modelName}`}
                     >
                       <span className="toggle-thumb" />
@@ -780,33 +1149,40 @@ function ModelsSection({
             })}
           </div>
         </div>
-      ))}
+      );})}
     </div>
   );
 }
 
 function ToolsSection({
+  officeState,
   documentState,
   companion,
   preferences,
   onUpdatePreferences,
 }: {
+  officeState: OfficeStateUpdate | undefined;
   documentState: OfficeDocumentState;
   companion: CompanionState;
   preferences: UserPreferences;
   onUpdatePreferences: (patch: Partial<UserPreferences>) => void;
 }) {
+  const capabilityResolutions = resolvePiOfficeCapabilities({
+    host: officeState?.host ?? "word",
+    documentSaved: documentState === "saved",
+    companion,
+  });
+  const availableToolNames = getAvailableToolNames(capabilityResolutions);
+  const visibleOfficeToolNames = OFFICE_TOOL_NAMES.filter(
+    (toolName) => toolName !== "office_capture_viewport" && availableToolNames.has(toolName),
+  );
   const showCompanionFileTools =
-    documentState === "saved" &&
-    companion.status === "connected" &&
-    companion.capabilities.fileRead;
+    ["read", "grep", "find", "ls"].some((toolName) => availableToolNames.has(toolName));
   const showCompanionMcp =
-    companion.status === "connected" &&
-    (companion.connectorToolNames?.length ?? 0) > 0;
+    availableToolNames.has("mcp");
   const showCompanionShell =
-    documentState === "saved" &&
-    companion.status === "connected" &&
-    companion.capabilities.shell?.state === "available";
+    availableToolNames.has("bash");
+  const showCompanionNativeCapture = availableToolNames.has("office_capture_viewport");
 
   const handleOverrideChange = useCallback(
     (toolName: string, level: AutonomyLevel | "default" | "disabled") => {
@@ -863,7 +1239,7 @@ function ToolsSection({
 
       <h3>Office Tools</h3>
       <div className="tool-list">
-        {OFFICE_TOOL_NAMES.map((toolName) => (
+        {visibleOfficeToolNames.map((toolName) => (
           <ToolCardWithOverride
             key={toolName}
             toolName={toolName}
@@ -874,13 +1250,13 @@ function ToolsSection({
       </div>
 
       <h3>Optional Companion Tools</h3>
-      {!showCompanionFileTools && !showCompanionMcp && !showCompanionShell && (
+      {!showCompanionFileTools && !showCompanionMcp && !showCompanionShell && !showCompanionNativeCapture && (
         <p className="settings-note">
           {documentState !== "saved"
             ? "Save the document first to expose document-folder context. Local file tools stay disabled until the optional companion also connects."
             : companion.status === "connected" && companion.capabilities.localMcp
-              ? "The companion is connected, but no read-only local MCP tools are verified for this session yet."
-              : "The add-in is running without companion-backed local tools. Read-only local files and local MCP execution become available only when the optional companion connects."}
+              ? "The companion is connected, but no read-only MCP tools are verified for this session yet."
+              : "The add-in is running without companion-backed local tools. Read-only local files and MCP execution become available only when the optional companion connects."}
         </p>
       )}
       {showCompanionFileTools && (
@@ -902,6 +1278,15 @@ function ToolsSection({
           <ToolCardWithOverride
             toolName="mcp"
             overrideLevel={getOverrideLevel("mcp")}
+            onOverrideChange={handleOverrideChange}
+          />
+        </div>
+      )}
+      {showCompanionNativeCapture && (
+        <div className="tool-list">
+          <ToolCardWithOverride
+            toolName="office_capture_viewport"
+            overrideLevel={getOverrideLevel("office_capture_viewport")}
             onOverrideChange={handleOverrideChange}
           />
         </div>
@@ -1055,6 +1440,12 @@ function PreferencesSection({
           onChange={(v) => onUpdate({ nextPromptSuggestionsEnabled: v })}
         />
         <PrefToggle
+          label="Skip advanced model warning"
+          description="Allow enabled un-recommended models to be selected without an extra confirmation."
+          value={preferences.suppressUnrecommendedModelWarning}
+          onChange={(v) => onUpdate({ suppressUnrecommendedModelWarning: v })}
+        />
+        <PrefToggle
           label="Persistent rewind snapshots (Beta)"
           description="Save document checkpoints to disk for multi-session rewind. Uses additional disk space."
           value={preferences.experimentalRewindSnapshots}
@@ -1130,7 +1521,7 @@ function ImageGenerationSettings({
       {preferences.imageGenerationEnabled && (
         <>
           <p className="settings-note">
-            Choose the default model for image generation. Only providers with stored credentials are available.
+            Choose the default model for image generation. The browser taskpane currently exposes OpenAI image models only.
           </p>
 
           {configuredModels.length > 0 ? (
@@ -1153,7 +1544,7 @@ function ImageGenerationSettings({
             </div>
           ) : (
             <p className="settings-note">
-              No image models available. Configure an AI provider (OpenAI, Google, or OpenRouter) in the Providers tab.
+              No image models available. Configure OpenAI in the Providers tab.
             </p>
           )}
 

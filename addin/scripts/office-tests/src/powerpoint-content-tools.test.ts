@@ -170,6 +170,8 @@ test("protocol inventory includes first-class PowerPoint content tools", () => {
 
 test("createOfficeExtension registers first-class PowerPoint content tools and routes calls", async () => {
   const registeredTools = new Map<string, {
+    label?: string;
+    description?: string;
     execute: (toolCallId: string, params: Record<string, unknown>) => Promise<{ content: unknown; details: unknown }>;
   }>();
   const invocations: Array<{ toolName: string; params: Record<string, unknown> }> = [];
@@ -192,7 +194,7 @@ test("createOfficeExtension registers first-class PowerPoint content tools and r
   });
 
   extensionFactory({
-    registerTool: (tool: { name: string; execute: (toolCallId: string, params: Record<string, unknown>) => Promise<{ content: unknown; details: unknown }> }) => {
+    registerTool: (tool: { name: string; label?: string; description?: string; execute: (toolCallId: string, params: Record<string, unknown>) => Promise<{ content: unknown; details: unknown }> }) => {
       registeredTools.set(tool.name, tool);
     },
     on: () => {},
@@ -208,6 +210,8 @@ test("createOfficeExtension registers first-class PowerPoint content tools and r
   for (const toolName of powerPointToolNames) {
     assert.ok(registeredTools.has(toolName));
   }
+  assert.equal(registeredTools.get("edit_slide_master")?.label, "Apply Slide Layout");
+  assert.match(registeredTools.get("edit_slide_master")?.description ?? "", /does not mutate slide masters/i);
 
   await registeredTools.get("insert_slide_element")!.execute("ppt-insert-element", {
     operation: "add_text_box",
@@ -267,14 +271,17 @@ test("in-process runtime publishes first-class PowerPoint content tools", async 
   socket.send(JSON.stringify({ type: "client_ready" }));
   await readyMessage;
 
-  const session = (socket as unknown as { session: { agent: { state: { tools: Array<{ name: string }> } } } }).session;
+  const session = (socket as unknown as { session: { agent: { state: { tools: Array<{ name: string; label?: string; description?: string }> } } } }).session;
   const toolNames = session.agent.state.tools.map((tool) => tool.name);
+  const masterTool = session.agent.state.tools.find((tool) => tool.name === "edit_slide_master");
 
   assert.ok(toolNames.includes("insert_slide_element"));
   assert.ok(toolNames.includes("remove_slide_element"));
   assert.ok(toolNames.includes("edit_slide_text"));
   assert.ok(toolNames.includes("edit_slide_xml"));
   assert.ok(toolNames.includes("edit_slide_master"));
+  assert.equal(masterTool?.label, "Apply Slide Layout");
+  assert.match(masterTool?.description ?? "", /does not mutate slide masters/i);
   socket.close();
 });
 
@@ -352,6 +359,16 @@ test("createOfficeToolExecutor dispatches first-class PowerPoint content tools a
     host: "word",
     params: {},
   } as OfficeToolRequest);
+  const unsupportedMasterResult = await executeOfficeTool({
+    requestId: "ppt-master-unsupported-operation",
+    toolName: "edit_slide_master" as OfficeToolRequest["toolName"],
+    host: "powerpoint",
+    params: {
+      operation: "set_slide_master",
+      slideId: "slide-1",
+      slideMasterName: "Corporate",
+    },
+  } as OfficeToolRequest);
 
   assert.equal(insertResult.success, true);
   assert.equal(removeResult.success, true);
@@ -365,4 +382,6 @@ test("createOfficeToolExecutor dispatches first-class PowerPoint content tools a
   assert.equal((calls[4]?.action as { type: string }).type, "applyLayout");
   assert.equal(unsupportedResult.success, false);
   assert.match(String(unsupportedResult.error), /only available for PowerPoint/);
+  assert.equal(unsupportedMasterResult.success, false);
+  assert.match(String(unsupportedMasterResult.error), /does not edit slide masters/i);
 });

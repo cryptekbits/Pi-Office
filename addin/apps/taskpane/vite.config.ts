@@ -27,6 +27,7 @@ export default defineConfig(({ command }) => ({
   plugins: [react()],
   ...(command === "serve" ? { server: loadDevServerConfig() } : {}),
   resolve: {
+    dedupe: ["@mariozechner/pi-ai"],
     alias: {
       "vscode-jsonrpc/lib/common/cancellation.js": fileURLToPath(new URL("cancellation.js", vscodeJsonRpcCommonDir)),
       "vscode-jsonrpc/lib/common/events.js": fileURLToPath(new URL("events.js", vscodeJsonRpcCommonDir)),

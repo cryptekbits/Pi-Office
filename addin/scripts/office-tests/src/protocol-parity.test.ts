@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createBrowserDebugOfficeState } from "../../../apps/taskpane/src/lib/office/shared.js";
+
 class MemoryStorage {
   private readonly store = new Map<string, string>();
 
@@ -235,6 +237,100 @@ test("protocol parity: ask_user request/response roundtrip", async () => {
   const response = await pending as { requestId: string; answers: Array<{ selectedOption: string | null }> };
   assert.equal(response.requestId, request.requestId);
   assert.equal(response.answers[0]?.selectedOption, "Yes");
+  socket.close();
+});
+
+test("protocol parity: Smart Auto hides viewport screenshots until companion native capture is available", async () => {
+  const { runtime, socket, session } = await openSessionHarness("smart-auto-native-capture");
+  const typedSession = session as unknown as {
+    agent: { state: { tools: Array<{ name: string }> } };
+    setCompanionState: (companion: unknown, connectors?: unknown[]) => void;
+  };
+
+  let toolNames = new Set(typedSession.agent.state.tools.map((tool) => tool.name));
+  assert.equal(toolNames.has("office_capture_snapshot"), true);
+  assert.equal(toolNames.has("verify_doc_visual"), true);
+  assert.equal(toolNames.has("office_capture_viewport"), false);
+
+  const initialCapabilities = await runtime.dispatchKernelRequest(`/v1/sessions/${(session as { sessionId: string }).sessionId}/capabilities`) as Array<{
+    id: string;
+    available: boolean;
+    activeRuntime?: string;
+    preferredRuntime: string;
+  }>;
+  assert.equal(initialCapabilities.find((capability) => capability.id === "native_viewport_capture")?.available, false);
+  assert.equal(initialCapabilities.find((capability) => capability.id === "office_write")?.activeRuntime, "addin");
+
+  typedSession.setCompanionState({
+    status: "connected",
+    endpoint: "https://localhost:3444",
+    identity: "test-companion",
+    sessionId: "native-capture-session",
+    connectorToolNames: [],
+    capabilities: {
+      fileRead: true,
+      localMcp: true,
+      endpoint: "https://localhost:3444",
+      nativeCapture: {
+        state: "available",
+        available: true,
+        hosts: ["word", "excel"],
+        trueViewportScreenshot: true,
+        includeWindowFrame: true,
+      },
+      agent: {
+        state: "unavailable",
+        available: false,
+        officeToolProxy: true,
+        providerAuth: false,
+        smartAuto: true,
+      },
+      providerAuth: {
+        state: "unavailable",
+        available: false,
+        explicitMigrationRequired: true,
+      },
+      mcp: {
+        state: "available",
+        available: true,
+        readOnly: true,
+        toolCount: 0,
+      },
+    },
+  });
+
+  toolNames = new Set(typedSession.agent.state.tools.map((tool) => tool.name));
+  assert.equal(toolNames.has("office_capture_viewport"), true);
+  assert.equal(toolNames.has("office_apply_edit"), true);
+
+  const companionCapabilities = await runtime.dispatchKernelRequest(`/v1/sessions/${(session as { sessionId: string }).sessionId}/capabilities`) as Array<{
+    id: string;
+    available: boolean;
+    activeRuntime?: string;
+    fallbackRuntime?: string;
+  }>;
+  assert.equal(companionCapabilities.find((capability) => capability.id === "native_viewport_capture")?.activeRuntime, "companion");
+  assert.equal(companionCapabilities.find((capability) => capability.id === "inference")?.fallbackRuntime, undefined);
+  socket.close();
+});
+
+test("protocol parity: browser preview sessions hide Office document tools", async () => {
+  const { runtime, socket, session } = await openSessionHarness("browser-preview-tools");
+  const typedSession = session as unknown as {
+    sessionId: string;
+    agent: { state: { tools: Array<{ name: string }> } };
+  };
+
+  await runtime.dispatchKernelRequest(`/v1/sessions/${typedSession.sessionId}/office-state`, {
+    method: "POST",
+    body: JSON.stringify(createBrowserDebugOfficeState("")),
+  });
+
+  const toolNames = new Set(typedSession.agent.state.tools.map((tool) => tool.name));
+  assert.equal(toolNames.has("office_get_context"), false);
+  assert.equal(toolNames.has("office_apply_edit"), false);
+  assert.equal(toolNames.has("office_execute_js"), false);
+  assert.equal(toolNames.has("ask_user"), true);
   socket.close();
 });
 

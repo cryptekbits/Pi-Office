@@ -1,6 +1,5 @@
 import { Agent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
 import {
-  Type,
   completeSimple,
   getModel,
   getModels,
@@ -11,6 +10,7 @@ import {
   type Model,
   type ThinkingLevel as PiThinkingLevel,
 } from "@mariozechner/pi-ai";
+import { Type } from "@sinclair/typebox";
 import {
   HOST_LABELS,
   OFFICE_APPEND_SYSTEM_PROMPT,
@@ -19,10 +19,17 @@ import {
   getOfficeDocumentState,
 } from "@pi-office/pi-office-pack/defaults";
 import {
+  getAvailableToolNames,
+  getResolvedCapability,
+  resolvePiOfficeCapabilities,
+  type CapabilityResolution,
+} from "@pi-office/pi-office-pack/capabilities";
+import {
   AUTONOMY_LEVEL_AUTO_APPROVE,
   DEFAULT_USER_PREFERENCES,
   EDIT_REJECT_REASON_LABELS,
   OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH,
+  OFFICE_TOOL_NAMES,
   TOOL_CATEGORY_MAP,
   type AskUserQuestion,
   type AskUserRequest,
@@ -32,6 +39,8 @@ import {
   type BridgeServerMessage,
   type CheckpointMetadata,
   type CompanionConnectorDefinition,
+  type CompanionNativeCaptureRequest,
+  type CompanionNativeCaptureResponse,
   type CompanionShellExecuteRequest,
   type CompanionState,
   type ConnectorDiagnostic,
@@ -53,10 +62,12 @@ import {
   type ConnectorScopeContext,
   type ConnectorScopeUpdateRequest,
   type ConnectorSetupRequest,
+  type ConnectorSetupProfile,
   type ConnectorSetupResponse,
   type ConnectorStatus,
   type ConnectorStatusResponse,
   type ConnectorTestResponse,
+  type ConnectorToolPolicyUpdateRequest,
   type OfficeDocumentState,
   type ContextBreakdownEntry,
   type DeriveSubjectRequest,
@@ -79,9 +90,14 @@ import {
   type PromptSuggestionMessage,
   type PromptSuggestionRequest,
   type PromptSuggestionResponse,
+  type ProviderAuthDescriptor,
+  type ProviderAuthMethod,
+  type ProviderAuthState,
   type ProviderCatalogResponse,
   type ProviderDescriptor,
   type ProviderModelDescriptor,
+  type ProviderRuntimeSurface,
+  type ProviderSupportStatus,
   type SessionStatsResponse,
   type SetModelRequest,
   type ThinkingCapabilities,
@@ -92,15 +108,31 @@ import {
   type UserPreferences,
 } from "@pi-office/pi-office-pack/protocol";
 import { parsePromptSuggestions } from "@pi-office/pi-office-pack/prompt-suggestions";
+import {
+  SIMPLE_RECOMMENDED_MODELS_BY_PROVIDER,
+  SIMPLE_VISIBLE_PROVIDERS,
+  getProviderDefaultModel,
+  getProviderModelPreference,
+  getProviderSettingsPreference,
+} from "@pi-office/pi-office-pack/provider-model-preferences";
 import { executeOfficeTool } from "../office-tools";
+import { isBrowserDebugOfficeState } from "../office/shared";
 import { BrowserConnectorRuntime } from "./browser-connectors";
+import { getConnectorCatalogItem } from "./connector-catalog";
 import { CompanionClient, type CompanionSessionBinding } from "./companion-client";
 
 type JsonRecord = Record<string, unknown>;
 
+const OFFICE_TOOL_NAME_SET = new Set<string>(OFFICE_TOOL_NAMES);
+
 interface StoredAuthRecord {
   provider: string;
   apiKey: string;
+  authState?: ProviderAuthState | undefined;
+  savedAt?: string | undefined;
+  verifiedAt?: string | undefined;
+  lastVerificationAttemptAt?: string | undefined;
+  lastVerificationError?: string | undefined;
 }
 
 interface PendingAskUser {
@@ -127,7 +159,12 @@ const AUTH_CRYPTO_KEY_STORAGE_KEY = "pi-office-auth-key-v1";
 const CHECKPOINT_STORAGE_KEY_PREFIX = "pi-office-checkpoints:";
 const MAX_CHECKPOINT_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_CHECKPOINTS_PER_DOC = 50;
-const BROWSER_UNSUPPORTED_PROVIDERS = new Set<string>(["amazon-bedrock"]);
+const PROVIDER_AUTH_STATE_VALUES = new Set<ProviderAuthState>([
+  "not_configured",
+  "credential_stored",
+  "verified_usable",
+  "verification_failed",
+]);
 interface EncryptedAuthEnvelope {
   version: number;
   algorithm: "AES-GCM";
@@ -142,13 +179,231 @@ interface StoredCheckpointDocument {
   payloads: Record<string, DocumentCheckpointPayload>;
 }
 
-function isBrowserProviderSupported(provider: string): boolean {
-  return !BROWSER_UNSUPPORTED_PROVIDERS.has(provider);
+interface BrowserProviderCapability {
+  supportStatus: ProviderSupportStatus;
+  runtimeSurface: ProviderRuntimeSurface;
+  authMethods: ProviderAuthMethod[];
+  apiKeySupported: boolean;
+  oauthSupported: boolean;
+  browserCallable: boolean;
+  companionRequired: boolean;
+  subscriptionBacked: boolean;
+  imageGenerationSupported: boolean;
+  capabilityNote?: string | undefined;
 }
 
-const IMAGE_MODEL_CATALOG: Array<
-  Omit<ImageModelDescriptor, "configured"> & { key: string }
-> = [
+const DEFAULT_PROVIDER_CAPABILITY: BrowserProviderCapability = {
+  supportStatus: "research_only",
+  runtimeSurface: "not_implemented",
+  authMethods: [],
+  apiKeySupported: false,
+  oauthSupported: false,
+  browserCallable: false,
+  companionRequired: false,
+  subscriptionBacked: false,
+  imageGenerationSupported: false,
+  capabilityNote: "Pi-Office has not classified this provider for browser taskpane execution yet.",
+};
+
+const BROWSER_API_KEY_CAPABILITY: BrowserProviderCapability = {
+  supportStatus: "supported",
+  runtimeSurface: "browser_taskpane",
+  authMethods: ["api_key"],
+  apiKeySupported: true,
+  oauthSupported: false,
+  browserCallable: true,
+  companionRequired: false,
+  subscriptionBacked: false,
+  imageGenerationSupported: false,
+};
+
+const PROVIDER_CAPABILITIES: Record<string, BrowserProviderCapability> = {
+  "amazon-bedrock": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["aws_credentials", "manual_token"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: false,
+    imageGenerationSupported: false,
+    capabilityNote: "Amazon Bedrock needs AWS credential discovery or bearer-token handling in the companion, not browser localStorage.",
+  },
+  anthropic: {
+    ...BROWSER_API_KEY_CAPABILITY,
+    authMethods: ["api_key", "oauth"],
+    capabilityNote: "Anthropic API keys work in the taskpane. Claude subscription OAuth is planned for companion-owned auth.",
+  },
+  "azure-openai-responses": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["api_key"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: false,
+    imageGenerationSupported: false,
+    capabilityNote: "Azure OpenAI requires endpoint, deployment, and tenant-specific configuration before Pi-Office can call it honestly.",
+  },
+  cerebras: BROWSER_API_KEY_CAPABILITY,
+  deepseek: {
+    ...BROWSER_API_KEY_CAPABILITY,
+    capabilityNote: "Direct DeepSeek API-key setup is available, but Pi-Office keeps it in Advanced settings so regional-provider use is intentional.",
+  },
+  fireworks: BROWSER_API_KEY_CAPABILITY,
+  "github-copilot": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["oauth"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: true,
+    imageGenerationSupported: false,
+    capabilityNote: "GitHub Copilot requires OAuth/subscription token brokerage; Pi-Office does not start that flow from the browser taskpane yet.",
+  },
+  google: BROWSER_API_KEY_CAPABILITY,
+  "google-antigravity": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["oauth"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: true,
+    imageGenerationSupported: false,
+    capabilityNote: "Antigravity uses Google OAuth and should be handled by the companion before it is offered as executable.",
+  },
+  "google-gemini-cli": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["oauth"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: true,
+    imageGenerationSupported: false,
+    capabilityNote: "Gemini CLI / Cloud Code Assist uses Google OAuth and project state that the browser taskpane does not own.",
+  },
+  "google-vertex": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["api_key", "cloud_identity"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: false,
+    imageGenerationSupported: false,
+    capabilityNote: "Vertex AI needs project, location, and ADC/API-key handling outside the current browser-only provider setup.",
+  },
+  groq: BROWSER_API_KEY_CAPABILITY,
+  huggingface: BROWSER_API_KEY_CAPABILITY,
+  "kimi-coding": BROWSER_API_KEY_CAPABILITY,
+  minimax: BROWSER_API_KEY_CAPABILITY,
+  "minimax-cn": BROWSER_API_KEY_CAPABILITY,
+  mistral: BROWSER_API_KEY_CAPABILITY,
+  openai: {
+    ...BROWSER_API_KEY_CAPABILITY,
+    imageGenerationSupported: true,
+    capabilityNote: "OpenAI API keys work in the taskpane for chat and the current OpenAI-only image generation tools.",
+  },
+  "openai-codex": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["oauth"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: true,
+    imageGenerationSupported: false,
+    capabilityNote: "OpenAI Codex models require ChatGPT subscription OAuth; Pi-Office needs companion token brokerage before exposing them.",
+  },
+  opencode: BROWSER_API_KEY_CAPABILITY,
+  "opencode-go": BROWSER_API_KEY_CAPABILITY,
+  openrouter: BROWSER_API_KEY_CAPABILITY,
+  "vercel-ai-gateway": BROWSER_API_KEY_CAPABILITY,
+  xai: BROWSER_API_KEY_CAPABILITY,
+  zai: BROWSER_API_KEY_CAPABILITY,
+};
+
+function getProviderCapability(provider: string): BrowserProviderCapability {
+  if (provider.startsWith("faux")) return BROWSER_API_KEY_CAPABILITY;
+  return PROVIDER_CAPABILITIES[provider] ?? DEFAULT_PROVIDER_CAPABILITY;
+}
+
+function isBrowserProviderSupported(provider: string): boolean {
+  return getProviderCapability(provider).browserCallable;
+}
+
+function isProviderConfigured(auth: ProviderAuthDescriptor, capability: BrowserProviderCapability): boolean {
+  return capability.browserCallable && capability.apiKeySupported && auth.credentialStored;
+}
+
+function providerCapabilityFields(capability: BrowserProviderCapability) {
+  return {
+    supportStatus: capability.supportStatus,
+    runtimeSurface: capability.runtimeSurface,
+    authMethods: capability.authMethods,
+    apiKeySupported: capability.apiKeySupported,
+    browserCallable: capability.browserCallable,
+    companionRequired: capability.companionRequired,
+    subscriptionBacked: capability.subscriptionBacked,
+    imageGenerationSupported: capability.imageGenerationSupported,
+    ...(capability.capabilityNote ? { capabilityNote: capability.capabilityNote } : {}),
+  };
+}
+
+function uniqueStrings(values: Iterable<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+}
+
+const SIMPLE_RECOMMENDED_MODEL_LOOKUP = SIMPLE_RECOMMENDED_MODELS_BY_PROVIDER as Record<string, readonly string[]>;
+
+function providerSettingsFields(providerId: string) {
+  const settings = getProviderSettingsPreference(providerId);
+  return {
+    label: settings.label || titleCase(providerId),
+    settingsVisibility: settings.settingsVisibility,
+    lab: settings.lab || settings.label || titleCase(providerId),
+    defaultModelId: settings.defaultModel,
+  };
+}
+
+function providerModelPreferenceFields(providerId: string, modelId: string) {
+  const providerSettings = getProviderSettingsPreference(providerId);
+  const preference = getProviderModelPreference(providerId, modelId);
+  const recommended = preference?.recommended ?? false;
+  return {
+    settingsVisibility: preference?.settingsVisibility ?? providerSettings.settingsVisibility,
+    lab: preference?.lab ?? providerSettings.lab ?? titleCase(providerId),
+    family: preference?.family,
+    recommended,
+    recommendationReason: preference?.recommendationReason,
+    defaultForProvider: preference?.defaultForProvider ?? providerSettings.defaultModel === modelId,
+    requiresUnrecommendedWarning: preference?.requiresUnrecommendedWarning ?? !recommended,
+  };
+}
+
+type BrowserImageModelCatalogEntry = Omit<
+  ImageModelDescriptor,
+  "authState" | "credentialStored" | "verifiedUsable" | "verificationError" | "verifiedAt" | "configured"
+> & { key: string };
+
+const IMAGE_MODEL_CATALOG: BrowserImageModelCatalogEntry[] = [
   {
     key: "openai::gpt-image-1",
     provider: "openai",
@@ -196,6 +451,49 @@ function parseRequestBody(init?: RequestInit): unknown {
   return undefined;
 }
 
+function disconnectedCompanionCapabilities(endpoint?: string): CompanionState["capabilities"] {
+  return {
+    fileRead: false,
+    localMcp: false,
+    endpoint,
+    version: "companion-capabilities-v1",
+    agent: {
+      state: "unavailable",
+      available: false,
+      officeToolProxy: true,
+      providerAuth: false,
+      smartAuto: true,
+      reason: "Optional companion is not connected.",
+    },
+    providerAuth: {
+      state: "unavailable",
+      available: false,
+      explicitMigrationRequired: true,
+      reason: "Optional companion is not connected.",
+    },
+    nativeCapture: {
+      state: "unavailable",
+      available: false,
+      hosts: [],
+      trueViewportScreenshot: false,
+      includeWindowFrame: false,
+      reason: "Optional companion is not connected.",
+    },
+    mcp: {
+      state: "unavailable",
+      available: false,
+      readOnly: true,
+      toolCount: 0,
+      reason: "Optional companion is not connected.",
+    },
+    memory: {
+      state: "unavailable",
+      available: false,
+      reason: "Optional companion is not connected.",
+    },
+  };
+}
+
 function disconnectedCompanionState(lastKnown?: Partial<CompanionState>): CompanionState {
   return {
     status: lastKnown?.status === "error" ? "error" : "unavailable",
@@ -206,17 +504,14 @@ function disconnectedCompanionState(lastKnown?: Partial<CompanionState>): Compan
     lastSuccessfulEndpoint: lastKnown?.lastSuccessfulEndpoint,
     sessionId: undefined,
     connectorToolNames: [],
-    capabilities: {
-      fileRead: false,
-      localMcp: false,
-      endpoint: lastKnown?.capabilities?.endpoint,
-    },
+    capabilities: disconnectedCompanionCapabilities(lastKnown?.capabilities?.endpoint ?? lastKnown?.endpoint),
   };
 }
 
 function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: boolean): string {
   const lines = [
     `Companion status: ${companion.status}`,
+    "Routing mode: Smart Auto. Office.js document execution always remains in this taskpane; eligible non-Office capabilities prefer the companion only when it advertises them.",
   ];
 
   if (companion.endpoint) {
@@ -238,9 +533,23 @@ function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: b
       "Verified companion MCP tools: " + companion.connectorToolNames.join(", "),
     );
   } else if (companion.status === "connected" && companion.capabilities.localMcp) {
-    lines.push("Local MCP execution is available through the companion when configured read-only connectors are ready.");
+    lines.push("MCP execution is available through the companion when configured read-only connectors are verified.");
   } else {
-    lines.push("Local MCP execution is unavailable in this session.");
+    lines.push("MCP execution is unavailable in this session.");
+  }
+
+  const agentCapability = companion.capabilities.agent;
+  if (companion.status === "connected" && agentCapability?.state === "available") {
+    lines.push("Companion-owned inference is available; Office tool calls must still be proxied back to the taskpane.");
+  } else {
+    lines.push("Inference is currently taskpane-owned unless companion provider auth is explicitly configured.");
+  }
+
+  const nativeCapture = companion.capabilities.nativeCapture;
+  if (companion.status === "connected" && nativeCapture?.state === "available" && nativeCapture.hosts.length) {
+    lines.push(`True viewport/window screenshot is available through companion native capture for: ${nativeCapture.hosts.join(", ")}.`);
+  } else {
+    lines.push("True viewport/window screenshot is unavailable; use Office.js snapshot/verification tools instead.");
   }
 
   const shellCapability = companion.capabilities.shell;
@@ -294,11 +603,7 @@ function errorCompanionState(current: CompanionState, error: unknown): Companion
     lastError,
     manualEndpoint: current.manualEndpoint,
     lastSuccessfulEndpoint: current.lastSuccessfulEndpoint,
-    capabilities: {
-      fileRead: false,
-      localMcp: false,
-      endpoint: current.capabilities.endpoint ?? current.endpoint,
-    },
+    capabilities: disconnectedCompanionCapabilities(current.capabilities.endpoint ?? current.endpoint),
   };
 }
 
@@ -514,6 +819,51 @@ function isEncryptedAuthEnvelope(value: unknown): value is EncryptedAuthEnvelope
   );
 }
 
+function normalizeProviderAuthState(record: StoredAuthRecord | undefined): ProviderAuthState {
+  if (!record?.apiKey) return "not_configured";
+  return record.authState && PROVIDER_AUTH_STATE_VALUES.has(record.authState)
+    ? record.authState
+    : "credential_stored";
+}
+
+function toProviderAuthDescriptor(provider: string, record: StoredAuthRecord | undefined): ProviderAuthDescriptor {
+  const state = normalizeProviderAuthState(record);
+  const credentialStored = state !== "not_configured";
+  const verifiedUsable = state === "verified_usable";
+  return {
+    provider,
+    state,
+    credentialStored,
+    verifiedUsable,
+    ...(record?.verifiedAt ? { verifiedAt: record.verifiedAt } : {}),
+    ...(record?.lastVerificationAttemptAt ? { lastVerificationAttemptAt: record.lastVerificationAttemptAt } : {}),
+    ...(state === "verification_failed" && record?.lastVerificationError
+      ? { lastVerificationError: record.lastVerificationError }
+      : {}),
+  };
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isProviderAuthFailure(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  const status = typeof error === "object" && error
+    ? (error as { status?: unknown; statusCode?: unknown; code?: unknown }).status
+      ?? (error as { statusCode?: unknown }).statusCode
+      ?? (error as { code?: unknown }).code
+    : undefined;
+  if (status === 401 || status === 403 || status === "401" || status === "403") return true;
+  return /\b(401|403)\b/.test(message)
+    || message.includes("unauthorized")
+    || message.includes("forbidden")
+    || message.includes("invalid api key")
+    || message.includes("incorrect api key")
+    || message.includes("invalid_api_key")
+    || message.includes("authentication");
+}
+
 function sanitizeCheckpointDocumentId(documentId: string): string {
   return documentId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
 }
@@ -544,14 +894,67 @@ class BrowserAuthStore {
     return this.store.get(provider)?.apiKey;
   }
 
+  getAuthState(provider: string): ProviderAuthDescriptor {
+    return toProviderAuthDescriptor(provider, this.store.get(provider));
+  }
+
+  listAuthStates(providerIds?: string[]): ProviderAuthDescriptor[] {
+    const ids = providerIds?.length ? providerIds : this.list();
+    return ids
+      .map((provider) => this.getAuthState(provider))
+      .sort((left, right) => left.provider.localeCompare(right.provider));
+  }
+
   async setApiKey(provider: string, apiKey: string): Promise<void> {
-    this.store.set(provider, { provider, apiKey });
+    const now = new Date().toISOString();
+    this.store.set(provider, {
+      provider,
+      apiKey,
+      authState: "credential_stored",
+      savedAt: now,
+    });
+    await this.persist();
+  }
+
+  async markVerificationSuccess(provider: string): Promise<void> {
+    const record = this.store.get(provider);
+    if (!record?.apiKey) return;
+    const now = new Date().toISOString();
+    this.store.set(provider, {
+      ...record,
+      authState: "verified_usable",
+      verifiedAt: now,
+      lastVerificationAttemptAt: now,
+      lastVerificationError: undefined,
+    });
+    await this.persist();
+  }
+
+  async markVerificationFailure(provider: string, error: unknown): Promise<void> {
+    const record = this.store.get(provider);
+    if (!record?.apiKey) return;
+    this.store.set(provider, {
+      ...record,
+      authState: "verification_failed",
+      lastVerificationAttemptAt: new Date().toISOString(),
+      lastVerificationError: getErrorMessage(error).slice(0, 300),
+    });
     await this.persist();
   }
 
   async remove(provider: string): Promise<void> {
     this.store.delete(provider);
     await this.persist();
+  }
+
+  async clearAll(): Promise<void> {
+    this.store.clear();
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem(AUTH_CRYPTO_KEY_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors in browser sandbox.
+    }
   }
 
   private async load(): Promise<void> {
@@ -563,7 +966,7 @@ class BrowserAuthStore {
       if (Array.isArray(parsed)) {
         for (const entry of parsed as StoredAuthRecord[]) {
           if (!entry?.provider || !entry.apiKey) continue;
-          this.store.set(entry.provider, { provider: entry.provider, apiKey: entry.apiKey });
+          this.store.set(entry.provider, this.normalizeRecord(entry));
         }
         await this.persist();
         return;
@@ -577,7 +980,7 @@ class BrowserAuthStore {
       const entries = await this.decryptRecords(parsed);
       for (const entry of entries) {
         if (!entry?.provider || !entry.apiKey) continue;
-        this.store.set(entry.provider, { provider: entry.provider, apiKey: entry.apiKey });
+        this.store.set(entry.provider, this.normalizeRecord(entry));
       }
     } catch {
       this.store.clear();
@@ -632,6 +1035,18 @@ class BrowserAuthStore {
     const decoded = new TextDecoder().decode(plaintext);
     const parsed = JSON.parse(decoded) as unknown;
     return Array.isArray(parsed) ? (parsed as StoredAuthRecord[]) : [];
+  }
+
+  private normalizeRecord(entry: StoredAuthRecord): StoredAuthRecord {
+    return {
+      provider: String(entry.provider),
+      apiKey: String(entry.apiKey),
+      authState: normalizeProviderAuthState(entry),
+      ...(entry.savedAt ? { savedAt: entry.savedAt } : {}),
+      ...(entry.verifiedAt ? { verifiedAt: entry.verifiedAt } : {}),
+      ...(entry.lastVerificationAttemptAt ? { lastVerificationAttemptAt: entry.lastVerificationAttemptAt } : {}),
+      ...(entry.lastVerificationError ? { lastVerificationError: entry.lastVerificationError } : {}),
+    };
   }
 }
 
@@ -718,7 +1133,7 @@ class BrowserModelRegistry {
   constructor(private readonly authStore: BrowserAuthStore) {}
 
   find(provider: string, modelId: string): Model<any> | undefined {
-    const models = this.getModelsForProvider(provider);
+    const models = this.getExecutableModelsForProvider(provider);
     return models.find((model) => model.id === modelId);
   }
 
@@ -726,22 +1141,38 @@ class BrowserModelRegistry {
     const providers: ProviderDescriptor[] = [];
     for (const provider of getProviders()) {
       const providerId = String(provider);
-      if (!isBrowserProviderSupported(providerId)) continue;
-      const models = this.getModelsForProvider(provider);
+      const capability = getProviderCapability(providerId);
+      const providerSettings = providerSettingsFields(providerId);
+      const models = this.getCatalogModelsForProvider(provider);
       if (!models.length) continue;
-      const configured = this.authStore.hasAuth(providerId);
+      const auth = this.authStore.getAuthState(providerId);
+      const configured = isProviderConfigured(auth, capability);
       const descriptors: ProviderModelDescriptor[] = models
         .map((model) => {
           const totalCostPer1k = (model.cost.input + model.cost.output) / 2;
           const costTier: "$" | "$$" | "$$$" = totalCostPer1k <= 1 ? "$" : totalCostPer1k <= 10 ? "$$" : "$$$";
+          const preference = providerModelPreferenceFields(providerId, model.id);
           return {
             provider: providerId,
-            providerLabel: titleCase(providerId),
+            providerLabel: providerSettings.label,
             modelId: model.id,
             modelName: model.name,
+            settingsVisibility: preference.settingsVisibility,
+            lab: preference.lab,
+            family: preference.family,
+            recommended: preference.recommended,
+            recommendationReason: preference.recommendationReason,
+            defaultForProvider: preference.defaultForProvider,
+            requiresUnrecommendedWarning: preference.requiresUnrecommendedWarning,
+            ...providerCapabilityFields(capability),
+            authState: auth.state,
+            credentialStored: auth.credentialStored,
+            verifiedUsable: auth.verifiedUsable,
+            verificationError: auth.lastVerificationError,
+            verifiedAt: auth.verifiedAt,
             configured,
-            oauthSupported: false,
-            usesApiKey: true,
+            oauthSupported: capability.oauthSupported,
+            usesApiKey: capability.apiKeySupported,
             contextWindow: model.contextWindow,
             costTier,
             supportsThinking: model.reasoning,
@@ -752,9 +1183,18 @@ class BrowserModelRegistry {
 
       providers.push({
         provider: providerId,
-        label: titleCase(providerId),
+        label: providerSettings.label,
+        settingsVisibility: providerSettings.settingsVisibility,
+        lab: providerSettings.lab,
+        defaultModelId: providerSettings.defaultModelId,
+        ...providerCapabilityFields(capability),
+        authState: auth.state,
+        credentialStored: auth.credentialStored,
+        verifiedUsable: auth.verifiedUsable,
+        verificationError: auth.lastVerificationError,
+        verifiedAt: auth.verifiedAt,
         configured,
-        oauthSupported: false,
+        oauthSupported: capability.oauthSupported,
         models: descriptors,
       });
     }
@@ -764,11 +1204,25 @@ class BrowserModelRegistry {
   }
 
   getAuthStatus(): AuthStatusResponse {
-    const storedProviders = this.authStore.list().filter(isBrowserProviderSupported);
+    const providerIds = getProviders().map((provider) => String(provider));
+    const providerStates = this.authStore.listAuthStates(providerIds);
+    const storedProviders = providerStates.filter((entry) => entry.credentialStored).map((entry) => entry.provider);
+    const verifiedProviders = providerStates.filter((entry) => entry.verifiedUsable).map((entry) => entry.provider);
+    const configuredProviders = providerStates
+      .filter((entry) => entry.verifiedUsable && isBrowserProviderSupported(entry.provider))
+      .map((entry) => entry.provider);
     return {
       storedProviders,
       oauthProviders: [],
-      configuredProviders: storedProviders,
+      configuredProviders,
+      verifiedProviders,
+      unverifiedProviders: providerStates
+        .filter((entry) => entry.state === "credential_stored")
+        .map((entry) => entry.provider),
+      verificationFailedProviders: providerStates
+        .filter((entry) => entry.state === "verification_failed")
+        .map((entry) => entry.provider),
+      providerStates,
     };
   }
 
@@ -788,16 +1242,34 @@ class BrowserModelRegistry {
     };
   }
 
-  getPreferredModel(): Model<any> | undefined {
-    for (const providerId of this.authStore.list()) {
+  getPreferredModel(preferences?: Pick<UserPreferences, "defaultModelByProvider">): Model<any> | undefined {
+    const providerOrder = uniqueStrings([
+      ...Object.keys(preferences?.defaultModelByProvider ?? {}),
+      ...this.authStore.list(),
+      ...SIMPLE_VISIBLE_PROVIDERS,
+      ...getProviders().map((provider) => String(provider)),
+    ]);
+
+    for (const providerId of providerOrder) {
       if (!isBrowserProviderSupported(providerId)) continue;
-      const models = this.getModelsForProvider(providerId);
-      if (models.length) return models[0];
+      const models = this.getExecutableModelsForProvider(providerId);
+      if (!models.length) continue;
+
+      const modelOrder = uniqueStrings([
+        preferences?.defaultModelByProvider?.[providerId],
+        getProviderDefaultModel(providerId),
+        ...(SIMPLE_RECOMMENDED_MODEL_LOOKUP[providerId] ?? []),
+        ...models.map((model) => model.id),
+      ]);
+      const preferred = modelOrder
+        .map((modelId) => models.find((model) => model.id === modelId))
+        .find(Boolean);
+      if (preferred) return preferred;
     }
 
     const fallbackProvider = getProviders().find((provider) => isBrowserProviderSupported(String(provider)));
     if (!fallbackProvider) return undefined;
-    return this.getModelsForProvider(String(fallbackProvider))[0];
+    return this.getExecutableModelsForProvider(String(fallbackProvider))[0];
   }
 
   getThinkingCapabilities(model: Model<any>, currentLevel: ThinkingLevel): ThinkingCapabilities {
@@ -820,10 +1292,20 @@ class BrowserModelRegistry {
       modelId: entry.modelId,
       modelName: entry.modelName,
       apiType: entry.apiType,
+      ...(() => {
+        const auth = this.authStore.getAuthState(entry.provider);
+        return {
+          authState: auth.state,
+          credentialStored: auth.credentialStored,
+          verifiedUsable: auth.verifiedUsable,
+          verificationError: auth.lastVerificationError,
+          verifiedAt: auth.verifiedAt,
+          configured: auth.credentialStored,
+        };
+      })(),
       supportsReasoningEffort: entry.supportsReasoningEffort,
       supportedAspectRatios: entry.supportedAspectRatios,
       supportedSizes: entry.supportedSizes,
-      configured: this.authStore.hasAuth(entry.provider),
     }));
 
     return {
@@ -832,13 +1314,25 @@ class BrowserModelRegistry {
     };
   }
 
-  private getModelsForProvider(provider: string): Model<any>[] {
-    if (!isBrowserProviderSupported(provider)) return [];
+  hasImageModelKey(modelKey: string): boolean {
+    return IMAGE_MODEL_CATALOG.some((entry) => entry.key === modelKey);
+  }
+
+  hasCatalogModel(provider: string, modelId: string): boolean {
+    return this.getCatalogModelsForProvider(provider).some((model) => model.id === modelId);
+  }
+
+  private getCatalogModelsForProvider(provider: string): Model<any>[] {
     try {
       return getModels(provider as never) as Model<any>[];
     } catch {
       return [];
     }
+  }
+
+  private getExecutableModelsForProvider(provider: string): Model<any>[] {
+    if (!isBrowserProviderSupported(provider)) return [];
+    return this.getCatalogModelsForProvider(provider);
   }
 }
 
@@ -864,7 +1358,10 @@ class BrowserOfficeSession {
     private readonly getPreferences: () => UserPreferences,
     private readonly executeCompanionFileTool: (sessionId: string, toolName: "read" | "grep" | "find" | "ls", params: Record<string, unknown>) => Promise<unknown>,
     private readonly executeCompanionMcpTool: (sessionId: string, toolName: string, params: Record<string, unknown>) => Promise<unknown>,
+    private readonly getBrowserMcpToolNames: (scopeContext: ConnectorScopeContext) => string[],
+    private readonly executeBrowserMcpTool: (toolName: string, params: Record<string, unknown>, scopeContext: ConnectorScopeContext) => Promise<unknown>,
     private readonly executeCompanionShellCommand: (sessionId: string, request: CompanionShellExecuteRequest) => Promise<unknown>,
+    private readonly executeCompanionNativeCapture: (sessionId: string, request: CompanionNativeCaptureRequest) => Promise<CompanionNativeCaptureResponse>,
     request: OfficeSessionOpenRequest,
   ) {
     this.windowId = request.windowId;
@@ -889,7 +1386,7 @@ class BrowserOfficeSession {
     this.agent.setTools(tools);
     this.agent.setSystemPrompt(this.buildSystemPrompt(tools.map((tool) => tool.name)));
 
-    const preferredModel = this.modelRegistry.getPreferredModel();
+    const preferredModel = this.modelRegistry.getPreferredModel(this.getPreferences());
     if (preferredModel) {
       this.agent.setModel(preferredModel);
     }
@@ -927,6 +1424,10 @@ class BrowserOfficeSession {
 
   getCompanionConnectors(): ConnectorStatus[] {
     return [...this.companionConnectors];
+  }
+
+  getCapabilities(): CapabilityResolution[] {
+    return this.resolveCapabilities();
   }
 
   attachBridge(socket: LocalBridgeSocket): void {
@@ -975,7 +1476,7 @@ class BrowserOfficeSession {
         this.agent.steer(message);
         return;
       }
-      await this.agent.prompt([message]);
+      await this.runWithCurrentModelVerification(() => this.agent.prompt([message]));
       return;
     }
 
@@ -984,11 +1485,11 @@ class BrowserOfficeSession {
         this.agent.followUp(message);
         return;
       }
-      await this.agent.prompt([message]);
+      await this.runWithCurrentModelVerification(() => this.agent.prompt([message]));
       return;
     }
 
-    await this.agent.prompt(input, piImages);
+    await this.runWithCurrentModelVerification(() => this.agent.prompt(input, piImages));
   }
 
   async abort(): Promise<void> {
@@ -1199,13 +1700,19 @@ class BrowserOfficeSession {
       })),
     };
 
-    const result = await completeSimple(model, context, {
-      ...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
-      ...(auth.headers ? { headers: auth.headers } : {}),
-    });
-    const text = result.content.find((part) => part.type === "text");
-    if (!text || text.type !== "text") throw new Error("No text in subject response.");
-    return text.text.trim();
+    try {
+      const result = await completeSimple(model, context, {
+        ...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
+        ...(auth.headers ? { headers: auth.headers } : {}),
+      });
+      await this.authStore.markVerificationSuccess(String(model.provider));
+      const text = result.content.find((part) => part.type === "text");
+      if (!text || text.type !== "text") throw new Error("No text in subject response.");
+      return text.text.trim();
+    } catch (error) {
+      await this.markProviderVerificationFailureIfAuthError(String(model.provider), error);
+      throw error;
+    }
   }
 
   async suggestPrompts(request: PromptSuggestionRequest): Promise<PromptSuggestionResponse> {
@@ -1230,6 +1737,7 @@ class BrowserOfficeSession {
         temperature: 0.2,
         reasoning: "minimal" as PiThinkingLevel,
       });
+      await this.authStore.markVerificationSuccess(String(model.provider));
       const rawText = result.content
         .filter((part): part is { type: "text"; text: string } => part.type === "text")
         .map((part) => part.text)
@@ -1240,7 +1748,8 @@ class BrowserOfficeSession {
         generationId,
         suggestions: parsePromptSuggestions(rawText, { documentState: this.documentState }),
       };
-    } catch {
+    } catch (error) {
+      await this.markProviderVerificationFailureIfAuthError(String(this.agent.state.model.provider), error);
       return emptyResponse;
     }
   }
@@ -1313,27 +1822,60 @@ class BrowserOfficeSession {
     this.bridgeSockets.clear();
   }
 
+  private resolveCapabilities(): CapabilityResolution[] {
+    return resolvePiOfficeCapabilities({
+      host: this.officeState.host,
+      documentSaved: this.officeState.document.saved,
+      companion: this.companionState,
+    });
+  }
+
+  private isCapabilityAvailable(id: Parameters<typeof getResolvedCapability>[1]): boolean {
+    return getResolvedCapability(this.resolveCapabilities(), id).available;
+  }
+
   private canUseCompanionFileTools(): boolean {
-    return this.officeState.document.saved && this.companionState.status === "connected" && this.companionState.capabilities.fileRead;
+    return this.isCapabilityAvailable("local_files");
   }
 
   private getCompanionConnectorToolNames(): string[] {
     return [...(this.companionState.connectorToolNames ?? [])];
   }
 
-  private hasCompanionConnectorTools(): boolean {
-    return this.getCompanionConnectorToolNames().length > 0;
+  private connectorScopeContext(): ConnectorScopeContext {
+    return {
+      host: this.officeState.host,
+      documentId: this.officeState.document.id,
+      documentTitle: this.officeState.document.title,
+      documentSaved: this.officeState.document.saved,
+      documentUrl: this.officeState.document.documentUrl ?? this.officeState.document.documentPath,
+      workspaceId: this.officeState.document.workspaceDir,
+    };
   }
 
-  private canUseCompanionShellTools(): boolean {
+  private getBrowserConnectorToolNames(): string[] {
+    return this.getBrowserMcpToolNames(this.connectorScopeContext());
+  }
+
+  private hasMcpConnectorTools(): boolean {
     return (
-      this.officeState.document.saved &&
-      this.companionState.status === "connected" &&
-      this.companionState.capabilities.shell?.state === "available"
+      (this.isCapabilityAvailable("mcp_connectors") && this.getCompanionConnectorToolNames().length > 0) ||
+      this.getBrowserConnectorToolNames().length > 0
     );
   }
 
+  private canUseCompanionShellTools(): boolean {
+    return this.isCapabilityAvailable("shell_sandbox");
+  }
+
+  private canUseCompanionNativeCapture(): boolean {
+    return this.isCapabilityAvailable("native_viewport_capture");
+  }
+
   private buildSystemPrompt(availableToolNames: readonly string[]): string {
+    const browserDebugGuidance = this.isBrowserDebugMode()
+      ? "\n\nBrowser preview mode: no real Office host is attached. Do not call Office tools or claim document state. Use this session only for taskpane UI, settings, provider, and non-document debugging."
+      : "";
     return `${OFFICE_APPEND_SYSTEM_PROMPT}\n\n${composeAutonomyPrompt(
       this.getPreferences(),
       this.canUseCompanionFileTools(),
@@ -1341,7 +1883,11 @@ class BrowserOfficeSession {
     )}\n\n${composeOfficeAwarePrompt(
       "Prefer Office tools as the source of truth for the active document.",
       this.officeState,
-    )}\n\n${summarizeCompanionForPrompt(this.companionState, this.officeState.document.saved)}`;
+    )}\n\n${summarizeCompanionForPrompt(this.companionState, this.officeState.document.saved)}${browserDebugGuidance}`;
+  }
+
+  private isBrowserDebugMode(): boolean {
+    return isBrowserDebugOfficeState(this.officeState);
   }
 
   private buildPromptSuggestionContext(
@@ -1430,7 +1976,28 @@ class BrowserOfficeSession {
     return level;
   }
 
+  private async runWithCurrentModelVerification<T>(operation: () => Promise<T>): Promise<T> {
+    const provider = String(this.agent.state.model.provider);
+    try {
+      const result = await operation();
+      await this.authStore.markVerificationSuccess(provider);
+      return result;
+    } catch (error) {
+      await this.markProviderVerificationFailureIfAuthError(provider, error);
+      throw error;
+    }
+  }
+
+  private async markProviderVerificationFailureIfAuthError(provider: string, error: unknown): Promise<void> {
+    if (isProviderAuthFailure(error)) {
+      await this.authStore.markVerificationFailure(provider, error);
+    }
+  }
+
   private buildTools(): AgentTool[] {
+    const availableToolNames = getAvailableToolNames(this.resolveCapabilities());
+    const isToolAvailable = (toolName: string) => availableToolNames.has(toolName);
+
     const getContextParams = Type.Object({
       scope: Type.Optional(
         Type.String({
@@ -1485,12 +2052,12 @@ class BrowserOfficeSession {
 
     const captureViewportParams = Type.Object({
       includeFormatting: Type.Optional(
-        Type.Boolean({ description: "Include Word viewport metadata such as visible pages, scroll position, and view mode." }),
+        Type.Boolean({ description: "Include companion native capture metadata alongside the screenshot when available." }),
       ),
       includeWindowFrame: Type.Optional(
         Type.Boolean({
           description:
-            "Reserved for future native capture support. In browser-only runtime this is acknowledged but cannot capture the full OS window frame.",
+            "Capture the full foreground Office window frame through the companion native backend when available.",
         }),
       ),
     });
@@ -1803,16 +2370,16 @@ class BrowserOfficeSession {
       operation: Type.Optional(
         Type.String({
           description:
-            "PowerPoint layout/master operation. Currently supports apply_layout (default), with layout/master selectors routed through native layout resolution.",
+            "PowerPoint layout operation. Currently supports apply_layout/set_layout only; this legacy-named tool does not edit slide masters.",
         }),
       ),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID whose layout/master mapping should be updated." })),
+      slideId: Type.Optional(Type.String({ description: "Target slide ID whose layout should be updated." })),
       slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
       layoutId: Type.Optional(Type.String({ description: "Layout ID to apply." })),
       layoutName: Type.Optional(Type.String({ description: "Layout name to apply." })),
-      slideMasterId: Type.Optional(Type.String({ description: "Optional slide master ID used for layout resolution." })),
-      slideMasterName: Type.Optional(Type.String({ description: "Optional slide master name used for layout resolution." })),
-      options: Type.Optional(Type.Any({ description: "Additional layout/master options forwarded to the host adapter." })),
+      slideMasterId: Type.Optional(Type.String({ description: "Optional slide master ID used only to resolve the requested layout." })),
+      slideMasterName: Type.Optional(Type.String({ description: "Optional slide master name used only to resolve the requested layout." })),
+      options: Type.Optional(Type.Any({ description: "Additional layout-application options forwarded to the host adapter." })),
     }, { additionalProperties: true });
 
     const editSlideChartParams = Type.Object({
@@ -2016,7 +2583,8 @@ class BrowserOfficeSession {
       },
     });
 
-    const tools: AgentTool[] = [
+    const browserDebugMode = this.isBrowserDebugMode();
+    const tools: AgentTool[] = ([
       simpleOfficeTool(
         "office_get_context",
         "Office Context",
@@ -2046,12 +2614,6 @@ class BrowserOfficeSession {
         "Office Snapshot",
         "Capture visual snapshots and formatting metadata for the active Office surface.",
         captureSnapshotParams,
-      ),
-      simpleOfficeTool(
-        "office_capture_viewport",
-        "Office Viewport",
-        "Capture Word viewport metadata for layout-sensitive tasks (not a pixel-perfect OS/window screenshot).",
-        captureViewportParams,
       ),
       simpleOfficeTool(
         "office_read_section",
@@ -2199,8 +2761,8 @@ class BrowserOfficeSession {
       ),
       simpleOfficeTool(
         "edit_slide_master",
-        "Edit Slide Layout/Master",
-        "PowerPoint-only first-class layout/master editing tool that applies slide layouts via native layout/master resolution.",
+        "Apply Slide Layout",
+        "PowerPoint-only legacy-named tool for applying an existing slide layout. It does not mutate slide masters or layout definitions.",
         editSlideMasterParams,
       ),
       simpleOfficeTool(
@@ -2376,7 +2938,11 @@ class BrowserOfficeSession {
 
           if (!response.ok) {
             const text = await response.text();
-            throw new Error(text || `${response.status} ${response.statusText}`);
+            const error = new Error(text || `${response.status} ${response.statusText}`);
+            if (response.status === 401 || response.status === 403) {
+              await this.authStore.markVerificationFailure(provider, error);
+            }
+            throw error;
           }
 
           const payload = (await response.json()) as {
@@ -2393,6 +2959,7 @@ class BrowserOfficeSession {
           if (!base64) {
             throw new Error("Image API did not return image data.");
           }
+          await this.authStore.markVerificationSuccess(provider);
 
           const shouldInsert = typed.insert !== false;
           if (shouldInsert) {
@@ -2418,7 +2985,32 @@ class BrowserOfficeSession {
           };
         },
       },
-    ];
+    ] as AgentTool[]).filter((tool) => isToolAvailable(tool.name) && (!browserDebugMode || !OFFICE_TOOL_NAME_SET.has(tool.name)));
+
+    if (this.canUseCompanionNativeCapture()) {
+      tools.push({
+        name: "office_capture_viewport",
+        label: "Office Viewport Screenshot",
+        description:
+          "Capture a true viewport/window screenshot through the optional companion native capture backend. Office.js document reads/writes still run through the taskpane.",
+        parameters: captureViewportParams,
+        execute: async (_toolCallId, params) => {
+          const typed = normalizeToolParams(params);
+          const response = await this.executeCompanionNativeCapture(this.sessionId, {
+            host: this.officeState.host,
+            includeWindowFrame: typed.includeWindowFrame !== false,
+          });
+          if (!response.ok || !response.visual) {
+            throw new Error(response.error ?? "Companion native capture unavailable.");
+          }
+          return normalizeExternalToolResult({
+            summary: `Captured ${this.officeState.host} ${response.visual.kind} screenshot through the companion native capture backend.`,
+            visuals: [response.visual],
+            details: response.details,
+          });
+        },
+      });
+    }
 
     if (this.canUseCompanionFileTools()) {
       for (const toolName of ["read", "grep", "find", "ls"] as const) {
@@ -2441,12 +3033,12 @@ class BrowserOfficeSession {
       }
     }
 
-    if (this.hasCompanionConnectorTools()) {
+    if (this.hasMcpConnectorTools()) {
       tools.push({
         name: "mcp",
-        label: "Local MCP Connector",
+        label: "MCP Connector",
         description:
-          "Execute a verified read-only local MCP tool through the optional companion. Use one of the exact tool names listed in the companion inventory.",
+          "Execute a verified read-only MCP tool through a browser-direct or companion connector. Use one of the exact tool names listed in the connector inventory.",
         parameters: Type.Object({
           toolName: Type.String({
             description: "Exact verified companion connector tool name to execute.",
@@ -2462,6 +3054,18 @@ class BrowserOfficeSession {
           const toolName = String(typed.toolName ?? "").trim();
           if (!toolName) {
             throw new Error("toolName is required.");
+          }
+          if (this.getBrowserConnectorToolNames().includes(toolName)) {
+            return normalizeExternalToolResult(
+              await this.executeBrowserMcpTool(
+                toolName,
+                normalizeToolParams(typed.arguments),
+                this.connectorScopeContext(),
+              ),
+            );
+          }
+          if (!this.getCompanionConnectorToolNames().includes(toolName)) {
+            throw new Error(`Connector tool "${toolName}" is not enabled.`);
           }
 
           return normalizeExternalToolResult(
@@ -2633,6 +3237,30 @@ class InProcessKernel {
   private userPreferences: UserPreferences = { ...DEFAULT_USER_PREFERENCES };
 
   setPreferences(patch: Partial<UserPreferences>): { ok: true; preferences: UserPreferences } {
+    if (
+      typeof patch.defaultImageModel === "string" &&
+      patch.defaultImageModel &&
+      !this.modelRegistry.hasImageModelKey(patch.defaultImageModel)
+    ) {
+      throw new Error(
+        `Image model ${patch.defaultImageModel} is not available in the browser taskpane image catalog.`,
+      );
+    }
+    if (patch.defaultModelByProvider !== undefined) {
+      if (
+        !patch.defaultModelByProvider ||
+        typeof patch.defaultModelByProvider !== "object" ||
+        Array.isArray(patch.defaultModelByProvider)
+      ) {
+        throw new Error("defaultModelByProvider must be an object keyed by provider.");
+      }
+      for (const [provider, modelId] of Object.entries(patch.defaultModelByProvider)) {
+        if (!modelId) continue;
+        if (!this.modelRegistry.hasCatalogModel(provider, modelId)) {
+          throw new Error(`Model ${provider}/${modelId} is not available in the Pi provider catalog.`);
+        }
+      }
+    }
     this.userPreferences = { ...this.userPreferences, ...patch };
     return { ok: true, preferences: { ...this.userPreferences } };
   }
@@ -2661,28 +3289,22 @@ class InProcessKernel {
     diagnostics: ConnectorDiagnostic[],
     transport: ConnectorSetupRequest["transport"],
     companion: CompanionState,
+    requiresCompanion = transport === "local_stdio",
   ): ConnectorDiagnostic[] {
-    if (transport !== "local_stdio") {
-      return [
-        ...diagnostics,
-        {
-          level: "info",
-          code: "remote_http_setup_only",
-          title: "Remote connector setup-only",
-          message:
-            "Remote HTTP connectors can be configured in the taskpane, but agent execution is disabled until the browser remote-MCP execution path is implemented.",
-        },
-      ];
+    if (!requiresCompanion) {
+      return diagnostics;
     }
-
     if (companion.status === "connected") {
+      const isLocal = transport === "local_stdio";
       return [
         ...diagnostics,
         {
           level: "info",
-          code: "local_stdio_companion_connected",
+          code: isLocal ? "local_stdio_companion_connected" : "remote_http_companion_connected",
           title: "Optional companion connected",
-          message: "Read-only local connector execution is available through the optional companion.",
+          message: isLocal
+            ? "Read-only local connector execution is available through the optional companion."
+            : "Read-only remote MCP connector execution is available through the optional companion after verification.",
         },
       ];
     }
@@ -2691,30 +3313,51 @@ class InProcessKernel {
       ...diagnostics,
       {
         level: "warning",
-        code: "local_stdio_companion_unavailable",
+        code: transport === "local_stdio" ? "local_stdio_companion_unavailable" : "remote_http_companion_unavailable",
         title: "Optional companion unavailable",
-        message:
-          "Local stdio connectors need the optional companion to verify and execute. Remote HTTP connectors are setup-only until browser remote-MCP execution is implemented.",
+        message: transport === "local_stdio"
+          ? "Local stdio connectors need the optional companion to verify and execute."
+          : "Remote HTTP MCP connectors need the optional companion to verify and execute.",
       },
     ];
+  }
+
+  private setupProfileIsHostedHttp(profile: ConnectorSetupProfile | undefined): boolean {
+    if (profile?.transport !== "remote_http" || profile.availability === "needs_companion") {
+      return false;
+    }
+    const endpoint = profile.endpoint ?? "";
+    try {
+      const host = new URL(endpoint).hostname.toLowerCase();
+      return host !== "localhost" && host !== "127.0.0.1" && host !== "0.0.0.0" && host !== "::1" && host !== "[::1]";
+    } catch {
+      return true;
+    }
+  }
+
+  private setupProfileNeedsCompanion(profile: ConnectorSetupProfile | undefined, transport: ConnectorSetupRequest["transport"]): boolean {
+    if (this.setupProfileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && profile?.setupDisabled !== true) {
+      return false;
+    }
+    return profile?.requiresCompanion === true || profile?.availability === "needs_companion" || profile?.transport === "local_stdio" || transport === "local_stdio";
   }
 
   private applyCompanionExecutionMetadata(
     status: ConnectorStatusResponse["connectors"][number],
     overlay?: ConnectorStatus | undefined,
+    forceCompanion = false,
   ): ConnectorStatus {
-    const companion = this.companionClient.getState();
-    const isLocalConnector = status.transport === "local_stdio";
+    const catalog = getConnectorCatalogItem(status.connectorId);
+    const profile = catalog?.setupProfiles?.find((entry) => entry.id === status.setupProfileId)
+      ?? catalog?.setupProfiles?.find((entry) => entry.defaultWhenCompanionAbsent)
+      ?? catalog?.setupProfiles?.[0];
+    const browserDirect = !forceCompanion && this.setupProfileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && profile?.setupDisabled !== true;
+    const usesCompanion = forceCompanion || (!browserDirect && this.setupProfileNeedsCompanion(profile, status.transport));
     return {
       ...status,
       ...(overlay ?? {}),
-      executionEnvironment: isLocalConnector
-        ? "companion"
-        : "browser",
-      executionAvailable: overlay?.executionAvailable
-        ?? (isLocalConnector
-          ? companion.status === "connected"
-          : false),
+      executionEnvironment: browserDirect ? "browser" : (usesCompanion ? "companion" : "browser"),
+      executionAvailable: overlay?.executionAvailable ?? (!usesCompanion && browserDirect && status.healthState === "ready" && Boolean(status.capabilities?.allowedTools.length)),
     };
   }
 
@@ -2724,7 +3367,11 @@ class InProcessKernel {
   ): ConnectorStatusResponse {
     const overlayById = new Map((overlayStatuses ?? []).map((status) => [status.id, status]));
     return {
-      connectors: statuses.map((status) => this.applyCompanionExecutionMetadata(status, overlayById.get(status.id))),
+      connectors: statuses.map((status) => this.applyCompanionExecutionMetadata(
+        status,
+        overlayById.get(status.id),
+        Boolean(this.connectorRuntime.buildCompanionConnectorDefinition(status.id)),
+      )),
     };
   }
 
@@ -2765,7 +3412,7 @@ class InProcessKernel {
     }
   }
 
-  private async probeLocalConnector(request: ConnectorSetupRequest): Promise<{
+  private async probeConnectorThroughCompanion(request: ConnectorSetupRequest): Promise<{
     ok: boolean;
     status: ConnectorStatus;
     diagnostics: ConnectorDiagnostic[];
@@ -2793,11 +3440,32 @@ class InProcessKernel {
       if (!record?.provider || !record.apiKey) {
         throw new Error("provider and apiKey are required.");
       }
+      const capability = getProviderCapability(record.provider);
+      if (!capability.browserCallable || !capability.apiKeySupported) {
+        throw new Error(
+          `${titleCase(record.provider)} does not accept browser-stored API keys in Pi-Office yet. ${
+            capability.capabilityNote ?? "Use a supported API-key provider or wait for companion-owned auth."
+          }`,
+        );
+      }
       await this.authStore.setApiKey(record.provider, record.apiKey);
       return { ok: true } as T;
     }
     if (method === "POST" && path === "/v1/auth/start") {
-      throw new Error("OAuth sign-in is unavailable in browser-only mode. Use API keys in Settings.");
+      const request = body as { provider?: string; providerId?: string } | undefined;
+      const provider = request?.providerId ?? request?.provider ?? "";
+      const capability = getProviderCapability(provider);
+      if (provider && capability.authMethods.includes("oauth")) {
+        throw new Error(
+          `${titleCase(provider)} requires companion-owned OAuth/token brokerage before Pi-Office can start sign-in.`,
+        );
+      }
+      throw new Error("OAuth sign-in is unavailable in browser-only mode. Use a supported API-key provider in Settings.");
+    }
+
+    if (method === "DELETE" && path === "/v1/auth") {
+      await this.authStore.clearAll();
+      return { ok: true } as T;
     }
 
     const authDeleteMatch = method === "DELETE" ? path.match(/^\/v1\/auth\/([^/]+)$/) : null;
@@ -2836,23 +3504,38 @@ class InProcessKernel {
     if (method === "GET" && path === "/v1/connectors/diagnostics") {
       const companion = await this.getCompanionState();
       const diagnostics = this.connectorRuntime.getDiagnostics();
+      const companionDiagnostics = companion.status === "connected"
+        ? await this.companionClient.getConnectorDiagnostics().catch((error): ConnectorDiagnosticsResponse => ({
+            generatedAt: new Date().toISOString(),
+            runtimes: diagnostics.runtimes,
+            envSuggestions: [],
+            diagnostics: [{
+              level: "warning",
+              code: "companion_diagnostics_unavailable",
+              title: "Companion diagnostics unavailable",
+              message: error instanceof Error ? error.message : String(error),
+            }],
+          }))
+        : undefined;
       return {
         ...diagnostics,
+        generatedAt: companionDiagnostics?.generatedAt ?? diagnostics.generatedAt,
+        runtimes: companionDiagnostics?.runtimes ?? diagnostics.runtimes,
         diagnostics: [
-          ...diagnostics.diagnostics,
+          ...(companionDiagnostics?.diagnostics ?? diagnostics.diagnostics),
           companion.status === "connected"
             ? {
                 level: "info",
                 code: "optional_companion_connected",
                 title: "Optional companion connected",
-                message: `Read-only local file tools and local stdio MCP connectors are available through ${companion.endpoint}.`,
+                message: `Read-only local file tools plus companion-required MCP connectors are available through ${companion.endpoint}.`,
               }
             : {
                 level: companion.status === "error" ? "warning" : "info",
                 code: "optional_companion_unavailable",
                 title: "Optional companion not connected",
                 message:
-                  "Local stdio connectors need the optional companion to verify and execute. Remote HTTP connectors are setup-only until browser remote-MCP execution is implemented.",
+                  "Local STDIO, local HTTP, and unverified hosted MCP profiles need the optional companion to verify and execute.",
               },
         ],
       } as T;
@@ -2862,6 +3545,9 @@ class InProcessKernel {
     }
     if (method === "POST" && path === "/v1/connectors/audit") {
       return (await this.connectorRuntime.setAuditPreference(body as ConnectorAuditPreference)) as T;
+    }
+    if (method === "DELETE" && path === "/v1/connectors") {
+      return (await this.connectorRuntime.clearAll()) as T;
     }
     if (method === "GET" && path === "/v1/connectors/export") {
       return this.connectorRuntime.getExportBundle() as T;
@@ -2881,11 +3567,16 @@ class InProcessKernel {
       }
       const companion = await this.getCompanionState();
       const response = this.connectorRuntime.prepareConnector(connectorId, request?.scopeContext);
+      const selectedProfile = response.connector.setupProfiles?.find((profile) => profile.id === response.draft?.setupProfileId)
+        ?? response.connector.setupProfiles?.[0];
+      const requiresCompanion = this.setupProfileNeedsCompanion(selectedProfile, selectedProfile?.transport ?? response.connector.transport);
       return {
         ...response,
-        diagnostics: this.addCompanionDiagnostics(response.diagnostics, response.connector.transport, companion),
-        executionEnvironment: response.connector.transport === "local_stdio" ? "companion" : "browser",
-        executionAvailable: response.connector.transport === "local_stdio" ? companion.status === "connected" : false,
+        diagnostics: this.addCompanionDiagnostics(response.diagnostics, selectedProfile?.transport ?? response.connector.transport, companion, requiresCompanion),
+        executionEnvironment: requiresCompanion
+          ? "companion"
+          : "browser",
+        executionAvailable: false,
       } as T;
     }
     if (method === "POST" && path === "/v1/connectors/setup/connect") {
@@ -2893,9 +3584,10 @@ class InProcessKernel {
       const companion = await this.getCompanionState();
       const response = await this.connectorRuntime.connectConnector(request);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
-      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeLocalConnector"]>>;
+      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeConnectorThroughCompanion"]>>;
+      const definition = this.connectorRuntime.buildCompanionConnectorDefinitionFromSetup({ ...request, existingId: response.status.id });
       try {
-        probe = await this.probeLocalConnector({ ...request, existingId: response.status.id });
+        probe = definition ? await this.probeConnectorThroughCompanion({ ...request, existingId: response.status.id }) : undefined;
       } catch (error) {
         probeDiagnostics = [
           {
@@ -2909,22 +3601,24 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
           companion,
+          Boolean(definition),
         ),
       } as T;
     }
     if (method === "POST" && path === "/v1/connectors/setup/test") {
       const request = body as ConnectorSetupRequest;
       const companion = await this.getCompanionState();
-      const response = this.connectorRuntime.testConnector(request);
+      const response = await this.connectorRuntime.testConnector(request);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
-      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeLocalConnector"]>>;
+      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeConnectorThroughCompanion"]>>;
+      const definition = this.connectorRuntime.buildCompanionConnectorDefinitionFromSetup(request);
       try {
-        probe = await this.probeLocalConnector(request);
+        probe = definition ? await this.probeConnectorThroughCompanion(request) : undefined;
       } catch (error) {
         probeDiagnostics = [
           {
@@ -2938,11 +3632,12 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
           companion,
+          Boolean(definition),
         ),
       } as T;
     }
@@ -2976,11 +3671,12 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
           companion,
+          Boolean(definition),
         ),
       } as T;
     }
@@ -3000,6 +3696,9 @@ class InProcessKernel {
     }
     if (method === "POST" && path === "/v1/connectors/scope") {
       return (await this.connectorRuntime.updateScope(body as ConnectorScopeUpdateRequest)) as T;
+    }
+    if (method === "POST" && path === "/v1/connectors/tools") {
+      return (await this.connectorRuntime.updateToolPolicy(body as ConnectorToolPolicyUpdateRequest)) as T;
     }
     const connectorDeleteMatch = method === "DELETE" ? path.match(/^\/v1\/connectors\/([^/]+)$/) : null;
     if (connectorDeleteMatch) {
@@ -3038,7 +3737,10 @@ class InProcessKernel {
           () => this.userPreferences,
           (sessionId, toolName, params) => this.companionClient.executeFileTool(sessionId, toolName, params),
           (sessionId, toolName, params) => this.companionClient.executeMcpTool(sessionId, toolName, params),
+          (scopeContext) => this.connectorRuntime.getBrowserConnectorToolNames(scopeContext),
+          (toolName, params, scopeContext) => this.connectorRuntime.executeBrowserMcpTool(toolName, params, scopeContext),
           (sessionId, request) => this.companionClient.executeShellCommand(sessionId, request),
+          (sessionId, request) => this.companionClient.captureNativeViewport(sessionId, request),
           request,
         );
         this.sessionsByDocument.set(documentKey, session);
@@ -3063,6 +3765,11 @@ class InProcessKernel {
         companion: session.companion,
       };
       return response as T;
+    }
+
+    const capabilitiesMatch = method === "GET" ? path.match(/^\/v1\/sessions\/([^/]+)\/capabilities$/) : null;
+    if (capabilitiesMatch) {
+      return this.getSession(capabilitiesMatch[1] ?? "").getCapabilities() as T;
     }
 
     const promptMatch = method === "POST" ? path.match(/^\/v1\/sessions\/([^/]+)\/(prompt|steer|follow-up)$/) : null;
