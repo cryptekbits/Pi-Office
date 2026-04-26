@@ -302,7 +302,10 @@ function buildRequest(draft: ConnectorDraftState, scopeContext: ConnectorScopeCo
     credentialSource,
     preserveStoredSecret: draft.preserveStoredSecret && !draft.secret,
     useDetectedEnvKey: draft.credentialMode === "detected" ? draft.detectedEnvKey || undefined : undefined,
-    secretEnvKey: draft.credentialMode === "env" ? draft.secretEnvKey || undefined : undefined,
+    secretEnvKey:
+      draft.credentialMode === "env" || (draft.credentialMode === "manual" && draft.transport === "local_stdio")
+        ? draft.secretEnvKey || undefined
+        : undefined,
     secret: draft.credentialMode === "manual" ? draft.secret || undefined : undefined,
     url: draft.transport === "remote_http" ? draft.url || undefined : undefined,
     command: draft.transport === "local_stdio" ? draft.command || undefined : undefined,

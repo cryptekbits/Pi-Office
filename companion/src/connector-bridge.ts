@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { DEFAULT_INHERITED_ENV_VARS, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type {
   CompanionConnectorDefinition,
+  ConnectorCredentialSource,
   ConnectorDiagnostic,
   ConnectorStatus,
   ConnectorVerificationSnapshot,
@@ -38,6 +39,22 @@ interface ProbeInventory {
   allowedTools: PreparedExecutionTarget[];
 }
 
+type EnvironmentSource = Record<string, string | undefined>;
+type MissingCredentialReason = "missing_value" | "local_stdio_env_key_required";
+
+interface ResolvedConnectorCredential {
+  source: ConnectorCredentialSource;
+  value?: string | undefined;
+  envKey?: string | undefined;
+}
+
+export interface LocalStdioEnvironmentResolution {
+  env: Record<string, string>;
+  credential: ResolvedConnectorCredential;
+  credentialInjected: boolean;
+  missingCredentialReason?: MissingCredentialReason | undefined;
+}
+
 interface PreparedSession {
   sessionId: string;
   connectors: ConnectorStatus[];
@@ -49,6 +66,29 @@ function trimString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function readEnvironmentValue(env: EnvironmentSource, key: string): string | undefined {
+  const direct = env[key];
+  if (typeof direct === "string") return direct;
+
+  const lowerKey = key.toLowerCase();
+  const match = Object.keys(env).find((item) => item.toLowerCase() === lowerKey);
+  if (!match) return undefined;
+  const value = env[match];
+  return typeof value === "string" ? value : undefined;
+}
+
+function resolveEnvironmentCredential(
+  env: EnvironmentSource,
+  envKey: string | undefined,
+  source: ConnectorCredentialSource,
+): ResolvedConnectorCredential {
+  if (!envKey) {
+    return { source };
+  }
+  const value = trimString(readEnvironmentValue(env, envKey));
+  return value ? { source, envKey, value } : { source, envKey };
 }
 
 function sanitizeServerName(input: string): string {
@@ -92,43 +132,51 @@ function toInventoryHash(definition: CompanionConnectorDefinition, toolNames: st
     .digest("hex");
 }
 
-function resolveCredential(definition: CompanionConnectorDefinition): { value?: string; envKey?: string } {
-  const result: { value?: string; envKey?: string } = {};
+function resolveCredential(
+  definition: CompanionConnectorDefinition,
+  env: EnvironmentSource = process.env,
+): ResolvedConnectorCredential {
+  if (definition.authMethod === "none" || definition.credentialSource === "none") {
+    return { source: "none" };
+  }
+
   const detected = trimString(definition.useDetectedEnvKey);
-  if (detected && process.env[detected]) {
-    result.value = process.env[detected];
-    result.envKey = detected;
-    return result;
-  }
-
   const explicitEnv = trimString(definition.secretEnvKey);
-  if (explicitEnv && process.env[explicitEnv]) {
-    result.value = process.env[explicitEnv];
-    result.envKey = explicitEnv;
-    return result;
+  const envKey = explicitEnv ?? detected;
+
+  if (definition.credentialSource === "detected_env") {
+    return resolveEnvironmentCredential(env, detected ?? explicitEnv, "detected_env");
   }
 
-  const manual = trimString(definition.secret);
-  if (manual) {
-    result.value = manual;
-    const envKey = explicitEnv ?? detected;
-    if (envKey) {
-      result.envKey = envKey;
-    }
-    return result;
+  if (definition.credentialSource === "env") {
+    return resolveEnvironmentCredential(env, explicitEnv ?? detected, "env");
   }
 
-  const fallbackEnvKey = explicitEnv ?? detected;
-  if (fallbackEnvKey) {
-    result.envKey = fallbackEnvKey;
+  if (definition.credentialSource === "manual") {
+    const manual = trimString(definition.secret);
+    return manual ? { source: "manual", envKey, value: manual } : { source: "manual", envKey };
   }
-  return result;
+
+  if (definition.credentialSource === "oauth") {
+    const token = trimString(definition.secret);
+    return token ? { source: "oauth", value: token } : { source: "oauth" };
+  }
+
+  return { source: definition.credentialSource, envKey };
+}
+
+function missingCredentialReason(
+  definition: CompanionConnectorDefinition,
+  credential = resolveCredential(definition),
+): MissingCredentialReason | undefined {
+  if (definition.authMethod === "none") return undefined;
+  if (!credential.value) return "missing_value";
+  if (definition.transport === "local_stdio" && !credential.envKey) return "local_stdio_env_key_required";
+  return undefined;
 }
 
 function needsCredential(definition: CompanionConnectorDefinition): boolean {
-  if (definition.authMethod === "none") return false;
-  const credential = resolveCredential(definition);
-  return !credential.value && !credential.envKey;
+  return Boolean(missingCredentialReason(definition));
 }
 
 function isConfigured(definition: CompanionConnectorDefinition): boolean {
@@ -136,6 +184,52 @@ function isConfigured(definition: CompanionConnectorDefinition): boolean {
     return Boolean(trimString(definition.command));
   }
   return Boolean(trimString(definition.url));
+}
+
+function buildDefaultLocalStdioEnvironment(env: EnvironmentSource): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of DEFAULT_INHERITED_ENV_VARS) {
+    const value = readEnvironmentValue(env, key);
+    if (value === undefined || value.startsWith("()")) {
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
+function mergeConnectorEnvironment(target: Record<string, string>, source: Record<string, string> | undefined): void {
+  if (!source) return;
+  for (const [rawKey, value] of Object.entries(source)) {
+    const key = trimString(rawKey);
+    if (!key || typeof value !== "string") {
+      continue;
+    }
+    target[key] = value;
+  }
+}
+
+export function resolveLocalStdioProcessEnvironment(
+  definition: CompanionConnectorDefinition,
+  env: EnvironmentSource = process.env,
+): LocalStdioEnvironmentResolution {
+  const credential = resolveCredential(definition, env);
+  const processEnv = buildDefaultLocalStdioEnvironment(env);
+  mergeConnectorEnvironment(processEnv, definition.env);
+
+  let credentialInjected = false;
+  if (definition.authMethod !== "none" && credential.value && credential.envKey) {
+    processEnv[credential.envKey] = credential.value;
+    credentialInjected = true;
+  }
+
+  const reason = missingCredentialReason(definition, credential);
+  return {
+    env: processEnv,
+    credential,
+    credentialInjected,
+    ...(reason ? { missingCredentialReason: reason } : {}),
+  };
 }
 
 async function createRemoteTransport(runtime: ResolvedConnectorRuntime): Promise<ProbeTransport> {
@@ -240,12 +334,13 @@ function resolveRuntime(definition: CompanionConnectorDefinition): ResolvedConne
 
   const credential = resolveCredential(definition);
   if (definition.transport === "local_stdio") {
+    const resolvedEnvironment = resolveLocalStdioProcessEnvironment(definition);
     return {
       transport: definition.transport,
       command: definition.command,
       args: definition.args,
       cwd: definition.cwd,
-      env: definition.env,
+      env: resolvedEnvironment.env,
     };
   }
 
@@ -360,12 +455,15 @@ function buildDiagnostics(
     });
   }
 
-  if (needsCredential(definition)) {
+  const credentialIssue = missingCredentialReason(definition);
+  if (credentialIssue) {
     diagnostics.push({
       level: "warning",
-      code: "credential_required",
-      title: "Credentials still needed",
-      message: "This connector needs credentials before it can execute.",
+      code: credentialIssue === "local_stdio_env_key_required" ? "credential_env_key_required" : "credential_required",
+      title: credentialIssue === "local_stdio_env_key_required" ? "Credential variable required" : "Credentials still needed",
+      message: credentialIssue === "local_stdio_env_key_required"
+        ? "Local MCP connectors need an environment variable name so the companion can pass the saved credential to the process."
+        : "This connector needs credentials before it can execute.",
       connectorId: definition.id,
     });
   }

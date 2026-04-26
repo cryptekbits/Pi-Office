@@ -200,23 +200,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Remote HTTP and local stdio connector behavior is covered by tests.
   - Notes/Evidence: Review pointed to `buildCompanionSessionConnectors` filtering `local_stdio`, non-local statuses receiving `executionAvailable: true`, and only companion-backed `mcp` tool registration. 2026-04-26 fix chose setup-only browser behavior until remote MCP execution exists, updated runtime metadata/diagnostics/README, and added `remote HTTP connectors are marked setup-only until browser execution exists` in `addin/scripts/office-tests/src/external-context-gaps.test.ts`.
 
-- [ ] BUG-003: Local stdio connector credential and environment propagation is incomplete
+- [x] BUG-003: Local stdio connector credential and environment propagation is incomplete
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 worktree review.
   - Details: The companion connector bridge resolves credentials, but local stdio runtime creation does not inject resolved manual secrets or detected/env credentials into the child process. It also passes `runtime.env` as the process env for `StdioClientTransport`; if the SDK does not merge with `process.env`, custom connector env may drop `PATH` and other required system variables.
   - Dependencies: SECURITY-001 for secure credential lifecycle and storage expectations.
   - Subtasks:
-    - [ ] Trace the MCP SDK `StdioClientTransport` env behavior and confirm whether it merges or replaces `process.env`.
-    - [ ] Define how each credential source maps into local stdio process env without leaking secrets in UI/logs.
-    - [ ] Merge inherited safe environment variables with connector-specific env when launching local stdio connectors.
-    - [ ] Add tests or a local probe harness for manual secret, env-var secret, detected-env secret, and custom env cases.
+    - [x] Trace the MCP SDK `StdioClientTransport` env behavior and confirm whether it merges or replaces `process.env`.
+    - [x] Define how each credential source maps into local stdio process env without leaking secrets in UI/logs.
+    - [x] Merge inherited safe environment variables with connector-specific env when launching local stdio connectors.
+    - [x] Add tests or a local probe harness for manual secret, env-var secret, detected-env secret, and custom env cases.
   - Acceptance Criteria:
-    - [ ] Local stdio connectors receive required credentials through the intended env variable.
-    - [ ] Custom env does not break command discovery or PATH-dependent launches.
-    - [ ] Secrets are not printed in diagnostics, status cards, logs, or exported connector bundles.
-  - Notes/Evidence: Review pointed to `companion/src/connector-bridge.ts` computing credentials but building local runtime without credential injection.
+    - [x] Local stdio connectors receive required credentials through the intended env variable.
+    - [x] Custom env does not break command discovery or PATH-dependent launches.
+    - [x] Secrets are not printed in diagnostics, status cards, logs, or exported connector bundles.
+  - Notes/Evidence: Review pointed to `companion/src/connector-bridge.ts` computing credentials but building local runtime without credential injection. 2026-04-26 trace confirmed the installed MCP SDK merges `getDefaultEnvironment()` with supplied stdio env; Pi-Office now also explicitly builds the stdio env from the SDK safe inherited key list, merges connector env, and injects manual/env/detected credentials only under the intended env variable. Manual local credentials with no env target now stay `auth_required` with `credential_env_key_required`, and taskpane setup preserves the local env target for manual secrets. Regression coverage added in `addin/scripts/office-tests/src/companion-connector-bridge.test.ts`; validation passed with `npm run typecheck:companion`, `npm run typecheck:taskpane`, `npm run test:office`, `npm run build`, `npm run validate:manifests`, and `npm run check:bundle`.
 
 - [ ] BUG-004: Office state refresh race and deduping follow-up
   - Category: Bug
