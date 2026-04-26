@@ -29,6 +29,10 @@
     "./workflow-packs": {
       "types": "./dist/workflow-packs.d.ts",
       "import": "./dist/workflow-packs.js"
+    },
+    "./provider-model-preferences": {
+      "types": "./dist/provider-model-preferences.generated.d.ts",
+      "import": "./dist/provider-model-preferences.generated.js"
     }
   },
   "files": [

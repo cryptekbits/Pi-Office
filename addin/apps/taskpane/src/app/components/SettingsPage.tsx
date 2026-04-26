@@ -58,6 +58,7 @@ import { formatTokenCount } from "../../lib/helpers";
 import { IntegrationsSection } from "./IntegrationsSection";
 
 type SettingsTab = "profile" | "companion" | "providers" | "models" | "integrations" | "privacy" | "tools" | "preferences" | "diagnostics";
+type SettingsDetailLevel = "simple" | "advanced";
 
 const TABS: { key: SettingsTab; label: string; Icon: () => React.JSX.Element }[] = [
   { key: "profile", label: "Profile", Icon: UserIcon },
@@ -188,6 +189,7 @@ export function SettingsPage({
   onClearRuntimeDiagnostics,
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const [settingsDetailLevel, setSettingsDetailLevel] = useState<SettingsDetailLevel>("simple");
   const pageRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -268,6 +270,8 @@ export function SettingsPage({
               providers={providers}
               authStatus={authStatus}
               enabledProviders={enabledProviders}
+              detailLevel={settingsDetailLevel}
+              onDetailLevelChange={setSettingsDetailLevel}
               onToggleProvider={onToggleProvider}
               onSaveApiKey={onSaveApiKey}
               onStartOAuth={onStartOAuth}
@@ -279,6 +283,10 @@ export function SettingsPage({
               providers={providers}
               enabledModels={enabledModels}
               enabledProviders={enabledProviders}
+              preferences={preferences}
+              detailLevel={settingsDetailLevel}
+              onDetailLevelChange={setSettingsDetailLevel}
+              onUpdatePreferences={onUpdatePreferences}
               onToggleModel={onToggleModel}
             />
           )}
@@ -331,6 +339,33 @@ export function SettingsPage({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SettingsDetailToggle({
+  value,
+  onChange,
+}: {
+  value: SettingsDetailLevel;
+  onChange: (value: SettingsDetailLevel) => void;
+}) {
+  return (
+    <div className="segmented-control settings-detail-toggle" aria-label="Catalog detail level">
+      <button
+        type="button"
+        className={`segmented-item ${value === "simple" ? "segmented-active" : ""}`}
+        onClick={() => onChange("simple")}
+      >
+        Simple
+      </button>
+      <button
+        type="button"
+        className={`segmented-item ${value === "advanced" ? "segmented-active" : ""}`}
+        onClick={() => onChange("advanced")}
+      >
+        Advanced
+      </button>
     </div>
   );
 }
@@ -675,6 +710,8 @@ function ProvidersSection({
   providers,
   authStatus,
   enabledProviders,
+  detailLevel,
+  onDetailLevelChange,
   onToggleProvider,
   onSaveApiKey,
   onStartOAuth,
@@ -683,6 +720,8 @@ function ProvidersSection({
   providers: ProviderDescriptor[];
   authStatus: AuthStatusResponse | undefined;
   enabledProviders: Set<string>;
+  detailLevel: SettingsDetailLevel;
+  onDetailLevelChange: (value: SettingsDetailLevel) => void;
   onToggleProvider: (provider: string) => void;
   onSaveApiKey: (provider: string, key: string) => void;
   onStartOAuth: (provider: string) => void;
@@ -690,12 +729,18 @@ function ProvidersSection({
 }) {
   const stored = authStatus?.storedProviders ?? [];
   const providerStates = new Map((authStatus?.providerStates ?? []).map((entry) => [entry.provider, entry]));
+  const visibleProviders = providers.filter((provider) =>
+    detailLevel === "advanced" || provider.settingsVisibility === "simple",
+  );
 
   return (
     <div className="settings-section">
-      <h3>AI Providers</h3>
+      <div className="settings-section-header">
+        <h3>AI Providers</h3>
+        <SettingsDetailToggle value={detailLevel} onChange={onDetailLevelChange} />
+      </div>
       <div className="provider-list">
-        {providers.map((provider) => (
+        {visibleProviders.map((provider) => (
           <ProviderCard
             key={provider.provider}
             isEnabled={enabledProviders.has(provider.provider)}
@@ -708,7 +753,7 @@ function ProvidersSection({
             onClearAuth={() => onClearAuth(provider.provider)}
           />
         ))}
-        {providers.length === 0 && (
+        {visibleProviders.length === 0 && (
           <p className="settings-note">No providers discovered yet. Pi-Office uses provider credentials directly from the taskpane, so no companion is required for this section.</p>
         )}
       </div>
@@ -887,32 +932,73 @@ function ModelsSection({
   providers,
   enabledModels,
   enabledProviders,
+  preferences,
+  detailLevel,
+  onDetailLevelChange,
+  onUpdatePreferences,
   onToggleModel,
 }: {
   providers: ProviderDescriptor[];
   enabledModels: Set<string>;
   enabledProviders: Set<string>;
+  preferences: UserPreferences;
+  detailLevel: SettingsDetailLevel;
+  onDetailLevelChange: (value: SettingsDetailLevel) => void;
+  onUpdatePreferences: (patch: Partial<UserPreferences>) => void;
   onToggleModel: (key: string) => void;
 }) {
-  const activeProviders = providers.filter((p) => enabledProviders.has(p.provider) && p.browserCallable);
+  const visibleProviders = providers
+    .map((provider) => ({
+      provider,
+      models: provider.models.filter((model) =>
+        detailLevel === "advanced" || (model.settingsVisibility === "simple" && model.recommended),
+      ),
+    }))
+    .filter(({ provider, models }) =>
+      models.length > 0 && (detailLevel === "advanced" || provider.settingsVisibility === "simple"),
+    );
+
+  const setProviderDefault = useCallback(
+    (provider: string, modelId: string) => {
+      onUpdatePreferences({
+        defaultModelByProvider: {
+          ...preferences.defaultModelByProvider,
+          [provider]: modelId,
+        },
+      });
+    },
+    [onUpdatePreferences, preferences.defaultModelByProvider],
+  );
 
   return (
     <div className="settings-section">
-      <h3>Available Models</h3>
+      <div className="settings-section-header">
+        <h3>Available Models</h3>
+        <SettingsDetailToggle value={detailLevel} onChange={onDetailLevelChange} />
+      </div>
       <p className="settings-note">
-        Toggle models on or off to control which appear in the model selector.
-        Only models from enabled providers are shown.
+        Simple shows curated recommended models. Advanced shows the full Pi catalog and asks for confirmation before un-recommended selections run.
       </p>
-      {activeProviders.length === 0 && (
-        <p className="settings-note">Enable a browser-callable provider in the Providers tab first.</p>
+      {visibleProviders.length === 0 && (
+        <p className="settings-note">No models match this catalog view yet.</p>
       )}
-      {activeProviders.map((provider) => (
-        <div key={provider.provider} className="settings-model-group">
-          <h4>{provider.label}</h4>
+      {visibleProviders.map(({ provider, models }) => {
+        const providerEnabled = enabledProviders.has(provider.provider);
+        const selectedDefault = preferences.defaultModelByProvider[provider.provider] ?? provider.defaultModelId;
+        return (
+        <div key={provider.provider} className={`settings-model-group ${!provider.browserCallable ? "settings-model-group-disabled" : ""}`}>
+          <div className="settings-model-group-header">
+            <h4>{provider.label}</h4>
+            <span className="settings-model-group-meta">
+              {provider.lab}
+              {!provider.browserCallable ? " · setup-only" : !providerEnabled ? " · provider off" : ""}
+            </span>
+          </div>
           <div className="settings-model-list">
-            {provider.models.map((model) => {
+            {models.map((model) => {
               const modelKey = `${model.provider}::${model.modelId}`;
               const isEnabled = enabledModels.has(modelKey);
+              const isProviderDefault = selectedDefault === model.modelId;
               const stateLabel = model.verifiedUsable
                 ? ""
                 : model.authState === "verification_failed"
@@ -928,6 +1014,15 @@ function ModelsSection({
                   <div className="settings-model-info">
                     <span>{model.modelName}</span>
                     <span className="settings-model-badges">
+                      <span className="settings-model-tag">{model.lab}</span>
+                      {model.family ? (
+                        <span className="settings-model-tag">{model.family}</span>
+                      ) : null}
+                      {model.recommended ? (
+                        <span className="settings-model-tag">Recommended</span>
+                      ) : (
+                        <span className="settings-model-tag settings-model-tag-warning">Advanced</span>
+                      )}
                       {model.contextWindow ? (
                         <span className="settings-model-ctx">
                           {Math.round(model.contextWindow / 1000)}K
@@ -942,6 +1037,14 @@ function ModelsSection({
                     </span>
                   </div>
                   <div className="settings-model-actions">
+                    <button
+                      type="button"
+                      className={`settings-inline-action ${isProviderDefault ? "settings-inline-action-active" : ""}`}
+                      onClick={() => setProviderDefault(provider.provider, model.modelId)}
+                      disabled={!provider.browserCallable}
+                    >
+                      {isProviderDefault ? "Default" : "Make default"}
+                    </button>
                     {stateLabel && (
                       <span className="settings-model-state">{stateLabel}</span>
                     )}
@@ -949,8 +1052,9 @@ function ModelsSection({
                       type="button"
                       className={`toggle-switch toggle-sm ${isEnabled ? "toggle-on" : ""}`}
                       onClick={() => onToggleModel(modelKey)}
+                      disabled={!provider.browserCallable || !providerEnabled}
                       role="switch"
-                      aria-checked={isEnabled}
+                      aria-checked={provider.browserCallable && providerEnabled && isEnabled}
                       aria-label={`${isEnabled ? "Disable" : "Enable"} ${model.modelName}`}
                     >
                       <span className="toggle-thumb" />
@@ -961,7 +1065,7 @@ function ModelsSection({
             })}
           </div>
         </div>
-      ))}
+      );})}
     </div>
   );
 }
@@ -1234,6 +1338,12 @@ function PreferencesSection({
           description="Show concise prompt chips after useful Pi responses."
           value={preferences.nextPromptSuggestionsEnabled}
           onChange={(v) => onUpdate({ nextPromptSuggestionsEnabled: v })}
+        />
+        <PrefToggle
+          label="Skip advanced model warning"
+          description="Allow enabled un-recommended models to be selected without an extra confirmation."
+          value={preferences.suppressUnrecommendedModelWarning}
+          onChange={(v) => onUpdate({ suppressUnrecommendedModelWarning: v })}
         />
         <PrefToggle
           label="Persistent rewind snapshots (Beta)"

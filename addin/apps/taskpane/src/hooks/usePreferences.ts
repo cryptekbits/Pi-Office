@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "@pi-office/pi-office-pack/protocol";
+import { DEFAULT_ENABLED_MODELS_BY_PROVIDER } from "@pi-office/pi-office-pack/provider-model-preferences";
 import { syncKernelPreferences } from "../lib/runtime/inprocess-kernel";
 
 const STORAGE_KEY = "pi-office-preferences";
@@ -10,17 +11,9 @@ const ENABLED_PROVIDERS_KEY = "pi-office-enabled-providers";
  * Default-enabled model IDs keyed by provider.
  * Models not in this list are hidden by default but can be enabled by the user.
  */
-export const DEFAULT_ENABLED_MODELS: Record<string, string[]> = {
-  openai: [
-    "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex",
-  ],
-  anthropic: [
-    "claude-sonnet-4-6", "claude-opus-4-6",
-  ],
-  google: [
-    "gemini-3.1-pro-preview", "gemini-3-flash-preview",
-  ],
-};
+export const DEFAULT_ENABLED_MODELS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(DEFAULT_ENABLED_MODELS_BY_PROVIDER).map(([provider, modelIds]) => [provider, [...modelIds]]),
+);
 
 function buildDefaultEnabledSet(): Set<string> {
   const set = new Set<string>();

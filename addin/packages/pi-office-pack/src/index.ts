@@ -3,3 +3,4 @@ export * from "./defaults.js";
 export * from "./extension.js";
 export * from "./prompt-suggestions.js";
 export * from "./workflow-packs.js";
+export * from "./provider-model-preferences.generated.js";

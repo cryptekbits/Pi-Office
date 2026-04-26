@@ -134,7 +134,16 @@ async function openSession(runtime: {
 
   const socket = runtime.createLocalBridgeSocket(openResponse.sessionId);
   await waitForEvent(socket, "open");
-  return (socket as unknown as { session: { agent: { state: { tools: Array<{ name: string; execute: (toolCallId: string, params: Record<string, unknown>) => Promise<unknown> }> } } } }).session;
+  return (socket as unknown as {
+    session: {
+      agent: {
+        state: {
+          model: { provider: string; id: string };
+          tools: Array<{ name: string; execute: (toolCallId: string, params: Record<string, unknown>) => Promise<unknown> }>;
+        };
+      };
+    };
+  }).session;
 }
 
 async function providerState(runtime: { dispatchKernelRequest: (path: string, init?: RequestInit) => Promise<unknown> }, provider: string) {
@@ -236,11 +245,20 @@ test("provider catalog distinguishes browser API-key providers from companion OA
       companionRequired: boolean;
       subscriptionBacked: boolean;
       imageGenerationSupported: boolean;
+      settingsVisibility: string;
+      lab: string;
+      defaultModelId?: string;
       models: Array<{
+        modelId: string;
         usesApiKey: boolean;
         configured: boolean;
         browserCallable: boolean;
         companionRequired: boolean;
+        settingsVisibility: string;
+        lab: string;
+        recommended: boolean;
+        defaultForProvider: boolean;
+        requiresUnrecommendedWarning: boolean;
       }>;
     }>;
   };
@@ -259,9 +277,23 @@ test("provider catalog distinguishes browser API-key providers from companion OA
   assert.equal(openAi.oauthSupported, false);
   assert.equal(openAi.companionRequired, false);
   assert.equal(openAi.imageGenerationSupported, true);
+  assert.equal(openAi.settingsVisibility, "simple");
+  assert.equal(openAi.lab, "OpenAI");
+  assert.equal(openAi.defaultModelId, "gpt-5.5");
   assert.deepEqual(openAi.authMethods, ["api_key"]);
   assert.ok(openAi.models.length > 0);
   assert.equal(openAi.models.every((model) => model.usesApiKey && model.browserCallable), true);
+  const gpt55 = openAi.models.find((model) => model.modelId === "gpt-5.5");
+  assert.ok(gpt55, "Expected curated GPT-5.5 in OpenAI catalog.");
+  assert.equal(gpt55.settingsVisibility, "simple");
+  assert.equal(gpt55.recommended, true);
+  assert.equal(gpt55.defaultForProvider, true);
+  assert.equal(gpt55.requiresUnrecommendedWarning, false);
+  const gpt54Mini = openAi.models.find((model) => model.modelId === "gpt-5.4-mini");
+  assert.ok(gpt54Mini, "Expected non-curated OpenAI catalog model to remain visible.");
+  assert.equal(gpt54Mini.settingsVisibility, "simple");
+  assert.equal(gpt54Mini.recommended, false);
+  assert.equal(gpt54Mini.requiresUnrecommendedWarning, true);
 
   for (const id of ["openai-codex", "github-copilot", "google-gemini-cli", "google-antigravity"]) {
     const entry = provider(id);
@@ -280,6 +312,40 @@ test("provider catalog distinguishes browser API-key providers from companion OA
   assert.equal(bedrock.browserCallable, false);
   assert.equal(bedrock.companionRequired, true);
   assert.equal(bedrock.authMethods.includes("aws_credentials"), true);
+
+  const directZai = provider("zai");
+  assert.equal(directZai.settingsVisibility, "advanced");
+  assert.equal(directZai.models.some((model) => model.settingsVisibility === "simple"), false);
+});
+
+test("provider default model preferences validate against the Pi catalog and seed new sessions", async () => {
+  const runtime = await loadKernelModule();
+
+  const response = await runtime.dispatchKernelRequest("/v1/preferences", {
+    method: "POST",
+    body: JSON.stringify({
+      defaultModelByProvider: {
+        openai: "gpt-5.4-pro",
+      },
+    }),
+  }) as { preferences: { defaultModelByProvider: Record<string, string> } };
+  assert.equal(response.preferences.defaultModelByProvider.openai, "gpt-5.4-pro");
+
+  await assert.rejects(
+    () => runtime.dispatchKernelRequest("/v1/preferences", {
+      method: "POST",
+      body: JSON.stringify({
+        defaultModelByProvider: {
+          openai: "gpt-5.5-pro",
+        },
+      }),
+    }),
+    /not available in the Pi provider catalog/i,
+  );
+
+  const session = await openSession(runtime, "default-model");
+  assert.equal(session.agent.state.model.provider, "openai");
+  assert.equal(session.agent.state.model.id, "gpt-5.4-pro");
 });
 
 test("provider auth routes reject unavailable browser auth methods", async () => {

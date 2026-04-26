@@ -837,6 +837,13 @@ export interface ProviderModelDescriptor {
   providerLabel: string;
   modelId: string;
   modelName: string;
+  settingsVisibility: SettingsVisibility;
+  lab: string;
+  family?: string | undefined;
+  recommended: boolean;
+  recommendationReason?: string | undefined;
+  defaultForProvider: boolean;
+  requiresUnrecommendedWarning: boolean;
   supportStatus: ProviderSupportStatus;
   runtimeSurface: ProviderRuntimeSurface;
   authMethods: ProviderAuthMethod[];
@@ -1009,6 +1016,8 @@ export interface UserPreferences {
   defaultThinkingLevel: ThinkingLevel;
   imageGenerationEnabled: boolean;
   defaultImageModel: string;
+  defaultModelByProvider: Record<string, string>;
+  suppressUnrecommendedModelWarning: boolean;
   imageReasoningEffort: ImageReasoningEffort;
   experimentalRewindSnapshots: boolean;
   nextPromptSuggestionsEnabled: boolean;
@@ -1024,6 +1033,8 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   defaultThinkingLevel: "high",
   imageGenerationEnabled: false,
   defaultImageModel: "",
+  defaultModelByProvider: {},
+  suppressUnrecommendedModelWarning: false,
   imageReasoningEffort: "high",
   experimentalRewindSnapshots: false,
   nextPromptSuggestionsEnabled: true,
@@ -1047,6 +1058,9 @@ export interface ProviderAuthDescriptor {
 export interface ProviderDescriptor {
   provider: string;
   label: string;
+  settingsVisibility: SettingsVisibility;
+  lab: string;
+  defaultModelId?: string | undefined;
   supportStatus: ProviderSupportStatus;
   runtimeSurface: ProviderRuntimeSurface;
   authMethods: ProviderAuthMethod[];
@@ -1072,6 +1086,7 @@ export interface ProviderCatalogResponse {
 
 export type ProviderSupportStatus = "supported" | "planned" | "blocked" | "research_only";
 export type ProviderRuntimeSurface = "browser_taskpane" | "companion" | "not_implemented";
+export type SettingsVisibility = "simple" | "advanced";
 export type ProviderAuthMethod =
   | "api_key"
   | "oauth"

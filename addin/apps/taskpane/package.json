@@ -12,7 +12,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@mariozechner/pi-agent-core": "^0.64.0",
+    "@mariozechner/pi-ai": "^0.70.2",
     "@pi-office/pi-office-pack": "file:../../packages/pi-office-pack",
+    "@sinclair/typebox": "^0.34.49",
     "jszip": "^3.10.1",
     "katex": "^0.16.44",
     "react": "19.2.4",

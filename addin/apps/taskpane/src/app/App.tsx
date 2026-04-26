@@ -232,6 +232,8 @@ export function App() {
   const [askUserRequest, setAskUserRequest] = useState<AskUserRequest | null>(null);
   const [toolPermissionRequest, setToolPermissionRequest] = useState<ToolPermissionRequest | null>(null);
   const [editProposal, setEditProposal] = useState<OfficeEditProposal | null>(null);
+  const [pendingUnrecommendedModel, setPendingUnrecommendedModel] = useState<ConfiguredModelEntry | null>(null);
+  const [suppressUnrecommendedWarningForSelection, setSuppressUnrecommendedWarningForSelection] = useState(false);
 
   const { preferences, updatePreferences } = usePreferences();
   const { enabledModels, enabledProviders, toggleModel, toggleProvider, isModelEnabled } = useEnabledModels();
@@ -1689,13 +1691,50 @@ export function App() {
     }
   }, [pushErrorMessage, pushSystemMessage, syncCurrentSessionState]);
 
-  const handleSelectModel = useCallback((key: string) => {
+  const commitModelSelection = useCallback((key: string) => {
     if (!key && modelPinnedRef.current) {
       pushSystemMessage("This session keeps its current model until you reopen the document.");
     }
     setSelectedModelKey(key);
     if (key) pushRecentModel(key);
   }, [pushSystemMessage]);
+
+  const handleSelectModel = useCallback((key: string) => {
+    if (!key || preferences.suppressUnrecommendedModelWarning) {
+      commitModelSelection(key);
+      return;
+    }
+
+    const model = configuredModels.find((entry) => entry.key === key);
+    if (model?.model.requiresUnrecommendedWarning) {
+      setSuppressUnrecommendedWarningForSelection(false);
+      setPendingUnrecommendedModel(model);
+      return;
+    }
+
+    commitModelSelection(key);
+  }, [commitModelSelection, configuredModels, preferences.suppressUnrecommendedModelWarning]);
+
+  const confirmUnrecommendedModelSelection = useCallback(() => {
+    const model = pendingUnrecommendedModel;
+    if (!model) return;
+    if (suppressUnrecommendedWarningForSelection) {
+      updatePreferences({ suppressUnrecommendedModelWarning: true });
+    }
+    setPendingUnrecommendedModel(null);
+    setSuppressUnrecommendedWarningForSelection(false);
+    commitModelSelection(model.key);
+  }, [
+    commitModelSelection,
+    pendingUnrecommendedModel,
+    suppressUnrecommendedWarningForSelection,
+    updatePreferences,
+  ]);
+
+  const cancelUnrecommendedModelSelection = useCallback(() => {
+    setPendingUnrecommendedModel(null);
+    setSuppressUnrecommendedWarningForSelection(false);
+  }, []);
 
   const handleQueueSelection = useCallback((entry: LocalQueueEntry) => {
     setSelectedLocalQueueId((c) => (c === entry.id ? undefined : entry.id));
@@ -1897,6 +1936,34 @@ export function App() {
           request={askUserRequest}
           onSubmit={handleAskUserSubmit}
         />
+      )}
+
+      {pendingUnrecommendedModel && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="unrecommended-model-modal" role="dialog" aria-modal="true" aria-label="Advanced model warning">
+            <h3>Advanced Model</h3>
+            <p>
+              {pendingUnrecommendedModel.model.modelName} is outside the curated recommendation list for {pendingUnrecommendedModel.provider.label}.
+              It may be legacy, experimental, regional, or less validated for Pi-Office workflows.
+            </p>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={suppressUnrecommendedWarningForSelection}
+                onChange={(event) => setSuppressUnrecommendedWarningForSelection(event.target.checked)}
+              />
+              <span>Do not show this again</span>
+            </label>
+            <div className="settings-actions">
+              <button type="button" className="button" onClick={cancelUnrecommendedModelSelection}>
+                Cancel
+              </button>
+              <button type="button" className="button button-solid" onClick={confirmUnrecommendedModelSelection}>
+                Use model
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {toolPermissionRequest && (

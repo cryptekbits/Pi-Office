@@ -224,6 +224,7 @@ export function ModelSelector({
                       label={entry.model.modelName}
                       modelKey={entry.key}
                       costTier={entry.model.costTier}
+                      warningLabel={entry.model.requiresUnrecommendedWarning ? "Advanced" : undefined}
                       authStateLabel={authStateLabel(entry.model)}
                       isSelected={entry.key === selectedModelKey}
                       onSelect={() => handleSelect(entry.key)}
@@ -243,6 +244,7 @@ export function ModelSelector({
                       label={entry.model.modelName}
                       modelKey={entry.key}
                       costTier={entry.model.costTier}
+                      warningLabel={entry.model.requiresUnrecommendedWarning ? "Advanced" : undefined}
                       authStateLabel={authStateLabel(entry.model)}
                       isSelected={entry.key === selectedModelKey}
                       onSelect={() => handleSelect(entry.key)}
@@ -293,6 +295,16 @@ export function ModelSelector({
                   {authStateDescription(hoveredModel.model)}
                 </p>
               )}
+              {hoveredModel.model.recommendationReason && (
+                <p className="model-detail-auth-note">
+                  {hoveredModel.model.recommendationReason}
+                </p>
+              )}
+              {hoveredModel.model.requiresUnrecommendedWarning && (
+                <p className="model-detail-auth-note">
+                  Advanced catalog model. Pi-Office will ask before using it unless the warning is suppressed.
+                </p>
+              )}
 
               {hoveredModel.model.supportsThinking && availableThinkingLevels.length > 0 && (
                 <div className="model-detail-section">
@@ -323,6 +335,7 @@ function ModelRow({
   label,
   modelKey,
   costTier,
+  warningLabel,
   authStateLabel,
   isSelected,
   onSelect,
@@ -332,6 +345,7 @@ function ModelRow({
   label: string;
   modelKey: string;
   costTier?: string | undefined;
+  warningLabel?: string | undefined;
   authStateLabel?: string | undefined;
   isSelected: boolean;
   onSelect: () => void;
@@ -351,6 +365,7 @@ function ModelRow({
     >
       <span className="model-popup-item-name">{label}</span>
       <span className="model-popup-item-meta">
+        {warningLabel && <span className="model-popup-auth-state">{warningLabel}</span>}
         {authStateLabel && <span className="model-popup-auth-state">{authStateLabel}</span>}
         {costTier && <span className="model-popup-cost">{costTier}</span>}
         {isSelected && <CheckIcon />}

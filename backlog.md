@@ -378,14 +378,16 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Subtasks:
     - [x] Create a provider/auth matrix for Pi, OpenAI/ChatGPT, Anthropic-compatible official paths, GitHub Copilot, OpenCode, OpenRouter, Cloudflare, Vercel, and other target providers.
     - [x] Mark each provider as supported, planned, blocked, or research-only with the required auth method and runtime surface.
+    - [x] Add provider/model curation metadata for Simple/Advanced settings visibility, lab/family, recommended/default models, and un-recommended model warnings.
     - [ ] Implement provider auth flows one at a time behind honest capability flags.
     - [x] Ensure UI copy never advertises OAuth/subscription access until a real flow exists.
     - [x] Add provider-level tests for catalog flags, auth start behavior, readiness, and model execution.
   - Acceptance Criteria:
     - [x] Provider catalog flags match implemented auth/runtime capability.
     - [x] Users can distinguish API-key providers, OAuth providers, companion-required providers, and unsupported providers.
+    - [x] Provider catalog model descriptors expose curation metadata validated against the refreshed Pi model catalog.
     - [x] At least one non-API-key provider path is implemented or explicitly deferred with documented constraints before any UI promise.
-  - Notes/Evidence: Review pointed to `BrowserModelRegistry.getProviderCatalog()` hardcoding `oauthSupported: false`, `/v1/auth/start` throwing for browser-only mode, and the new `AGENTS.md` product goal requiring provider flexibility. 2026-04-26 first implementation slice added `docs/provider-auth-matrix.md`, shared provider capability metadata, runtime catalog fields for support status/runtime/auth methods/browser-callable/companion-required/subscription-backed/image support, Settings provider cards that show planned companion/OAuth providers as informational, `/v1/auth/api-key` rejection for non-browser API-key providers, and `/v1/auth/start` errors that distinguish companion-owned OAuth from unsupported browser OAuth. Regression coverage now proves OpenAI is browser/API-key/image capable, Codex/Copilot/Gemini CLI/Antigravity are planned companion OAuth paths, Bedrock is companion-only, OAuth start behavior is honest, and image providers remain OpenAI-only. Real companion-owned OAuth provider implementations remain open under this task. Validation passed: `npm run typecheck:addin`, `npm run test:office`, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
+  - Notes/Evidence: Review pointed to `BrowserModelRegistry.getProviderCatalog()` hardcoding `oauthSupported: false`, `/v1/auth/start` throwing for browser-only mode, and the new `AGENTS.md` product goal requiring provider flexibility. 2026-04-26 first implementation slice added `docs/provider-auth-matrix.md`, shared provider capability metadata, runtime catalog fields for support status/runtime/auth methods/browser-callable/companion-required/subscription-backed/image support, Settings provider cards that show planned companion/OAuth providers as informational, `/v1/auth/api-key` rejection for non-browser API-key providers, and `/v1/auth/start` errors that distinguish companion-owned OAuth from unsupported browser OAuth. Regression coverage now proves OpenAI is browser/API-key/image capable, Codex/Copilot/Gemini CLI/Antigravity are planned companion OAuth paths, Bedrock is companion-only, OAuth start behavior is honest, and image providers remain OpenAI-only. 2026-04-26 curation slice refreshed `pi-mono` to `05f79b08`, updated the taskpane to `@mariozechner/pi-ai@0.70.2`, added canonical `provider-model-preferences.yaml`, generated typed curation metadata, exposed `settingsVisibility`/lab/family/recommendation/default/warning fields through `/v1/providers`, validated `defaultModelByProvider`, and recorded missing preferred `openai/gpt-5.5-pro` as catalog drift rather than creating a local override. Real companion-owned OAuth provider implementations remain open under this task. Validation passed: `npm run check:provider-models`, `npm run typecheck:addin`, `npm run test:office` with 129 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 - [x] FEATURE-003: Add professional workflow packs and host playbooks for high-value Office artifacts
   - Category: Feature
@@ -537,25 +539,25 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] At least one deck-quality asset workflow is validated in PowerPoint.
   - Notes/Evidence: Review pointed to the small runtime icon catalog and glyph-textbox insertion path in `addin/apps/taskpane/src/lib/office/powerpoint-actions.ts`, plus ChatGPT inspiration assets around generated slide stores and slide screenshots.
 
-- [ ] IMPROVEMENT-005: Simplify provider, model, and settings UX into guided and advanced surfaces
+- [x] IMPROVEMENT-005: Simplify provider, model, and settings UX into guided and advanced surfaces
   - Category: Improvement
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 plan implementation after user noted the current provider/model/settings catalog is overwhelming for nontechnical users and includes regional/legacy models that can scare enterprises.
   - Details: Settings currently exposes a large provider/model list and many toggles without a strong basic/advanced information architecture. Default users should see a guided shortlist of recommended current models and plain-language provider choices. Advanced users should still be able to opt into the full catalog, including legacy, experimental, regional, and higher-risk providers. Provider/model metadata needs to include region/jurisdiction, enterprise-risk messaging, capability flags, auth methods, current-vs-legacy status, and replacement suggestions.
   - Dependencies: FEATURE-002 and BUG-005.
   - Subtasks:
-    - [ ] Define model/provider metadata fields: visibility, status, replacedBy, region, enterpriseRisk, authMethods, capabilities, and companionRequired.
-    - [ ] Curate a default guided shortlist for Word/Excel/PowerPoint professional work.
-    - [ ] Move legacy, experimental, China-hosted/regional, and niche providers behind an explicit advanced catalog.
-    - [ ] Group settings into basic, advanced, privacy/security, providers, companion, and diagnostics using plain-language labels.
-    - [ ] Add tests that default enabled models/providers do not include advanced-only or region-risk entries unless the user opts in.
+    - [x] Define model/provider metadata fields: visibility, status, replacedBy, region, enterpriseRisk, authMethods, capabilities, and companionRequired.
+    - [x] Curate a default guided shortlist for Word/Excel/PowerPoint professional work.
+    - [x] Move legacy, experimental, China-hosted/regional, and niche providers behind an explicit advanced catalog.
+    - [x] Group settings into basic, advanced, privacy/security, providers, companion, and diagnostics using plain-language labels.
+    - [x] Add tests that default enabled models/providers do not include advanced-only or region-risk entries unless the user opts in.
   - Acceptance Criteria:
-    - [ ] A first-time nontechnical user can pick a recommended provider/model without reading a large model catalog.
-    - [ ] Advanced users can still find and enable the complete catalog.
-    - [ ] Regional/enterprise-risk providers are clearly labeled and not enabled by default.
-    - [ ] Model lists avoid stale versions when newer replacements exist unless the user enables advanced/legacy mode.
-  - Notes/Evidence: 2026-04-26 review found default enabled models/providers include broad Pi catalog entries, China-linked/regional providers, and old model revisions in `addin/apps/taskpane/src/hooks/usePreferences.ts`, with Settings rendering all enabled-provider models together. 2026-04-26 hardening narrowed the default shortlist to OpenAI, Anthropic, and Google current/recommended entries and added `addin/scripts/office-tests/src/model-curation.test.ts`; full metadata, regional labeling, and guided/advanced IA remain open.
+    - [x] A first-time nontechnical user can pick a recommended provider/model without reading a large model catalog.
+    - [x] Advanced users can still find and enable the complete catalog.
+    - [x] Regional/enterprise-risk providers are clearly labeled and not enabled by default.
+    - [x] Model lists avoid stale versions when newer replacements exist unless the user enables advanced/legacy mode.
+  - Notes/Evidence: 2026-04-26 review found default enabled models/providers include broad Pi catalog entries, China-linked/regional providers, and old model revisions in `addin/apps/taskpane/src/hooks/usePreferences.ts`, with Settings rendering all enabled-provider models together. 2026-04-26 hardening narrowed the default shortlist to OpenAI, Anthropic, and Google current/recommended entries and added `addin/scripts/office-tests/src/model-curation.test.ts`. Closed 2026-04-26 by adding canonical lab-first model curation in `addin/packages/pi-office-pack/src/provider-model-preferences.yaml`, generated runtime metadata in `provider-model-preferences.generated.ts`, Simple/Advanced provider and model catalog filtering in Settings, user-configurable `defaultModelByProvider`, un-recommended model warnings with suppression, and generated default enabled models. Direct DeepSeek, Z.AI, and Kimi Coding providers stay Advanced-only/direct opt-in, while curated lab models can still appear through gateways such as OpenRouter, Vercel, Groq, and OpenCode. Validation passed: `npm run check:provider-models`, `npm run typecheck:addin`, `npm run test:office` with 129 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 ### Testing
 

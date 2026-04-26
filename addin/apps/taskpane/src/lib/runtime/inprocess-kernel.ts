@@ -1,6 +1,5 @@
 import { Agent, type AgentMessage, type AgentTool } from "@mariozechner/pi-agent-core";
 import {
-  Type,
   completeSimple,
   getModel,
   getModels,
@@ -11,6 +10,7 @@ import {
   type Model,
   type ThinkingLevel as PiThinkingLevel,
 } from "@mariozechner/pi-ai";
+import { Type } from "@sinclair/typebox";
 import {
   HOST_LABELS,
   OFFICE_APPEND_SYSTEM_PROMPT,
@@ -97,6 +97,13 @@ import {
   type UserPreferences,
 } from "@pi-office/pi-office-pack/protocol";
 import { parsePromptSuggestions } from "@pi-office/pi-office-pack/prompt-suggestions";
+import {
+  SIMPLE_RECOMMENDED_MODELS_BY_PROVIDER,
+  SIMPLE_VISIBLE_PROVIDERS,
+  getProviderDefaultModel,
+  getProviderModelPreference,
+  getProviderSettingsPreference,
+} from "@pi-office/pi-office-pack/provider-model-preferences";
 import { executeOfficeTool } from "../office-tools";
 import { BrowserConnectorRuntime } from "./browser-connectors";
 import { CompanionClient, type CompanionSessionBinding } from "./companion-client";
@@ -226,6 +233,11 @@ const PROVIDER_CAPABILITIES: Record<string, BrowserProviderCapability> = {
     capabilityNote: "Azure OpenAI requires endpoint, deployment, and tenant-specific configuration before Pi-Office can call it honestly.",
   },
   cerebras: BROWSER_API_KEY_CAPABILITY,
+  deepseek: {
+    ...BROWSER_API_KEY_CAPABILITY,
+    capabilityNote: "Direct DeepSeek API-key setup is available, but Pi-Office keeps it in Advanced settings so regional-provider use is intentional.",
+  },
+  fireworks: BROWSER_API_KEY_CAPABILITY,
   "github-copilot": {
     supportStatus: "planned",
     runtimeSurface: "companion",
@@ -330,6 +342,44 @@ function providerCapabilityFields(capability: BrowserProviderCapability) {
     subscriptionBacked: capability.subscriptionBacked,
     imageGenerationSupported: capability.imageGenerationSupported,
     ...(capability.capabilityNote ? { capabilityNote: capability.capabilityNote } : {}),
+  };
+}
+
+function uniqueStrings(values: Iterable<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+}
+
+const SIMPLE_RECOMMENDED_MODEL_LOOKUP = SIMPLE_RECOMMENDED_MODELS_BY_PROVIDER as Record<string, readonly string[]>;
+
+function providerSettingsFields(providerId: string) {
+  const settings = getProviderSettingsPreference(providerId);
+  return {
+    label: settings.label || titleCase(providerId),
+    settingsVisibility: settings.settingsVisibility,
+    lab: settings.lab || settings.label || titleCase(providerId),
+    defaultModelId: settings.defaultModel,
+  };
+}
+
+function providerModelPreferenceFields(providerId: string, modelId: string) {
+  const providerSettings = getProviderSettingsPreference(providerId);
+  const preference = getProviderModelPreference(providerId, modelId);
+  const recommended = preference?.recommended ?? false;
+  return {
+    settingsVisibility: preference?.settingsVisibility ?? providerSettings.settingsVisibility,
+    lab: preference?.lab ?? providerSettings.lab ?? titleCase(providerId),
+    family: preference?.family,
+    recommended,
+    recommendationReason: preference?.recommendationReason,
+    defaultForProvider: preference?.defaultForProvider ?? providerSettings.defaultModel === modelId,
+    requiresUnrecommendedWarning: preference?.requiresUnrecommendedWarning ?? !recommended,
   };
 }
 
@@ -1027,6 +1077,7 @@ class BrowserModelRegistry {
     for (const provider of getProviders()) {
       const providerId = String(provider);
       const capability = getProviderCapability(providerId);
+      const providerSettings = providerSettingsFields(providerId);
       const models = this.getCatalogModelsForProvider(provider);
       if (!models.length) continue;
       const auth = this.authStore.getAuthState(providerId);
@@ -1035,11 +1086,19 @@ class BrowserModelRegistry {
         .map((model) => {
           const totalCostPer1k = (model.cost.input + model.cost.output) / 2;
           const costTier: "$" | "$$" | "$$$" = totalCostPer1k <= 1 ? "$" : totalCostPer1k <= 10 ? "$$" : "$$$";
+          const preference = providerModelPreferenceFields(providerId, model.id);
           return {
             provider: providerId,
-            providerLabel: titleCase(providerId),
+            providerLabel: providerSettings.label,
             modelId: model.id,
             modelName: model.name,
+            settingsVisibility: preference.settingsVisibility,
+            lab: preference.lab,
+            family: preference.family,
+            recommended: preference.recommended,
+            recommendationReason: preference.recommendationReason,
+            defaultForProvider: preference.defaultForProvider,
+            requiresUnrecommendedWarning: preference.requiresUnrecommendedWarning,
             ...providerCapabilityFields(capability),
             authState: auth.state,
             credentialStored: auth.credentialStored,
@@ -1059,7 +1118,10 @@ class BrowserModelRegistry {
 
       providers.push({
         provider: providerId,
-        label: titleCase(providerId),
+        label: providerSettings.label,
+        settingsVisibility: providerSettings.settingsVisibility,
+        lab: providerSettings.lab,
+        defaultModelId: providerSettings.defaultModelId,
         ...providerCapabilityFields(capability),
         authState: auth.state,
         credentialStored: auth.credentialStored,
@@ -1115,11 +1177,29 @@ class BrowserModelRegistry {
     };
   }
 
-  getPreferredModel(): Model<any> | undefined {
-    for (const providerId of this.authStore.list()) {
+  getPreferredModel(preferences?: Pick<UserPreferences, "defaultModelByProvider">): Model<any> | undefined {
+    const providerOrder = uniqueStrings([
+      ...Object.keys(preferences?.defaultModelByProvider ?? {}),
+      ...this.authStore.list(),
+      ...SIMPLE_VISIBLE_PROVIDERS,
+      ...getProviders().map((provider) => String(provider)),
+    ]);
+
+    for (const providerId of providerOrder) {
       if (!isBrowserProviderSupported(providerId)) continue;
       const models = this.getExecutableModelsForProvider(providerId);
-      if (models.length) return models[0];
+      if (!models.length) continue;
+
+      const modelOrder = uniqueStrings([
+        preferences?.defaultModelByProvider?.[providerId],
+        getProviderDefaultModel(providerId),
+        ...(SIMPLE_RECOMMENDED_MODEL_LOOKUP[providerId] ?? []),
+        ...models.map((model) => model.id),
+      ]);
+      const preferred = modelOrder
+        .map((modelId) => models.find((model) => model.id === modelId))
+        .find(Boolean);
+      if (preferred) return preferred;
     }
 
     const fallbackProvider = getProviders().find((provider) => isBrowserProviderSupported(String(provider)));
@@ -1171,6 +1251,10 @@ class BrowserModelRegistry {
 
   hasImageModelKey(modelKey: string): boolean {
     return IMAGE_MODEL_CATALOG.some((entry) => entry.key === modelKey);
+  }
+
+  hasCatalogModel(provider: string, modelId: string): boolean {
+    return this.getCatalogModelsForProvider(provider).some((model) => model.id === modelId);
   }
 
   private getCatalogModelsForProvider(provider: string): Model<any>[] {
@@ -1234,7 +1318,7 @@ class BrowserOfficeSession {
     this.agent.setTools(tools);
     this.agent.setSystemPrompt(this.buildSystemPrompt(tools.map((tool) => tool.name)));
 
-    const preferredModel = this.modelRegistry.getPreferredModel();
+    const preferredModel = this.modelRegistry.getPreferredModel(this.getPreferences());
     if (preferredModel) {
       this.agent.setModel(preferredModel);
     }
@@ -3017,6 +3101,21 @@ class InProcessKernel {
       throw new Error(
         `Image model ${patch.defaultImageModel} is not available in the browser taskpane image catalog.`,
       );
+    }
+    if (patch.defaultModelByProvider !== undefined) {
+      if (
+        !patch.defaultModelByProvider ||
+        typeof patch.defaultModelByProvider !== "object" ||
+        Array.isArray(patch.defaultModelByProvider)
+      ) {
+        throw new Error("defaultModelByProvider must be an object keyed by provider.");
+      }
+      for (const [provider, modelId] of Object.entries(patch.defaultModelByProvider)) {
+        if (!modelId) continue;
+        if (!this.modelRegistry.hasCatalogModel(provider, modelId)) {
+          throw new Error(`Model ${provider}/${modelId} is not available in the Pi provider catalog.`);
+        }
+      }
     }
     this.userPreferences = { ...this.userPreferences, ...patch };
     return { ok: true, preferences: { ...this.userPreferences } };
