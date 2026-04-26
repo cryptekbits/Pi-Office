@@ -1272,29 +1272,12 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
       }
 
       if (request.toolName === "office_capture_viewport") {
-        if (request.host !== "word") {
-          return {
-            requestId: request.requestId,
-            success: false,
-            error: "office_capture_viewport is only available for Word.",
-          };
-        }
-        const includeFormatting = request.params.includeFormatting !== false;
-        const includeWindowFrameRequested = request.params.includeWindowFrame === true;
-        // FUTURE SCOPE ONLY (owner-gated):
-        // Full Word window-frame capture depended on the removed companion app.
-        // Browser runtime can only access Office.js viewport metadata and selection visuals.
-        // Do not re-enable companion-based window capture without explicit approval from Manan.
-        // const maxImages = includeWindowFrameRequested ? 2 : 1;
-        const result = await dependencies.collectOfficeContext(request.host, {
-          includeFormatting,
-          maxImages: 1,
-          scope: "viewport",
-        });
         return {
           requestId: request.requestId,
-          success: true,
-          content: appendViewportCaptureSummary(result, includeWindowFrameRequested),
+          success: false,
+          error:
+            "office_capture_viewport is a compatibility tool for true viewport/window screenshots and requires companion native capture. " +
+            "Use office_capture_snapshot for Office.js context snapshots, verify_doc_visual for Word metadata/selection visuals, read_range_image for Excel active-selection snapshots, or verify_slide_visual for PowerPoint native slide/shape snapshots.",
         };
       }
 

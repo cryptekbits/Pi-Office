@@ -467,7 +467,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 - [ ] FEATURE-006: Add advanced mode where companion owns inference, providers, MCP, memory, and non-Office tools
   - Category: Feature
-  - Status: open
+  - Status: in_progress
   - Priority: P0
   - Source: 2026-04-26 plan implementation after user clarified "Companion owns all" for advanced mode.
   - Details: The current taskpane owns the Pi agent, model/provider catalog, provider auth, and tool loop, while the companion is a sidecar for read-only file and local MCP calls. Advanced mode should invert that ownership: the companion owns inference, providers, model auth, MCP, memory, non-Office tools, and tool calling. The taskpane remains the Office-hosted presentation layer and structured Office.js executor. Basic taskpane-only mode must remain usable when the companion is absent.
@@ -483,7 +483,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Office.js calls still execute only inside the active Office taskpane.
     - [ ] Switching Basic -> Advanced preserves non-secret preferences automatically and handles secrets through an explicit safe migration flow.
     - [ ] Reconnect/fallback behavior is visible and tested.
-  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `companion/src/server.ts` only exposes health, read-only file tools, and MCP execution.
+  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `companion/src/server.ts` only exposes health, read-only file tools, and MCP execution. 2026-04-26 Smart Auto slice added a shared `CapabilityRegistry`, explicit runtime resolution fields, session capability route, extended `CompanionCapabilities`, Settings capability groups, companion-only native viewport capture gating, Windows-first companion native capture API, taskpane fallback behavior for browser-supported providers/images, and capability docs. This slice keeps real companion-owned provider auth/inference unavailable until explicit companion auth/session storage exists; no taskpane provider secrets are silently migrated. Validation passed: `npm --prefix addin run typecheck:pack`, `npm --prefix addin run typecheck:taskpane`, `npm --prefix companion run typecheck`, `npm --prefix addin run test:office` with 138 tests, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
 
 ### Improvements
 

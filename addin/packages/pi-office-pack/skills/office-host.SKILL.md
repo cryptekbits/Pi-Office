@@ -5,8 +5,9 @@ Use this skill when a task depends on the active Microsoft Office document.
 ## Rules
 
 - Call `office_get_context` before making precise claims about the current selection, worksheet, or slide content.
-- For Word layout questions about what is visible on screen, call `office_capture_viewport` proactively. Use it for alignment, page breaks, wrapping, clipping, visible page position, margins, and header/footer placement.
-- `office_capture_viewport` is only for Word and returns Office.js viewport metadata plus context-derived visuals. It is not a pixel-perfect OS/window screenshot and should not be used as a substitute for reading off-screen content or reviewing the whole document.
+- For Word layout questions about what is visible on screen, use `office_capture_snapshot` and `verify_doc_visual` for taskpane-only Office.js metadata/context snapshots.
+- Call `office_capture_viewport` only when that tool is available in the current session. It is a companion-native true viewport/window screenshot path, not a taskpane-only Office.js metadata path.
+- For Word and Excel, true visible-window capture requires companion native capture. For PowerPoint visual checks, use `verify_slide_visual` because PowerPoint can provide native slide/shape snapshots through Office APIs.
 - For large Word documents where context shows only a textPreview (not full text), use `office_read_section` to page through content. Start at index 0 and advance by 20 paragraphs per call. Use headings from `office_get_context` to navigate to relevant sections.
 - In Word, use `edit_doc_text` for direct clause/sentence edits that should apply immediately through native Word actions.
 - In Word, use `edit_doc_list` (or `office_propose_edits`) for review-sensitive list rewrites, legal-text revisions, or tracked-changes-heavy passages so each edit is reviewable before apply.

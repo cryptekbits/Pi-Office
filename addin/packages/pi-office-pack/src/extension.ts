@@ -838,9 +838,9 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
     if (!isDisabled("office_capture_viewport"))
     pi.registerTool({
       name: "office_capture_viewport",
-      label: "Office Viewport",
+      label: "Office Viewport Screenshot",
       description:
-        "Capture Word viewport metadata (visible pages, scroll position, and view state) from Office.js context. Use this for layout-sensitive troubleshooting. This is not a pixel-perfect OS window screenshot and does not capture off-screen document content.",
+        "Compatibility tool for companion-native true viewport/window screenshots. Register it only when capability resolution says companion native capture is available for the active host; use office_capture_snapshot or host visual verification tools otherwise.",
       parameters: captureViewportParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_capture_viewport", params);

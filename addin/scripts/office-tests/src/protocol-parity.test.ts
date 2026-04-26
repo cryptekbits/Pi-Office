@@ -238,6 +238,80 @@ test("protocol parity: ask_user request/response roundtrip", async () => {
   socket.close();
 });
 
+test("protocol parity: Smart Auto hides viewport screenshots until companion native capture is available", async () => {
+  const { runtime, socket, session } = await openSessionHarness("smart-auto-native-capture");
+  const typedSession = session as unknown as {
+    agent: { state: { tools: Array<{ name: string }> } };
+    setCompanionState: (companion: unknown, connectors?: unknown[]) => void;
+  };
+
+  let toolNames = new Set(typedSession.agent.state.tools.map((tool) => tool.name));
+  assert.equal(toolNames.has("office_capture_snapshot"), true);
+  assert.equal(toolNames.has("verify_doc_visual"), true);
+  assert.equal(toolNames.has("office_capture_viewport"), false);
+
+  const initialCapabilities = await runtime.dispatchKernelRequest(`/v1/sessions/${(session as { sessionId: string }).sessionId}/capabilities`) as Array<{
+    id: string;
+    available: boolean;
+    activeRuntime?: string;
+    preferredRuntime: string;
+  }>;
+  assert.equal(initialCapabilities.find((capability) => capability.id === "native_viewport_capture")?.available, false);
+  assert.equal(initialCapabilities.find((capability) => capability.id === "office_write")?.activeRuntime, "addin");
+
+  typedSession.setCompanionState({
+    status: "connected",
+    endpoint: "https://localhost:3444",
+    identity: "test-companion",
+    sessionId: "native-capture-session",
+    connectorToolNames: [],
+    capabilities: {
+      fileRead: true,
+      localMcp: true,
+      endpoint: "https://localhost:3444",
+      nativeCapture: {
+        state: "available",
+        available: true,
+        hosts: ["word", "excel"],
+        trueViewportScreenshot: true,
+        includeWindowFrame: true,
+      },
+      agent: {
+        state: "unavailable",
+        available: false,
+        officeToolProxy: true,
+        providerAuth: false,
+        smartAuto: true,
+      },
+      providerAuth: {
+        state: "unavailable",
+        available: false,
+        explicitMigrationRequired: true,
+      },
+      mcp: {
+        state: "available",
+        available: true,
+        readOnly: true,
+        toolCount: 0,
+      },
+    },
+  });
+
+  toolNames = new Set(typedSession.agent.state.tools.map((tool) => tool.name));
+  assert.equal(toolNames.has("office_capture_viewport"), true);
+  assert.equal(toolNames.has("office_apply_edit"), true);
+
+  const companionCapabilities = await runtime.dispatchKernelRequest(`/v1/sessions/${(session as { sessionId: string }).sessionId}/capabilities`) as Array<{
+    id: string;
+    available: boolean;
+    activeRuntime?: string;
+    fallbackRuntime?: string;
+  }>;
+  assert.equal(companionCapabilities.find((capability) => capability.id === "native_viewport_capture")?.activeRuntime, "companion");
+  assert.equal(companionCapabilities.find((capability) => capability.id === "inference")?.fallbackRuntime, undefined);
+  socket.close();
+});
+
 test("protocol parity: tool_permission request/response + session approval caching", async () => {
   const { socket, session } = await openSessionHarness("tool-permission");
 

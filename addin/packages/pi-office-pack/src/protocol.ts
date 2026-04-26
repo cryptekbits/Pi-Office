@@ -18,6 +18,12 @@ export interface CompanionCapabilities {
   localMcp: boolean;
   endpoint?: string | undefined;
   shell?: CompanionShellCapability | undefined;
+  version?: string | undefined;
+  agent?: CompanionAgentCapability | undefined;
+  providerAuth?: CompanionProviderAuthCapability | undefined;
+  nativeCapture?: CompanionNativeCaptureCapability | undefined;
+  mcp?: CompanionMcpCapability | undefined;
+  memory?: CompanionSimpleCapability | undefined;
 }
 
 export interface CompanionState {
@@ -235,6 +241,51 @@ export interface CompanionSessionOpenResponse {
   sessionId: string;
   companion: CompanionState;
   connectors: ConnectorStatus[];
+}
+
+export const COMPANION_CAPABILITY_STATES = ["unavailable", "available", "degraded"] as const;
+export type CompanionCapabilityState = (typeof COMPANION_CAPABILITY_STATES)[number];
+
+export interface CompanionSimpleCapability {
+  state: CompanionCapabilityState;
+  available: boolean;
+  reason?: string | undefined;
+  version?: string | undefined;
+}
+
+export interface CompanionAgentCapability extends CompanionSimpleCapability {
+  officeToolProxy: boolean;
+  providerAuth: boolean;
+  smartAuto: boolean;
+}
+
+export interface CompanionProviderAuthCapability extends CompanionSimpleCapability {
+  explicitMigrationRequired: boolean;
+  supportedAuthMethods?: ProviderAuthMethod[] | undefined;
+}
+
+export interface CompanionMcpCapability extends CompanionSimpleCapability {
+  readOnly: boolean;
+  toolCount?: number | undefined;
+}
+
+export interface CompanionNativeCaptureCapability extends CompanionSimpleCapability {
+  hosts: OfficeHost[];
+  platform?: string | undefined;
+  trueViewportScreenshot: boolean;
+  includeWindowFrame: boolean;
+}
+
+export interface CompanionNativeCaptureRequest {
+  host?: OfficeHost | undefined;
+  includeWindowFrame?: boolean | undefined;
+}
+
+export interface CompanionNativeCaptureResponse {
+  ok: boolean;
+  visual?: OfficeVisualSnapshot | undefined;
+  details?: Record<string, unknown> | undefined;
+  error?: string | undefined;
 }
 
 export const COMPANION_SHELL_STATES = ["unavailable", "available", "degraded"] as const;

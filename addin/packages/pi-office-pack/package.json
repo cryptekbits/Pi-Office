@@ -30,6 +30,10 @@
       "types": "./dist/workflow-packs.d.ts",
       "import": "./dist/workflow-packs.js"
     },
+    "./capabilities": {
+      "types": "./dist/capabilities.d.ts",
+      "import": "./dist/capabilities.js"
+    },
     "./provider-model-preferences": {
       "types": "./dist/provider-model-preferences.generated.d.ts",
       "import": "./dist/provider-model-preferences.generated.js"

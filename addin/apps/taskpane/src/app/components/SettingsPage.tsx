@@ -41,6 +41,12 @@ import {
   type ToolCategory,
   type ToolPermissionOverride,
 } from "@pi-office/pi-office-pack/protocol";
+import {
+  getAvailableToolNames,
+  resolvePiOfficeCapabilities,
+  type CapabilityGroup,
+  type CapabilityResolution,
+} from "@pi-office/pi-office-pack/capabilities";
 import { fetchJson, type RuntimeRequestFailureDiagnostic } from "../../lib/api";
 import { HOST_LABELS } from "@pi-office/pi-office-pack/defaults";
 import {
@@ -77,7 +83,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   office_apply_edit: "Apply text edits, formatting changes, and insertions to the active document.",
   office_navigate: "Navigate to specific locations within the document (sections, pages, ranges).",
   office_capture_snapshot: "Capture selection and document context metadata from the current document state.",
-  office_capture_viewport: "Capture Word viewport metadata from Office.js context (not a pixel-perfect OS/window screenshot).",
+  office_capture_viewport: "Capture a true viewport/window screenshot through companion native capture when advertised.",
   office_read_section: "Read a paginated section of the document by paragraph index.",
   office_execute_js: "Manual-only escape hatch for direct Office.js snippets when structured tools are insufficient.",
   office_propose_edits: "Propose batch edits for user review before applying.",
@@ -260,6 +266,7 @@ export function SettingsPage({
           )}
           {activeTab === "companion" && (
             <CompanionSection
+              officeState={officeState}
               companion={companion}
               onRetryCompanion={onRetryCompanion}
               onSaveCompanionEndpoint={onSaveCompanionEndpoint}
@@ -328,6 +335,7 @@ export function SettingsPage({
           )}
           {activeTab === "tools" && (
             <ToolsSection
+              officeState={officeState}
               documentState={documentState}
               companion={companion}
               preferences={preferences}
@@ -505,15 +513,22 @@ function DiagnosticsSection({
 }
 
 function CompanionSection({
+  officeState,
   companion,
   onRetryCompanion,
   onSaveCompanionEndpoint,
 }: {
+  officeState: OfficeStateUpdate | undefined;
   companion: CompanionState;
   onRetryCompanion: () => Promise<void> | void;
   onSaveCompanionEndpoint: (endpoint: string) => Promise<void> | void;
 }) {
   const [manualEndpoint, setManualEndpoint] = useState("");
+  const capabilities = resolvePiOfficeCapabilities({
+    host: officeState?.host ?? "word",
+    documentSaved: officeState?.document.saved ?? false,
+    companion,
+  });
 
   useEffect(() => {
     setManualEndpoint(companion.manualEndpoint ?? companion.endpoint ?? companion.lastSuccessfulEndpoint ?? "");
@@ -537,8 +552,10 @@ function CompanionSection({
         </button>
       </div>
       <p className="settings-note">
-        Pi-Office works without the companion. The companion adds read-only local file access and read-only MCP execution. Sandboxed shell stays hidden unless isolation detection and destructive probes pass.
+        Pi-Office works without the companion. Smart Auto prefers companion execution for eligible non-Office capabilities only when the companion advertises them; Office.js document execution stays in the taskpane.
       </p>
+
+      <CapabilityGroups capabilities={capabilities} />
 
       <div className="settings-card-grid">
         <div className="settings-card">
@@ -555,6 +572,12 @@ function CompanionSection({
             Files: {companion.capabilities.fileRead ? "Read-only ready" : "Unavailable"}
             <br />
             MCP: {companion.capabilities.localMcp ? "Read-only ready" : "Unavailable"}
+            <br />
+            Native capture: {companion.capabilities.nativeCapture?.state === "available"
+              ? `Ready for ${companion.capabilities.nativeCapture.hosts.join(", ")}`
+              : "Unavailable"}
+            <br />
+            Agent: {companion.capabilities.agent?.state === "available" ? "Companion owned" : "Taskpane fallback"}
             <br />
             Shell: {companion.capabilities.shell?.state === "available"
               ? "Sandbox ready"
@@ -616,10 +639,41 @@ function CompanionSection({
         </div>
         <div className="settings-card">
           <span className="label">3. Use</span>
-          <p>When discovery succeeds, saved documents gain read-only file tools plus verified local stdio and remote HTTP MCP execution. Sandboxed shell appears only after the companion policy passes. Without it, the add-in still works normally.</p>
+          <p>When discovery succeeds, saved documents gain read-only file tools plus verified local stdio and remote HTTP MCP execution. Native viewport screenshots appear only when the companion reports support. Without it, the add-in still works normally.</p>
         </div>
       </div>
     </section>
+  );
+}
+
+const CAPABILITY_GROUP_LABELS: Record<CapabilityGroup, string> = {
+  works_without_companion: "Works without companion",
+  enhanced_by_companion: "Enhanced by companion",
+  requires_companion: "Requires companion",
+};
+
+function CapabilityGroups({ capabilities }: { capabilities: CapabilityResolution[] }) {
+  const groups: CapabilityGroup[] = ["works_without_companion", "enhanced_by_companion", "requires_companion"];
+  return (
+    <div className="settings-card-grid">
+      {groups.map((group) => (
+        <div key={group} className="settings-card">
+          <span className="label">{CAPABILITY_GROUP_LABELS[group]}</span>
+          <div className="settings-note-list">
+            {capabilities.filter((capability) => capability.group === group).map((capability) => (
+              <p key={capability.id}>
+                <strong>{capability.label}</strong>
+                <br />
+                {capability.available ? "Available" : "Unavailable"} · active: {capability.activeRuntime ?? "none"} · preferred: {capability.preferredRuntime}
+                {capability.fallbackRuntime ? ` · fallback: ${capability.fallbackRuntime}` : ""}
+                <br />
+                {capability.reason ?? capability.honestyLabel}
+              </p>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -754,7 +808,7 @@ function ProvidersSection({
           />
         ))}
         {visibleProviders.length === 0 && (
-          <p className="settings-note">No providers discovered yet. Pi-Office uses provider credentials directly from the taskpane, so no companion is required for this section.</p>
+          <p className="settings-note">No providers discovered yet. Browser API-key providers stay taskpane-local; companion-owned provider auth appears only after explicit companion setup.</p>
         )}
       </div>
     </div>
@@ -1071,27 +1125,34 @@ function ModelsSection({
 }
 
 function ToolsSection({
+  officeState,
   documentState,
   companion,
   preferences,
   onUpdatePreferences,
 }: {
+  officeState: OfficeStateUpdate | undefined;
   documentState: OfficeDocumentState;
   companion: CompanionState;
   preferences: UserPreferences;
   onUpdatePreferences: (patch: Partial<UserPreferences>) => void;
 }) {
+  const capabilityResolutions = resolvePiOfficeCapabilities({
+    host: officeState?.host ?? "word",
+    documentSaved: documentState === "saved",
+    companion,
+  });
+  const availableToolNames = getAvailableToolNames(capabilityResolutions);
+  const visibleOfficeToolNames = OFFICE_TOOL_NAMES.filter(
+    (toolName) => toolName !== "office_capture_viewport" && availableToolNames.has(toolName),
+  );
   const showCompanionFileTools =
-    documentState === "saved" &&
-    companion.status === "connected" &&
-    companion.capabilities.fileRead;
+    ["read", "grep", "find", "ls"].some((toolName) => availableToolNames.has(toolName));
   const showCompanionMcp =
-    companion.status === "connected" &&
-    (companion.connectorToolNames?.length ?? 0) > 0;
+    availableToolNames.has("mcp");
   const showCompanionShell =
-    documentState === "saved" &&
-    companion.status === "connected" &&
-    companion.capabilities.shell?.state === "available";
+    availableToolNames.has("bash");
+  const showCompanionNativeCapture = availableToolNames.has("office_capture_viewport");
 
   const handleOverrideChange = useCallback(
     (toolName: string, level: AutonomyLevel | "default" | "disabled") => {
@@ -1148,7 +1209,7 @@ function ToolsSection({
 
       <h3>Office Tools</h3>
       <div className="tool-list">
-        {OFFICE_TOOL_NAMES.map((toolName) => (
+        {visibleOfficeToolNames.map((toolName) => (
           <ToolCardWithOverride
             key={toolName}
             toolName={toolName}
@@ -1159,7 +1220,7 @@ function ToolsSection({
       </div>
 
       <h3>Optional Companion Tools</h3>
-      {!showCompanionFileTools && !showCompanionMcp && !showCompanionShell && (
+      {!showCompanionFileTools && !showCompanionMcp && !showCompanionShell && !showCompanionNativeCapture && (
         <p className="settings-note">
           {documentState !== "saved"
             ? "Save the document first to expose document-folder context. Local file tools stay disabled until the optional companion also connects."
@@ -1187,6 +1248,15 @@ function ToolsSection({
           <ToolCardWithOverride
             toolName="mcp"
             overrideLevel={getOverrideLevel("mcp")}
+            onOverrideChange={handleOverrideChange}
+          />
+        </div>
+      )}
+      {showCompanionNativeCapture && (
+        <div className="tool-list">
+          <ToolCardWithOverride
+            toolName="office_capture_viewport"
+            overrideLevel={getOverrideLevel("office_capture_viewport")}
             onOverrideChange={handleOverrideChange}
           />
         </div>

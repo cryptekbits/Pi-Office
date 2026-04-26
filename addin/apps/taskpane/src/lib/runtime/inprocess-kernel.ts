@@ -19,6 +19,12 @@ import {
   getOfficeDocumentState,
 } from "@pi-office/pi-office-pack/defaults";
 import {
+  getAvailableToolNames,
+  getResolvedCapability,
+  resolvePiOfficeCapabilities,
+  type CapabilityResolution,
+} from "@pi-office/pi-office-pack/capabilities";
+import {
   AUTONOMY_LEVEL_AUTO_APPROVE,
   DEFAULT_USER_PREFERENCES,
   EDIT_REJECT_REASON_LABELS,
@@ -32,6 +38,8 @@ import {
   type BridgeServerMessage,
   type CheckpointMetadata,
   type CompanionConnectorDefinition,
+  type CompanionNativeCaptureRequest,
+  type CompanionNativeCaptureResponse,
   type CompanionShellExecuteRequest,
   type CompanionState,
   type ConnectorDiagnostic,
@@ -436,6 +444,49 @@ function parseRequestBody(init?: RequestInit): unknown {
   return undefined;
 }
 
+function disconnectedCompanionCapabilities(endpoint?: string): CompanionState["capabilities"] {
+  return {
+    fileRead: false,
+    localMcp: false,
+    endpoint,
+    version: "companion-capabilities-v1",
+    agent: {
+      state: "unavailable",
+      available: false,
+      officeToolProxy: true,
+      providerAuth: false,
+      smartAuto: true,
+      reason: "Optional companion is not connected.",
+    },
+    providerAuth: {
+      state: "unavailable",
+      available: false,
+      explicitMigrationRequired: true,
+      reason: "Optional companion is not connected.",
+    },
+    nativeCapture: {
+      state: "unavailable",
+      available: false,
+      hosts: [],
+      trueViewportScreenshot: false,
+      includeWindowFrame: false,
+      reason: "Optional companion is not connected.",
+    },
+    mcp: {
+      state: "unavailable",
+      available: false,
+      readOnly: true,
+      toolCount: 0,
+      reason: "Optional companion is not connected.",
+    },
+    memory: {
+      state: "unavailable",
+      available: false,
+      reason: "Optional companion is not connected.",
+    },
+  };
+}
+
 function disconnectedCompanionState(lastKnown?: Partial<CompanionState>): CompanionState {
   return {
     status: lastKnown?.status === "error" ? "error" : "unavailable",
@@ -446,17 +497,14 @@ function disconnectedCompanionState(lastKnown?: Partial<CompanionState>): Compan
     lastSuccessfulEndpoint: lastKnown?.lastSuccessfulEndpoint,
     sessionId: undefined,
     connectorToolNames: [],
-    capabilities: {
-      fileRead: false,
-      localMcp: false,
-      endpoint: lastKnown?.capabilities?.endpoint,
-    },
+    capabilities: disconnectedCompanionCapabilities(lastKnown?.capabilities?.endpoint ?? lastKnown?.endpoint),
   };
 }
 
 function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: boolean): string {
   const lines = [
     `Companion status: ${companion.status}`,
+    "Routing mode: Smart Auto. Office.js document execution always remains in this taskpane; eligible non-Office capabilities prefer the companion only when it advertises them.",
   ];
 
   if (companion.endpoint) {
@@ -481,6 +529,20 @@ function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: b
     lines.push("MCP execution is available through the companion when configured read-only connectors are verified.");
   } else {
     lines.push("MCP execution is unavailable in this session.");
+  }
+
+  const agentCapability = companion.capabilities.agent;
+  if (companion.status === "connected" && agentCapability?.state === "available") {
+    lines.push("Companion-owned inference is available; Office tool calls must still be proxied back to the taskpane.");
+  } else {
+    lines.push("Inference is currently taskpane-owned unless companion provider auth is explicitly configured.");
+  }
+
+  const nativeCapture = companion.capabilities.nativeCapture;
+  if (companion.status === "connected" && nativeCapture?.state === "available" && nativeCapture.hosts.length) {
+    lines.push(`True viewport/window screenshot is available through companion native capture for: ${nativeCapture.hosts.join(", ")}.`);
+  } else {
+    lines.push("True viewport/window screenshot is unavailable; use Office.js snapshot/verification tools instead.");
   }
 
   const shellCapability = companion.capabilities.shell;
@@ -534,11 +596,7 @@ function errorCompanionState(current: CompanionState, error: unknown): Companion
     lastError,
     manualEndpoint: current.manualEndpoint,
     lastSuccessfulEndpoint: current.lastSuccessfulEndpoint,
-    capabilities: {
-      fileRead: false,
-      localMcp: false,
-      endpoint: current.capabilities.endpoint ?? current.endpoint,
-    },
+    capabilities: disconnectedCompanionCapabilities(current.capabilities.endpoint ?? current.endpoint),
   };
 }
 
@@ -1294,6 +1352,7 @@ class BrowserOfficeSession {
     private readonly executeCompanionFileTool: (sessionId: string, toolName: "read" | "grep" | "find" | "ls", params: Record<string, unknown>) => Promise<unknown>,
     private readonly executeCompanionMcpTool: (sessionId: string, toolName: string, params: Record<string, unknown>) => Promise<unknown>,
     private readonly executeCompanionShellCommand: (sessionId: string, request: CompanionShellExecuteRequest) => Promise<unknown>,
+    private readonly executeCompanionNativeCapture: (sessionId: string, request: CompanionNativeCaptureRequest) => Promise<CompanionNativeCaptureResponse>,
     request: OfficeSessionOpenRequest,
   ) {
     this.windowId = request.windowId;
@@ -1356,6 +1415,10 @@ class BrowserOfficeSession {
 
   getCompanionConnectors(): ConnectorStatus[] {
     return [...this.companionConnectors];
+  }
+
+  getCapabilities(): CapabilityResolution[] {
+    return this.resolveCapabilities();
   }
 
   attachBridge(socket: LocalBridgeSocket): void {
@@ -1750,8 +1813,20 @@ class BrowserOfficeSession {
     this.bridgeSockets.clear();
   }
 
+  private resolveCapabilities(): CapabilityResolution[] {
+    return resolvePiOfficeCapabilities({
+      host: this.officeState.host,
+      documentSaved: this.officeState.document.saved,
+      companion: this.companionState,
+    });
+  }
+
+  private isCapabilityAvailable(id: Parameters<typeof getResolvedCapability>[1]): boolean {
+    return getResolvedCapability(this.resolveCapabilities(), id).available;
+  }
+
   private canUseCompanionFileTools(): boolean {
-    return this.officeState.document.saved && this.companionState.status === "connected" && this.companionState.capabilities.fileRead;
+    return this.isCapabilityAvailable("local_files");
   }
 
   private getCompanionConnectorToolNames(): string[] {
@@ -1759,15 +1834,15 @@ class BrowserOfficeSession {
   }
 
   private hasCompanionConnectorTools(): boolean {
-    return this.getCompanionConnectorToolNames().length > 0;
+    return this.isCapabilityAvailable("mcp_connectors") && this.getCompanionConnectorToolNames().length > 0;
   }
 
   private canUseCompanionShellTools(): boolean {
-    return (
-      this.officeState.document.saved &&
-      this.companionState.status === "connected" &&
-      this.companionState.capabilities.shell?.state === "available"
-    );
+    return this.isCapabilityAvailable("shell_sandbox");
+  }
+
+  private canUseCompanionNativeCapture(): boolean {
+    return this.isCapabilityAvailable("native_viewport_capture");
   }
 
   private buildSystemPrompt(availableToolNames: readonly string[]): string {
@@ -1886,6 +1961,9 @@ class BrowserOfficeSession {
   }
 
   private buildTools(): AgentTool[] {
+    const availableToolNames = getAvailableToolNames(this.resolveCapabilities());
+    const isToolAvailable = (toolName: string) => availableToolNames.has(toolName);
+
     const getContextParams = Type.Object({
       scope: Type.Optional(
         Type.String({
@@ -1940,12 +2018,12 @@ class BrowserOfficeSession {
 
     const captureViewportParams = Type.Object({
       includeFormatting: Type.Optional(
-        Type.Boolean({ description: "Include Word viewport metadata such as visible pages, scroll position, and view mode." }),
+        Type.Boolean({ description: "Include companion native capture metadata alongside the screenshot when available." }),
       ),
       includeWindowFrame: Type.Optional(
         Type.Boolean({
           description:
-            "Reserved for future native capture support. In browser-only runtime this is acknowledged but cannot capture the full OS window frame.",
+            "Capture the full foreground Office window frame through the companion native backend when available.",
         }),
       ),
     });
@@ -2471,7 +2549,7 @@ class BrowserOfficeSession {
       },
     });
 
-    const tools: AgentTool[] = [
+    const tools: AgentTool[] = ([
       simpleOfficeTool(
         "office_get_context",
         "Office Context",
@@ -2501,12 +2579,6 @@ class BrowserOfficeSession {
         "Office Snapshot",
         "Capture visual snapshots and formatting metadata for the active Office surface.",
         captureSnapshotParams,
-      ),
-      simpleOfficeTool(
-        "office_capture_viewport",
-        "Office Viewport",
-        "Capture Word viewport metadata for layout-sensitive tasks (not a pixel-perfect OS/window screenshot).",
-        captureViewportParams,
       ),
       simpleOfficeTool(
         "office_read_section",
@@ -2878,7 +2950,32 @@ class BrowserOfficeSession {
           };
         },
       },
-    ];
+    ] as AgentTool[]).filter((tool) => isToolAvailable(tool.name));
+
+    if (this.canUseCompanionNativeCapture()) {
+      tools.push({
+        name: "office_capture_viewport",
+        label: "Office Viewport Screenshot",
+        description:
+          "Capture a true viewport/window screenshot through the optional companion native capture backend. Office.js document reads/writes still run through the taskpane.",
+        parameters: captureViewportParams,
+        execute: async (_toolCallId, params) => {
+          const typed = normalizeToolParams(params);
+          const response = await this.executeCompanionNativeCapture(this.sessionId, {
+            host: this.officeState.host,
+            includeWindowFrame: typed.includeWindowFrame !== false,
+          });
+          if (!response.ok || !response.visual) {
+            throw new Error(response.error ?? "Companion native capture unavailable.");
+          }
+          return normalizeExternalToolResult({
+            summary: `Captured ${this.officeState.host} ${response.visual.kind} screenshot through the companion native capture backend.`,
+            visuals: [response.visual],
+            details: response.details,
+          });
+        },
+      });
+    }
 
     if (this.canUseCompanionFileTools()) {
       for (const toolName of ["read", "grep", "find", "ls"] as const) {
@@ -3392,8 +3489,10 @@ class InProcessKernel {
       return {
         ...response,
         diagnostics: this.addCompanionDiagnostics(response.diagnostics, response.connector.transport, companion),
-        executionEnvironment: response.connector.transport === "local_stdio" ? "companion" : "browser",
-        executionAvailable: response.connector.transport === "local_stdio" ? companion.status === "connected" : false,
+        executionEnvironment: response.connector.transport === "local_stdio" || response.connector.transport === "remote_http"
+          ? "companion"
+          : "browser",
+        executionAvailable: false,
       } as T;
     }
     if (method === "POST" && path === "/v1/connectors/setup/connect") {
@@ -3547,6 +3646,7 @@ class InProcessKernel {
           (sessionId, toolName, params) => this.companionClient.executeFileTool(sessionId, toolName, params),
           (sessionId, toolName, params) => this.companionClient.executeMcpTool(sessionId, toolName, params),
           (sessionId, request) => this.companionClient.executeShellCommand(sessionId, request),
+          (sessionId, request) => this.companionClient.captureNativeViewport(sessionId, request),
           request,
         );
         this.sessionsByDocument.set(documentKey, session);
@@ -3571,6 +3671,11 @@ class InProcessKernel {
         companion: session.companion,
       };
       return response as T;
+    }
+
+    const capabilitiesMatch = method === "GET" ? path.match(/^\/v1\/sessions\/([^/]+)\/capabilities$/) : null;
+    if (capabilitiesMatch) {
+      return this.getSession(capabilitiesMatch[1] ?? "").getCapabilities() as T;
     }
 
     const promptMatch = method === "POST" ? path.match(/^\/v1\/sessions\/([^/]+)\/(prompt|steer|follow-up)$/) : null;

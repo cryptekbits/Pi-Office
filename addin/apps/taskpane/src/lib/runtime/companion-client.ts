@@ -1,6 +1,8 @@
 import type {
   CompanionConnectorDefinition,
   CompanionHealthResponse,
+  CompanionNativeCaptureRequest,
+  CompanionNativeCaptureResponse,
   CompanionShellCapability,
   CompanionShellExecuteRequest,
   CompanionShellExecuteResponse,
@@ -69,6 +71,41 @@ function defaultCompanionState(): CompanionState {
     capabilities: {
       fileRead: false,
       localMcp: false,
+      version: "companion-capabilities-v1",
+      agent: {
+        state: "unavailable",
+        available: false,
+        officeToolProxy: true,
+        providerAuth: false,
+        smartAuto: true,
+        reason: "Optional companion is not connected.",
+      },
+      providerAuth: {
+        state: "unavailable",
+        available: false,
+        explicitMigrationRequired: true,
+        reason: "Optional companion is not connected.",
+      },
+      nativeCapture: {
+        state: "unavailable",
+        available: false,
+        hosts: [],
+        trueViewportScreenshot: false,
+        includeWindowFrame: false,
+        reason: "Optional companion is not connected.",
+      },
+      mcp: {
+        state: "unavailable",
+        available: false,
+        readOnly: true,
+        toolCount: 0,
+        reason: "Optional companion is not connected.",
+      },
+      memory: {
+        state: "unavailable",
+        available: false,
+        reason: "Optional companion is not connected.",
+      },
     },
   };
 }
@@ -221,6 +258,11 @@ export class CompanionClient {
           fileRead: false,
           localMcp: false,
           endpoint: this.state.capabilities.endpoint ?? this.state.endpoint,
+          agent: defaultCompanionState().capabilities.agent,
+          providerAuth: defaultCompanionState().capabilities.providerAuth,
+          nativeCapture: defaultCompanionState().capabilities.nativeCapture,
+          mcp: defaultCompanionState().capabilities.mcp,
+          memory: defaultCompanionState().capabilities.memory,
         },
       };
       return undefined;
@@ -314,6 +356,21 @@ export class CompanionClient {
     }
 
     return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/shell/execute`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  async captureNativeViewport(
+    browserSessionId: string,
+    request: CompanionNativeCaptureRequest,
+  ): Promise<CompanionNativeCaptureResponse> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      throw new Error("Optional companion native capture is not connected for this taskpane session.");
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/native-capture/viewport`, {
       method: "POST",
       body: JSON.stringify(request),
     });

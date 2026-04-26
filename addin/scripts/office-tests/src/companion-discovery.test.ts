@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isAllowedCompanionOrigin } from "../../../../companion/src/http.js";
+import { captureNativeViewport, createNativeCaptureCapability } from "../../../../companion/src/native-capture.js";
 import { createCompanionRuntimeDiagnostics } from "../../../../companion/src/runtime-diagnostics.js";
 
 test("companion CORS allows loopback taskpane origins and rejects non-loopback origins", () => {
@@ -25,4 +26,28 @@ test("companion runtime diagnostics report machine checks instead of browser-onl
   assert.equal(diagnostics.runtimes.find((entry) => entry.key === "npx")?.ok, true);
   assert.equal(diagnostics.runtimes.find((entry) => entry.key === "npm")?.ok, false);
   assert.match(diagnostics.runtimes.find((entry) => entry.key === "node")?.detail ?? "", /v99\.0\.0/);
+});
+
+test("companion native capture reports Windows-only support honestly", () => {
+  const linuxCapability = createNativeCaptureCapability("linux");
+  assert.equal(linuxCapability.state, "unavailable");
+  assert.equal(linuxCapability.available, false);
+  assert.equal(linuxCapability.trueViewportScreenshot, false);
+
+  const windowsCapability = createNativeCaptureCapability("win32");
+  assert.equal(windowsCapability.state, "available");
+  assert.equal(windowsCapability.available, true);
+  assert.deepEqual(windowsCapability.hosts, ["word", "excel"]);
+  assert.equal(windowsCapability.trueViewportScreenshot, true);
+});
+
+test("companion native capture fails closed on unsupported platforms", () => {
+  const response = captureNativeViewport(
+    { host: "word", title: "Unsupported capture test" },
+    { host: "word", includeWindowFrame: true },
+    "linux",
+  );
+
+  assert.equal(response.ok, false);
+  assert.match(response.error ?? "", /Windows only|unavailable/i);
 });
