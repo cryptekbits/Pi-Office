@@ -6,6 +6,7 @@ dist/
 # Workspace artifacts
 .pi-office/
 .factory/
+archive/companion/
 .codex-office-tests-dist/
 .tmp-pi-image-gen/
 debugging_screenshots/

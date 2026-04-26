@@ -276,7 +276,7 @@ test("taskpane bridge dispatch cases stay in sync with supported Office tools", 
   assert.match(String(unsupported.error), /not supported by the taskpane bridge/);
 });
 
-test("automated validation commands remain exposed in package scripts, services manifest, and CI gate", () => {
+test("automated validation commands remain exposed in package scripts and CI gate", () => {
   const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as {
     scripts?: Record<string, string>;
   };
@@ -285,13 +285,6 @@ test("automated validation commands remain exposed in package scripts, services 
   for (const commandName of REQUIRED_VALIDATION_COMMANDS) {
     assert.equal(typeof scripts[commandName], "string", `package.json is missing script ${commandName}.`);
   }
-
-  const servicesManifest = readFileSync(join(process.cwd(), "..", ".factory", "services.yaml"), "utf8");
-  assert.match(servicesManifest, /typecheck:\s+npm run typecheck/);
-  assert.match(servicesManifest, /build:\s+npm run build/);
-  assert.match(servicesManifest, /check_bundle:\s+npm run check:bundle/);
-  assert.match(servicesManifest, /validate_manifests:\s+npm run validate:manifests/);
-  assert.match(servicesManifest, /test:\s+npm run test:office/);
 
   const ciWorkflow = readFileSync(join(process.cwd(), "..", ".github", "workflows", "ci.yml"), "utf8");
   for (const commandName of REQUIRED_VALIDATION_COMMANDS) {

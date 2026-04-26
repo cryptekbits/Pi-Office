@@ -2,7 +2,7 @@
 
 ## Project brief
 
-This repository contains a Pi-powered Microsoft Office add-in stack centered on an independent shared taskpane for Word, Excel, and PowerPoint. Archived companion-era code may still exist in history or archive folders, but it is not the active runtime.
+This repository contains a Pi-powered Microsoft Office add-in stack centered on an independent shared taskpane for Word, Excel, and PowerPoint. Companion-era archive code is not part of the active runtime and should not be reintroduced into tracked source.
 
 ## Product goal
 
@@ -48,7 +48,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - The durable product goal is an open-source, provider-flexible, privacy-conscious Office AI workbench that can use a user's existing AI subscription/provider access instead of locking them into one expensive enterprise assistant.
 - The originality policy is idea-level inspiration only: competitor captures can guide capability analysis, but Pi-Office must use original code, prompts, UI text, assets, and public API implementations.
 - Advanced companion direction is now explicit: companion-owned inference/providers/MCP/non-Office tools, with taskpane-owned Office.js execution and seamless settings migration from taskpane-only mode.
-- The active add-in surface now lives under `addin/`: `addin/apps/taskpane`, `addin/packages/pi-office-pack`, `addin/manifests`, and `addin/scripts`. The optional companion is split into the top-level `companion/` package; old companion-era archive references remain archival unless a task explicitly scopes them back in.
+- The active add-in surface now lives under `addin/`: `addin/apps/taskpane`, `addin/packages/pi-office-pack`, `addin/manifests`, and `addin/scripts`. The optional companion is split into the top-level `companion/` package; old `archive/companion` source and `.factory` scaffolding have been purged from tracked history and should not be restored.
 - The repo root is a lightweight command router. Add-in dependencies and lockfile live in `addin/`; companion dependencies and lockfile live in `companion/`; there is no Turbo/Nx workspace layer.
 - The repo now has a canonical `backlog.md` for review findings, feature gaps, bugs, improvements, security items, and testing work, with IDs intended to be referenced in commits and future implementation.
 - The 2026-04-26 implementation review identified release-blocking "capability honesty" work around OAuth, remote connectors, provider readiness, raw Office.js execution, permission prompts, visual capture fidelity, and privacy/storage disclosure.
@@ -77,6 +77,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - 2026-04-26: Closed `SECURITY-006` by adding shared shell capability protocol, `CompanionShellSandbox`, capability/execute routes, taskpane `bash` gating behind available sandbox state, policy/destructive probe tests, environment scrubbing, output caps/timeouts, and a custom Pi `BashOperations` adapter; `npm run test:office` passed with 98 tests and companion/taskpane typechecks passed.
 - 2026-04-26: Refactored the repository into independent `addin/`, `companion/`, `website/`, and `docs/` areas, keeping the root as a normal npm script router and preserving add-in/companion behavior with path-only config, CI, test, and documentation updates.
 - 2026-04-26: Closed `BUG-010` by clearing the add-in npm audit findings, removing local vulnerable Office CLI packages from `npm ci`, pinning on-demand sideload/manifest CLIs, upgrading Vite to `8.0.10`, lazy-loading Mermaid, and verifying clean install/build/bundle/typecheck/manifest/test gates.
+- 2026-04-26: Prepared a history cleanup for `.factory/` and `archive/companion/` by removing active test dependencies on `.factory/services.yaml`, ignoring future `archive/companion/` recreations, and removing both tracked trees before the rewrite.
 
 ## Core rules
 
@@ -84,7 +85,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - Keep Git configuration repo-local only.
 - Treat Pi as an external dependency, not vendored source.
 - Keep host-side `Office.js` execution separate from Pi runtime and auth concerns.
-- Treat old companion-era archive references as archival unless a task explicitly says to touch them.
+- Do not restore old companion-era archive source into tracked history; use the top-level `companion/` package for active optional companion work.
 
 ## Backlog stewardship
 

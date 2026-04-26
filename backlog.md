@@ -481,7 +481,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] No `node_modules`, built `dist`, caches, or generated local-only files remain staged or visible as intended source.
     - [x] `git status --short` clearly distinguishes product changes from local/generated artifacts.
     - [x] `.gitignore` covers repeatable generated artifacts without hiding important source files.
-  - Notes/Evidence: Review observed untracked archive/vendor artifacts while inspecting the worktree. Fixed in `2b5f058` by ignoring `.factory/`; the grouped runtime commit retained archive source while generated `archive/companion/node_modules`, `archive/companion/dist`, and taskpane build output remained ignored.
+  - Notes/Evidence: Review observed untracked archive/vendor artifacts while inspecting the worktree. Fixed in `2b5f058` by ignoring `.factory/`; the grouped runtime commit retained archive source while generated `archive/companion/node_modules`, `archive/companion/dist`, and taskpane build output remained ignored. 2026-04-26 history cleanup removed active `.factory/services.yaml` test coupling, ignored future `archive/companion/` recreation, and purged tracked `.factory/` plus `archive/companion/` from branch history.
 
 - [ ] IMPROVEMENT-002: Clarify release packaging and runtime assumptions after the independent taskpane transition
   - Category: Improvement
