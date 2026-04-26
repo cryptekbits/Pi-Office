@@ -685,7 +685,7 @@ a { color: var(--accent); text-decoration-thickness: 0.08em; text-underline-offs
 }
 
 /* ------------------------------------------------------------------ */
-/* Tool calls: inline line style (Claude Excel inspired)               */
+/* Tool calls: compact inline status lines                             */
 /* ------------------------------------------------------------------ */
 .tool-lines {
   display: grid;

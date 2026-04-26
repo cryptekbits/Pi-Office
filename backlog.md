@@ -109,23 +109,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] The taskpane has an explicit CSP/security policy or a documented Office-host-compatible reason why a different mechanism is used.
   - Notes/Evidence: Review pointed to `BrowserAuthStore` and connector storage storing crypto keys in localStorage, `useChatHistory` persisting messages to localStorage, and inspiration add-ins with more explicit CSP/privacy surfaces.
 
-- [ ] SECURITY-005: Maintain originality/provenance audit for competitor-inspired capabilities
+- [x] SECURITY-005: Maintain originality/provenance audit for competitor-inspired capabilities
   - Category: Security
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-26 plan implementation after user raised DMCA/IP risk from Claude, ChatGPT, Copilot, and other add-in inspiration.
   - Details: Pi-Office may study competitor add-ins to understand user expectations and capability gaps, but public release should not include copied source code, bundled assets, prompts, UI text, private API contracts, or distinctive expression from those products. Each competitor-inspired capability needs a short provenance trail showing the public API basis, original Pi-Office design, original implementation, and replacement status for any borrowed-looking artifact.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Create or maintain a provenance matrix covering local inspiration captures and major public competitors.
-    - [ ] Audit prompts, UI strings, assets, icons, and code for copied or near-copied competitor expression.
-    - [ ] Replace any copied-looking artifact with original Pi-Office text, design, or licensed/public-domain material.
-    - [ ] Add contribution guidance so external contributors understand idea-level inspiration versus copying expression.
+    - [x] Create or maintain a provenance matrix covering local inspiration captures and major public competitors.
+    - [x] Audit prompts, UI strings, assets, icons, and code for copied or near-copied competitor expression.
+    - [x] Replace any copied-looking artifact with original Pi-Office text, design, or licensed/public-domain material.
+    - [x] Add contribution guidance so external contributors understand idea-level inspiration versus copying expression.
   - Acceptance Criteria:
-    - [ ] Public-release files have no copied competitor code, prompts, private API contracts, or bundled assets unless explicitly licensed.
-    - [ ] Every competitor-inspired feature can be traced to an original Pi-Office spec and implementation.
-    - [ ] `AGENTS.md` and contributor-facing docs explain the originality policy.
-  - Notes/Evidence: 2026-04-26 added `AGENTS.md` originality/provenance policy and started `docs/provenance.md`; a full file-by-file audit still needs to be completed before release.
+    - [x] Public-release files have no copied competitor code, prompts, private API contracts, or bundled assets unless explicitly licensed.
+    - [x] Every competitor-inspired feature can be traced to an original Pi-Office spec and implementation.
+    - [x] `AGENTS.md` and contributor-facing docs explain the originality policy.
+  - Notes/Evidence: 2026-04-26 added `AGENTS.md` originality/provenance policy and started `docs/provenance.md`. 2026-04-26 closure expanded `docs/provenance.md` into a release audit with scope, evidence commands, findings, capability provenance matrix, asset notes, contribution rules, and release gates; added `CONTRIBUTING.md` originality guidance; linked provenance docs from `README.md`; and replaced the copied-looking `Claude Excel inspired` CSS comment with neutral original wording. Audit commands searched active release source for competitor/private-API/prompt references and enumerated active prompt/skill/image/asset files. No active source file was found containing competitor code, copied prompt bundles, private endpoint contracts, or competitor-bundled assets. Separate third-party connector logo licensing/source review is tracked in `SECURITY-007`.
 
 - [ ] SECURITY-006: Design and enforce read-only companion shell sandbox before exposing bash
   - Category: Security
@@ -144,6 +144,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Shell commands cannot modify user workspace/document files outside the approved scratch path.
     - [ ] Sandbox probes prove denied filesystem, secret, and network operations fail closed before shell is enabled.
   - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second.
+
+- [ ] SECURITY-007: Audit third-party connector logo licensing and source provenance before public packaging
+  - Category: Security
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 `SECURITY-005` provenance audit.
+  - Details: The active taskpane contains connector logo/image assets under `apps/taskpane/public/connectors`. They are not copied competitor-add-in assets, but they are third-party vendor-identification marks and should have source/license notes or neutral fallback badges before a public package/release is cut.
+  - Dependencies: None.
+  - Subtasks:
+    - [ ] Inventory every connector image/SVG under `apps/taskpane/public/connectors`.
+    - [ ] Record source, license, trademark usage note, and replacement/fallback plan for each asset.
+    - [ ] Replace any asset that lacks acceptable source/license provenance with an original neutral badge or generated non-brand icon.
+    - [ ] Add a release check or doc section proving packaged connector assets match the approved inventory.
+  - Acceptance Criteria:
+    - [ ] Public release artifacts do not bundle connector brand marks without documented source/license/trademark review.
+    - [ ] Any unapproved connector asset has a neutral fallback in the taskpane.
+    - [ ] `docs/provenance.md` or a linked asset inventory records the final approved state.
+  - Notes/Evidence: `docs/provenance.md` now distinguishes competitor provenance from third-party connector logo licensing and explicitly tracks this as the remaining asset provenance gap.
 
 ### Bugs
 

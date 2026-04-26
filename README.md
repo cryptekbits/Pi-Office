@@ -106,3 +106,4 @@ If Word launches with a blank document during debugging, open the target saved d
 - Pi is consumed as a dependency. This repo does not copy Pi source from `pi-mono`.
 - `npm run dev` means "start the local taskpane web host for sideload development."
 - The optional companion is intentionally read-only for v1 local access.
+- Contributor originality rules live in [`CONTRIBUTING.md`](/C:/Users/manan/Code/Personal/office-word-addin/CONTRIBUTING.md), with release provenance tracked in [`docs/provenance.md`](/C:/Users/manan/Code/Personal/office-word-addin/docs/provenance.md).
