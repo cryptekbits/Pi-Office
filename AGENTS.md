@@ -56,7 +56,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - `SECURITY-001` is closed: connector OAuth completion now requires a verified credential handoff, manual UI completion is removed, tokenless/imported OAuth records report `auth_required`, and callback tests cover no-token/cancelled/mismatch/expired/success/import paths.
 - `SECURITY-002` is closed: timeout, disconnect, and session cleanup paths now have automated fail-closed permission coverage across write-doc, connector, read-external, and write-external tool categories.
 - `SECURITY-003` is closed: `office_execute_js` is an escape-hatch tool that cannot be auto-approved and any approval is normalized to a one-time decision, even if a client sends a broader scope.
-- `SECURITY-005` is closed with an expanded `docs/provenance.md`, new `CONTRIBUTING.md` originality guidance, and a neutralized CSS comment; third-party connector logo licensing remains open as `SECURITY-007`.
+- `SECURITY-005` is closed with an expanded `docs/provenance.md`, new `CONTRIBUTING.md` originality guidance, and a neutralized CSS comment; `SECURITY-007` is obsolete because the stakeholder accepted connector logos as-is without a licensing audit.
 - `SECURITY-006` is closed: the companion now has shared shell capability protocol, fail-closed backend detection, policy validation, destructive probes, environment scrubbing, output caps/timeouts, a sandbox-routed Pi `BashOperations` adapter, and taskpane gating so `bash` only appears when a saved-document companion session reports shell `available`.
 - `SECURITY-004` is closed: the taskpane now declares an Office-compatible CSP meta policy, Settings includes Privacy disclosure and clear-data controls, provider/connector clear-all routes remove stored encrypted envelopes plus local crypto keys, saved chat history can be cleared, and privacy/storage behavior is documented.
 - `BUG-010` is closed: add-in clean install now reports zero npm audit vulnerabilities, Vite is patched to `8.0.10`, Mermaid renders through a lazy-loaded chunk, and the build no longer emits the large-chunk warning while the custom bundle-budget gate remains active.
@@ -90,6 +90,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - 2026-04-26: Closed `BUG-008` by changing Excel checkpoint restore to write captured formula matrices, adding restore warnings for values-only fallback and unsupported workbook semantics, and validating add-in typecheck, Office tests, build, manifests, and bundle budget.
 - 2026-04-26: Closed `BUG-007` by making snapshot and Excel range-image copy fidelity-honest, enforcing active-selection matching for `read_range_image`, updating the Claude parity tracker, and validating add-in typecheck, Office tests, build, manifests, and bundle budget.
 - 2026-04-26: Closed `BUG-009` by resolving PowerPoint shape anchors through parent-slide metadata, narrowing the legacy slide-master tool to layout application only, updating PowerPoint guidance/tracker notes, and validating add-in typecheck, Office tests, build, manifests, and bundle budget.
+- 2026-04-26: Obsoleted `SECURITY-007` after stakeholder clarified connector logos are acceptable as-is and do not need a licensing/source audit for the current release path.
 
 ## Core rules
 

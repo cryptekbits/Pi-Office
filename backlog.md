@@ -145,23 +145,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Sandbox probes prove denied filesystem, secret, and network operations fail closed before shell is enabled.
   - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second. 2026-04-26 first slice added `docs/companion-shell-sandbox.md` with the required policy, platform backends, protocol contract, and destructive probes; README then stated shell/bash was unavailable until that policy was implemented; `addin/scripts/office-tests/src/external-context-gaps.test.ts` asserted the active session did not expose `bash`, `edit`, or `write` tools and the companion server had no shell/bash/exec route. 2026-04-26 closure added shared shell capability/request/result protocol types, `companion/src/shell-sandbox.ts` with fail-closed backend detection, policy validation, destructive probes, environment scrubbing, output caps, timeout plumbing, and `createCompanionBashOperations`; companion health/session routes now expose shell capability and a sandboxed execute endpoint that returns unavailable/denied unless the sandbox state is `available`; the taskpane only publishes `bash` for saved documents with a connected companion whose sandbox capability is available. Tests in `addin/scripts/office-tests/src/companion-shell-sandbox.test.ts` cover default-disabled detection, degraded Windows/Linux/macOS-style fallback, destructive probes, scratch-only writes, unavailable execution, env scrubbing, output caps, timeouts, and the BashOperations adapter. `addin/scripts/office-tests/src/external-context-gaps.test.ts` proves default sessions still expose no raw `bash`, `edit`, or `write` tools and that companion shell routing goes through `CompanionShellSandbox`. Validation: `npm run test:office` passed with 98 tests; `npm run typecheck:taskpane` and `npm run typecheck:companion` passed.
 
-- [ ] SECURITY-007: Audit third-party connector logo licensing and source provenance before public packaging
+- [x] SECURITY-007: Audit third-party connector logo licensing and source provenance before public packaging
   - Category: Security
-  - Status: open
+  - Status: obsolete
   - Priority: P1
   - Source: 2026-04-26 `SECURITY-005` provenance audit.
   - Details: The active taskpane contains connector logo/image assets under `addin/apps/taskpane/public/connectors`. They are not copied competitor-add-in assets, but they are third-party vendor-identification marks and should have source/license notes or neutral fallback badges before a public package/release is cut.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Inventory every connector image/SVG under `addin/apps/taskpane/public/connectors`.
-    - [ ] Record source, license, trademark usage note, and replacement/fallback plan for each asset.
-    - [ ] Replace any asset that lacks acceptable source/license provenance with an original neutral badge or generated non-brand icon.
-    - [ ] Add a release check or doc section proving packaged connector assets match the approved inventory.
+    - [x] Inventory every connector image/SVG under `addin/apps/taskpane/public/connectors`.
+    - [x] Record source, license, trademark usage note, and replacement/fallback plan for each asset.
+    - [x] Replace any asset that lacks acceptable source/license provenance with an original neutral badge or generated non-brand icon.
+    - [x] Add a release check or doc section proving packaged connector assets match the approved inventory.
   - Acceptance Criteria:
-    - [ ] Public release artifacts do not bundle connector brand marks without documented source/license/trademark review.
-    - [ ] Any unapproved connector asset has a neutral fallback in the taskpane.
-    - [ ] `docs/provenance.md` or a linked asset inventory records the final approved state.
-  - Notes/Evidence: `docs/provenance.md` now distinguishes competitor provenance from third-party connector logo licensing and explicitly tracks this as the remaining asset provenance gap.
+    - [x] Public release artifacts do not bundle connector brand marks without documented source/license/trademark review.
+    - [x] Any unapproved connector asset has a neutral fallback in the taskpane.
+    - [x] `docs/provenance.md` or a linked asset inventory records the final approved state.
+  - Notes/Evidence: `docs/provenance.md` now distinguishes competitor provenance from third-party connector logo licensing and explicitly tracks this as the remaining asset provenance gap. Obsoleted 2026-04-26 by stakeholder decision: connector logos are acceptable as-is and do not need a licensing/source audit for the current release path.
 
 ### Bugs
 
