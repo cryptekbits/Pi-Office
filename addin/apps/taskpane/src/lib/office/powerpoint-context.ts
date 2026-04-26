@@ -48,6 +48,38 @@ import {
 } from "./shared";
 import { inspectCurrentPowerPointPresentationPackage } from "./powerpoint-helpers";
 
+export interface PowerPointSlideMetadata {
+  id?: string | undefined;
+  index?: number | undefined;
+  layoutId?: string | undefined;
+  layoutName?: string | undefined;
+  layoutType?: string | undefined;
+  slideMasterId?: string | undefined;
+  slideMasterName?: string | undefined;
+}
+
+export function resolvePowerPointShapeSlideMetadata(
+  parentSlide: { isNullObject?: boolean; id?: string | undefined; index?: number | undefined } | undefined,
+  fallbackSlide: { id?: string | undefined; index?: number | undefined } | undefined,
+  slideMetadataById: Map<string, PowerPointSlideMetadata>,
+): PowerPointSlideMetadata | undefined {
+  if (parentSlide && !parentSlide.isNullObject && parentSlide.id) {
+    return slideMetadataById.get(parentSlide.id) ?? {
+      id: parentSlide.id,
+      index: typeof parentSlide.index === "number" ? parentSlide.index + 1 : undefined,
+    };
+  }
+
+  if (fallbackSlide?.id) {
+    return slideMetadataById.get(fallbackSlide.id) ?? {
+      id: fallbackSlide.id,
+      index: typeof fallbackSlide.index === "number" ? fallbackSlide.index + 1 : undefined,
+    };
+  }
+
+  return undefined;
+}
+
 export async function collectPowerPointState(base: OfficeStateUpdate): Promise<OfficeStateUpdate> {
   try {
     return await PowerPoint.run(async (context) => {
@@ -176,6 +208,10 @@ export async function collectPowerPointContext(base: OfficeStateUpdate, options:
     }
 
     const selectedShapes = shapes?.items.slice(0, Math.max(maxImages, 4)) ?? [];
+    const selectedShapeParentSlides = selectedShapes.map((shape) => shape.getParentSlideOrNullObject());
+    for (const parentSlide of selectedShapeParentSlides) {
+      parentSlide.load("isNullObject,id,index");
+    }
     const textFrames =
       supportsShapeSnapshots && selectedShapes.length
         ? selectedShapes.map((shape) => shape.getTextFrameOrNullObject())
@@ -225,7 +261,6 @@ export async function collectPowerPointContext(base: OfficeStateUpdate, options:
         },
       ]),
     );
-    const slideMetadataByIndex = new Map(Array.from(slideMetadataById.values()).map((slide) => [slide.index, slide]));
     const selectedSlideSummaries = slides.items.map(
       (slide) =>
         slideMetadataById.get(slide.id) ?? {
@@ -287,7 +322,7 @@ export async function collectPowerPointContext(base: OfficeStateUpdate, options:
     const selectedShapeDescriptors = selectedShapes.slice(0, 8).map((shape, index) => {
       const textFrame = textFrames[index];
       const table = tables[index];
-      const slideSummary = slides.items[0] ? slideMetadataById.get(slides.items[0].id) : undefined;
+      const slideSummary = resolvePowerPointShapeSlideMetadata(selectedShapeParentSlides[index], slides.items[0], slideMetadataById);
       const textPreview =
         textFrame && !textFrame.isNullObject && textFrame.hasText ? truncateText(textFrame.textRange.text, 400) : undefined;
 
@@ -473,11 +508,11 @@ export async function collectPowerPointContext(base: OfficeStateUpdate, options:
             text: slideMaster.name,
           }) as OfficeAnchor),
         ),
-        ...selectedShapes.slice(0, 12).map((shape) => ({
+        ...selectedShapeDescriptors.slice(0, 12).map((shape) => ({
           kind: "shape",
-          label: shape.name || truncateLabel(shape.altTextTitle || shape.altTextDescription) || `Shape ${shape.id}`,
-          slideId: slides.items[0]?.id,
-          slideIndex: slides.items[0] ? slides.items[0].index + 1 : undefined,
+          label: shape.label,
+          slideId: shape.slideId,
+          slideIndex: shape.slideIndex,
           shapeId: shape.id,
           id: shape.id,
         }) as OfficeAnchor),

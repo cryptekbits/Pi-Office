@@ -520,16 +520,16 @@ const editSlideMasterParams = Type.Object({
   operation: Type.Optional(
     Type.String({
       description:
-        "PowerPoint layout/master operation. Currently supports apply_layout (default), with layout/master selectors routed through native layout resolution.",
+        "PowerPoint layout operation. Currently supports apply_layout/set_layout only; this legacy-named tool does not edit slide masters.",
     }),
   ),
-  slideId: Type.Optional(Type.String({ description: "Target slide ID whose layout/master mapping should be updated." })),
+  slideId: Type.Optional(Type.String({ description: "Target slide ID whose layout should be updated." })),
   slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
   layoutId: Type.Optional(Type.String({ description: "Layout ID to apply." })),
   layoutName: Type.Optional(Type.String({ description: "Layout name to apply." })),
-  slideMasterId: Type.Optional(Type.String({ description: "Optional slide master ID used for layout resolution." })),
-  slideMasterName: Type.Optional(Type.String({ description: "Optional slide master name used for layout resolution." })),
-  options: Type.Optional(Type.Any({ description: "Additional layout/master options forwarded to the host adapter." })),
+  slideMasterId: Type.Optional(Type.String({ description: "Optional slide master ID used only to resolve the requested layout." })),
+  slideMasterName: Type.Optional(Type.String({ description: "Optional slide master name used only to resolve the requested layout." })),
+  options: Type.Optional(Type.Any({ description: "Additional layout-application options forwarded to the host adapter." })),
 }, { additionalProperties: true });
 
 const editSlideChartParams = Type.Object({
@@ -1238,9 +1238,9 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
     if (!isDisabled("edit_slide_master"))
     pi.registerTool({
       name: "edit_slide_master",
-      label: "Edit Slide Layout/Master",
+      label: "Apply Slide Layout",
       description:
-        "PowerPoint-only first-class layout/master editing tool that applies slide layouts via native layout/master resolution.",
+        "PowerPoint-only legacy-named tool for applying an existing slide layout. It does not mutate slide masters or layout definitions.",
       parameters: editSlideMasterParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("edit_slide_master", params);

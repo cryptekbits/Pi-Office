@@ -309,23 +309,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests protect DCF-style workbook formulas from value-only flattening.
   - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` loading `formulas` during capture but restoring only values and number formats. 2026-04-26 fix changed Excel restore to prefer the captured `range.formulas` matrix, which includes both formula cells and constant cells per Office.js, and falls back to values only when formula data is missing or shape-mismatched. Restore now returns warnings for values-only fallback and for the current checkpoint fidelity boundary: used-range formulas/constants/number formats only, not full replay of tables, charts, data validation, or workbook structure. The taskpane surfaces those restore warnings as system messages. Regression tests in `addin/scripts/office-tests/src/excel-rewind.test.ts` prove mixed formula/value matrices write `range.formulas`, values are not used when formulas are available, number formats are restored, and values-only fallback warns. Validation passed with `npm run typecheck:addin`, `npm run test:office`, `npm run build`, `npm run validate:manifests`, and `npm run check:bundle`.
 
-- [ ] BUG-009: PowerPoint shape anchoring and slide-master tooling can mislead agents
+- [x] BUG-009: PowerPoint shape anchoring and slide-master tooling can mislead agents
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 Office-host subagent review.
   - Details: PowerPoint selected-shape descriptors and anchors currently appear to attach selected shapes to `slides.items[0]`, which can produce bad anchors for cross-slide or multi-slide operations. Separately, `edit_slide_master` is named and described as layout/master editing, but the bridge currently supports only `apply_layout`. These gaps can make agents confidently target the wrong slide or overpromise master/layout mutation.
   - Dependencies: TESTING-002 for manual PowerPoint validation if desktop behavior differs from tests.
   - Subtasks:
-    - [ ] Verify selected-shape slide ownership for single-slide, multi-slide, and cross-slide selection scenarios.
-    - [ ] Fix selected-shape descriptors/anchors to include the actual owning slide where Office.js exposes it.
-    - [ ] Rename or narrow `edit_slide_master`, or implement real master/layout mutation beyond `apply_layout`.
-    - [ ] Add tests or fixtures for selected shape anchors and slide-layout operations.
+    - [x] Verify selected-shape slide ownership for single-slide, multi-slide, and cross-slide selection scenarios.
+    - [x] Fix selected-shape descriptors/anchors to include the actual owning slide where Office.js exposes it.
+    - [x] Rename or narrow `edit_slide_master`, or implement real master/layout mutation beyond `apply_layout`.
+    - [x] Add tests or fixtures for selected shape anchors and slide-layout operations.
   - Acceptance Criteria:
-    - [ ] Selected shape anchors resolve to the actual slide instead of defaulting to the first slide.
-    - [ ] `edit_slide_master` naming and behavior match exactly.
-    - [ ] Tests cover at least one multi-slide or non-first-slide shape operation.
-  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/powerpoint-context.ts` using `slides.items[0]` for selected shapes and `addin/apps/taskpane/src/lib/office-bridge.ts` limiting `edit_slide_master` to apply-layout operations.
+    - [x] Selected shape anchors resolve to the actual slide instead of defaulting to the first slide.
+    - [x] `edit_slide_master` naming and behavior match exactly.
+    - [x] Tests cover at least one multi-slide or non-first-slide shape operation.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/powerpoint-context.ts` using `slides.items[0]` for selected shapes and `addin/apps/taskpane/src/lib/office-bridge.ts` limiting `edit_slide_master` to apply-layout operations. Closed 2026-04-26 by resolving selected shape descriptors and anchors through `PowerPoint.Shape.getParentSlideOrNullObject()` when Office.js exposes it, falling back to the selected slide only when parent-slide metadata is unavailable. `edit_slide_master` is now labeled and described as legacy-named apply-existing-layout only; `set_slide_master`/`apply_master` style operations fail with a clear no-master-editing error. Regression coverage was added for non-first-slide shape metadata, tool labels/descriptions in both extension and in-process runtime, and unsupported master-edit operations. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 115 tests, `npm run check:bundle`, `npm run build`, and `npm run validate:manifests`.
 
 - [x] BUG-010: Add-in install and build gates emit stale dependency and bundle warnings
   - Category: Bug

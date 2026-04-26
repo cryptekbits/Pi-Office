@@ -1054,8 +1054,6 @@ function toPowerPointMasterActionType(value: string | undefined): string | undef
     case "applylayout":
     case "setlayout":
     case "editslidelayout":
-    case "setslidemaster":
-    case "applymaster":
       return "applyLayout";
     default:
       return undefined;
@@ -2219,7 +2217,8 @@ export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDepende
           return {
             requestId: request.requestId,
             success: false,
-            error: "edit_slide_master currently supports apply_layout operations.",
+            error:
+              "edit_slide_master is a legacy-named layout application tool. It currently supports only apply_layout/set_layout; it does not edit slide masters.",
           };
         }
 

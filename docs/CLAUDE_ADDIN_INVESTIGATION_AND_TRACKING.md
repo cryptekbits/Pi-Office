@@ -381,7 +381,7 @@ Entry format is strict: `ID: status - note`.
 - GAP-PPT-03: resolved - First-class slide text editing is exposed (`edit_slide_text` equivalent).
 - GAP-PPT-04: resolved - First-class slide XML editing is exposed (`edit_slide_xml` equivalent).
 - GAP-PPT-05: resolved - First-class slide chart editing is exposed (`edit_slide_chart` equivalent).
-- GAP-PPT-06: resolved - First-class layout/master editing is exposed (`edit_slide_master` equivalent).
+- GAP-PPT-06: partially resolved - First-class layout application is exposed through the legacy-named `edit_slide_master` tool. It applies existing layouts via native resolution; it does not edit slide masters or layout definitions.
 - GAP-PPT-07: resolved - First-class slide duplication is exposed (`duplicate_slide` equivalent).
 - GAP-PPT-08: resolved - First-class image copy between slides is exposed.
 - GAP-PPT-09: resolved - First-class slide-element insertion is exposed (`insert_slide_element` equivalent).
@@ -516,11 +516,11 @@ The following PowerPoint checklist is aligned to `npm run smoke:office -- --list
 
 - Steps:
   1. Open a deck with notes and at least one named shape on the selected slide.
-  2. Run `office_get_context` with `includeFormatting=true` and confirm anchors include slide/shape/layout/master/notes targets.
+  2. Run `office_get_context` with `includeFormatting=true` and confirm anchors include slide/shape/layout/master/notes targets. For selected shapes on non-first slides, confirm the shape anchor's `slideId`/`slideIndex` match the owning slide.
   3. Run `office_navigate` with one anchor from each anchor family above.
 - Expected:
   - Slide and shape anchors navigate to the exact target.
-  - Layout/master/notes anchors report explicit fallback behavior when native direct navigation is partial.
+  - Layout/master/notes anchors report explicit fallback behavior when native direct navigation is partial, and layout editing is described as apply-existing-layout only.
 
 #### Scenario: `powerpoint-slide-and-shape-authoring` — Native slide and shape operations
 

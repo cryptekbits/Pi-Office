@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createOfficeToolExecutor } from "../../../apps/taskpane/src/lib/office-bridge.js";
+import { resolvePowerPointShapeSlideMetadata } from "../../../apps/taskpane/src/lib/office/powerpoint-context.js";
 import { createOfficeExtension } from "../../../packages/pi-office-pack/src/extension.js";
 import {
   OFFICE_TOOL_NAMES,
@@ -107,6 +108,41 @@ async function loadKernelModule() {
   const specifier = `../../../apps/taskpane/src/lib/runtime/inprocess-kernel.js?test=${Date.now()}-${Math.random()}`;
   return import(specifier);
 }
+
+test("PowerPoint selected shape metadata prefers the owning parent slide over the first selected slide", () => {
+  const firstSelectedSlide = {
+    id: "slide-1",
+    index: 1,
+    layoutName: "Title Slide",
+  };
+  const owningSlide = {
+    id: "slide-3",
+    index: 3,
+    layoutName: "Chart Detail",
+    slideMasterName: "Corporate",
+  };
+  const slideMetadataById = new Map([
+    [firstSelectedSlide.id, firstSelectedSlide],
+    [owningSlide.id, owningSlide],
+  ]);
+
+  assert.deepEqual(
+    resolvePowerPointShapeSlideMetadata(
+      { isNullObject: false, id: "slide-3", index: 2 },
+      { id: "slide-1", index: 0 },
+      slideMetadataById,
+    ),
+    owningSlide,
+  );
+  assert.deepEqual(
+    resolvePowerPointShapeSlideMetadata(
+      undefined,
+      { id: "slide-1", index: 0 },
+      slideMetadataById,
+    ),
+    firstSelectedSlide,
+  );
+});
 
 function waitForEvent(target: EventTarget, name: string, timeoutMs = 2_000): Promise<Event> {
   return new Promise((resolve, reject) => {
