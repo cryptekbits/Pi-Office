@@ -4,16 +4,20 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 
 ## What Is In This Repo
 
-- `apps/taskpane`
+- `addin/apps/taskpane`
   Shared React taskpane app served over `https://localhost:3443`
-- `apps/companion`
+- `companion`
   Optional local HTTPS companion for read-only local file access and read-only local MCP execution
-- `packages/pi-office-pack`
+- `addin/packages/pi-office-pack`
   Internal Pi package with Office-specific tools, prompts, and skills
-- `manifests`
+- `addin/manifests`
   Separate XML manifests for Word, Excel, and PowerPoint
-- `certs`
+- `addin/certs`
   Local development certificate artifacts used by local HTTPS services
+- `website`
+  Placeholder for the future public website
+- `docs`
+  Detailed project docs, trackers, provenance notes, and design references
 
 ## Current Architecture
 
@@ -27,19 +31,25 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 
 ## Local Setup
 
-1. Install dependencies:
+1. Install add-in dependencies:
 
 ```bash
-npm install
+npm install --prefix addin
 ```
 
-2. Create and trust the local HTTPS certificate:
+2. Install optional companion dependencies:
+
+```bash
+npm install --prefix companion
+```
+
+3. Create and trust the local HTTPS certificate:
 
 ```bash
 npm run prepare:certs
 ```
 
-3. Start the taskpane dev host for sideload development:
+4. Start the taskpane dev host for sideload development:
 
 ```bash
 npm run dev
@@ -47,7 +57,7 @@ npm run dev
 
 This starts the taskpane web host on `https://localhost:3443`.
 
-4. Optionally start the local companion:
+5. Optionally start the local companion:
 
 ```bash
 npm run dev:companion
@@ -55,7 +65,7 @@ npm run dev:companion
 
 This starts the optional companion on `https://localhost:3444`.
 
-5. Sideload a host manifest:
+6. Sideload a host manifest:
 
 ```bash
 npm run sideload:word
@@ -68,7 +78,7 @@ npm run sideload:excel
 npm run sideload:powerpoint
 ```
 
-6. Remove the sideload registration when you are done:
+7. Remove the sideload registration when you are done:
 
 ```bash
 npm run sideload:stop
@@ -84,11 +94,11 @@ npm run validate:manifests
 
 ## Sideload Flow
 
-Use the XML files in [`manifests`](/C:/Users/manan/Code/Personal/office-word-addin/manifests) for desktop/manual sideload. All three point at the taskpane dev host on `https://localhost:3443`.
+Use the XML files in [`addin/manifests`](/C:/Users/manan/Code/Personal/office-word-addin/addin/manifests) for desktop/manual sideload. All three point at the taskpane dev host on `https://localhost:3443`.
 
-- Word: [`word.xml`](/C:/Users/manan/Code/Personal/office-word-addin/manifests/word.xml)
-- Excel: [`excel.xml`](/C:/Users/manan/Code/Personal/office-word-addin/manifests/excel.xml)
-- PowerPoint: [`powerpoint.xml`](/C:/Users/manan/Code/Personal/office-word-addin/manifests/powerpoint.xml)
+- Word: [`word.xml`](/C:/Users/manan/Code/Personal/office-word-addin/addin/manifests/word.xml)
+- Excel: [`excel.xml`](/C:/Users/manan/Code/Personal/office-word-addin/addin/manifests/excel.xml)
+- PowerPoint: [`powerpoint.xml`](/C:/Users/manan/Code/Personal/office-word-addin/addin/manifests/powerpoint.xml)
 
 If Word launches with a blank document during debugging, open the target saved document in that same Word instance and then open the add-in there. The taskpane session tracks the document it is attached to, not another Word window.
 

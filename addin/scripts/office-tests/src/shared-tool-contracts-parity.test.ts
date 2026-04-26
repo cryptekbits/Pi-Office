@@ -286,14 +286,14 @@ test("automated validation commands remain exposed in package scripts, services 
     assert.equal(typeof scripts[commandName], "string", `package.json is missing script ${commandName}.`);
   }
 
-  const servicesManifest = readFileSync(join(process.cwd(), ".factory/services.yaml"), "utf8");
+  const servicesManifest = readFileSync(join(process.cwd(), "..", ".factory", "services.yaml"), "utf8");
   assert.match(servicesManifest, /typecheck:\s+npm run typecheck/);
   assert.match(servicesManifest, /build:\s+npm run build/);
   assert.match(servicesManifest, /check_bundle:\s+npm run check:bundle/);
   assert.match(servicesManifest, /validate_manifests:\s+npm run validate:manifests/);
   assert.match(servicesManifest, /test:\s+npm run test:office/);
 
-  const ciWorkflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+  const ciWorkflow = readFileSync(join(process.cwd(), "..", ".github", "workflows", "ci.yml"), "utf8");
   for (const commandName of REQUIRED_VALIDATION_COMMANDS) {
     assert.match(
       ciWorkflow,

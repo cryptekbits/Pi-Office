@@ -7,7 +7,7 @@
 - Repository: `C:\Users\manan\Code\Personal\office-word-addin`
 - Purpose: Record investigation details, confirmed findings, and a trackable remediation backlog.
 - Primary comparison target: parent-directory Claude Office add-in cache at `..\claude-powerpoint-addin-copy` plus live taskpane bundle at `https://pivot.claude.ai`.
-- Companion planning artifact: `OFFICE_PARITY_TASK_LIST.md`.
+- Companion planning artifact: `docs/OFFICE_PARITY_TASK_LIST.md`.
 
 ## 2) What Was Investigated
 
@@ -54,14 +54,14 @@
 - `https://pivot.claude.ai/shortcuts.json`
 - `https://pivot.claude.ai/m-addin/assets/index-BMkcZxzX.js`
 - Our core runtime/protocol files:
-- `packages/pi-office-pack/src/protocol.ts`
-- `packages/pi-office-pack/src/extension.ts`
-- `packages/pi-office-pack/src/defaults.ts`
-- `packages/pi-office-pack/skills/office-host.SKILL.md`
-- `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`
-- `apps/taskpane/src/lib/office-bridge.ts`
-- `apps/taskpane/src/lib/office/document-tools.ts`
-- `scripts/office-tests/src/office-bridge.test.ts`
+- `addin/packages/pi-office-pack/src/protocol.ts`
+- `addin/packages/pi-office-pack/src/extension.ts`
+- `addin/packages/pi-office-pack/src/defaults.ts`
+- `addin/packages/pi-office-pack/skills/office-host.SKILL.md`
+- `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`
+- `addin/apps/taskpane/src/lib/office-bridge.ts`
+- `addin/apps/taskpane/src/lib/office/document-tools.ts`
+- `addin/scripts/office-tests/src/office-bridge.test.ts`
 
 ### 4.3 Confidence Model
 
@@ -73,22 +73,22 @@
 
 ### 5.1 Core Runtime Classes (Our Code)
 
-- `BrowserAuthStore` in `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
-- `BrowserCheckpointStore` in `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
-- `BrowserModelRegistry` in `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
-- `BrowserOfficeSession` in `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
-- `InProcessKernel` in `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
-- `LocalBridgeSocket` in `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
+- `BrowserAuthStore` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
+- `BrowserCheckpointStore` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
+- `BrowserModelRegistry` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
+- `BrowserOfficeSession` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
+- `InProcessKernel` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
+- `LocalBridgeSocket` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`.
 
 ### 5.2 Core Tool/Bridge Functions (Our Code)
 
-- `createOfficeExtension(...)` in `packages/pi-office-pack/src/extension.ts`.
-- `createOfficeToolExecutor(...)` in `apps/taskpane/src/lib/office-bridge.ts`.
-- `toAnchor(...)` and `toHostAction(...)` in `apps/taskpane/src/lib/office-bridge.ts`.
-- `executeOfficeJs(...)` in `apps/taskpane/src/lib/office/document-tools.ts`.
-- `readDocumentSection(...)` in `apps/taskpane/src/lib/office/document-tools.ts`.
-- `proposeDocumentEdits(...)` in `apps/taskpane/src/lib/office/document-tools.ts`.
-- `applyAcceptedEdits(...)` in `apps/taskpane/src/lib/office/document-tools.ts`.
+- `createOfficeExtension(...)` in `addin/packages/pi-office-pack/src/extension.ts`.
+- `createOfficeToolExecutor(...)` in `addin/apps/taskpane/src/lib/office-bridge.ts`.
+- `toAnchor(...)` and `toHostAction(...)` in `addin/apps/taskpane/src/lib/office-bridge.ts`.
+- `executeOfficeJs(...)` in `addin/apps/taskpane/src/lib/office/document-tools.ts`.
+- `readDocumentSection(...)` in `addin/apps/taskpane/src/lib/office/document-tools.ts`.
+- `proposeDocumentEdits(...)` in `addin/apps/taskpane/src/lib/office/document-tools.ts`.
+- `applyAcceptedEdits(...)` in `addin/apps/taskpane/src/lib/office/document-tools.ts`.
 
 ## 6) Findings: Tool Surface Comparison
 

@@ -15,9 +15,9 @@ This file is the release-safety trail for competitor-inspired work. It covers ac
 Audited on 2026-04-26:
 
 - `AGENTS.md`, `backlog.md`, `README.md`, `docs/`
-- `apps/taskpane/src`, `apps/taskpane/public`, `manifests/`
-- `packages/pi-office-pack/src`, `packages/pi-office-pack/skills`
-- `apps/companion/src`, `scripts/`
+- `addin/apps/taskpane/src`, `addin/apps/taskpane/public`, `addin/manifests/`
+- `addin/packages/pi-office-pack/src`, `addin/packages/pi-office-pack/skills`
+- `companion/src`, `addin/scripts/`
 
 Excluded from the release audit:
 
@@ -29,8 +29,8 @@ Excluded from the release audit:
 The latest audit used:
 
 ```bash
-rg -n "Claude|ChatGPT|Copilot|Ghostwriter|Anthropic|OpenAI|Codex|OpenCode|inspiration|competitor|provenance|DMCA|copyright|private API|prompt" AGENTS.md backlog.md README.md docs apps packages manifests scripts --glob "!**/node_modules/**" --glob "!**/dist/**"
-rg --files apps packages docs manifests scripts | rg "(?i)(logo|icon|asset|png|svg|jpg|jpeg|webp|prompt|skill|md)$"
+rg -n "Claude|ChatGPT|Copilot|Ghostwriter|Anthropic|OpenAI|Codex|OpenCode|inspiration|competitor|provenance|DMCA|copyright|private API|prompt" AGENTS.md backlog.md README.md docs addin companion --glob "!**/node_modules/**" --glob "!**/dist/**"
+rg --files addin companion docs | rg "(?i)(logo|icon|asset|png|svg|jpg|jpeg|webp|prompt|skill|md)$"
 ```
 
 Findings:
@@ -44,20 +44,20 @@ Findings:
 
 | Capability | Inspiration / Comparator | Public Or Original Basis | Pi-Office Implementation | Audit Status |
 | --- | --- | --- | --- | --- |
-| Office host tools for Word, Excel, and PowerPoint | Claude Office add-in, Microsoft Copilot, generic Office assistants | Microsoft Office.js public APIs plus original tool contracts | `packages/pi-office-pack/src/protocol.ts`, `packages/pi-office-pack/src/extension.ts`, `apps/taskpane/src/lib/office-*` | Original implementation; no copied code or private contracts found. |
-| Taskpane chat and streaming UX | Claude/ChatGPT/Copilot user expectations | Original React taskpane and Pi agent runtime | `apps/taskpane/src/app`, `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` | Original copy and component structure; no competitor text found. |
-| Next-prompt suggestions | ChatGPT/Codex-style follow-up affordances | Original prompt-suggestion parser and Pi-Office context rules | `packages/pi-office-pack/src/prompt-suggestions.ts`, `apps/taskpane/src/app/PromptSuggestionStrip.tsx` | Original parser and UI copy; source tests cover behavior. |
+| Office host tools for Word, Excel, and PowerPoint | Claude Office add-in, Microsoft Copilot, generic Office assistants | Microsoft Office.js public APIs plus original tool contracts | `addin/packages/pi-office-pack/src/protocol.ts`, `addin/packages/pi-office-pack/src/extension.ts`, `addin/apps/taskpane/src/lib/office-*` | Original implementation; no copied code or private contracts found. |
+| Taskpane chat and streaming UX | Claude/ChatGPT/Copilot user expectations | Original React taskpane and Pi agent runtime | `addin/apps/taskpane/src/app`, `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` | Original copy and component structure; no competitor text found. |
+| Next-prompt suggestions | ChatGPT/Codex-style follow-up affordances | Original prompt-suggestion parser and Pi-Office context rules | `addin/packages/pi-office-pack/src/prompt-suggestions.ts`, `addin/apps/taskpane/src/app/PromptSuggestionStrip.tsx` | Original parser and UI copy; source tests cover behavior. |
 | Permission and autonomy model | Codex/OpenCode-style approval concepts | Original categories in Pi-Office protocol plus user preferences | `TOOL_CATEGORY_MAP`, `AUTONOMY_LEVEL_AUTO_APPROVE`, tool permission popup | Original implementation; no copied permission prompt text. |
-| Connector marketplace/setup UX | Connector marketplaces and MCP ecosystem expectations | Original connector catalog, MCP protocol concepts, read-only policy | `apps/taskpane/src/lib/runtime/connector-catalog.ts`, `IntegrationsSection.tsx` | Original setup flow; connector brand assets require separate third-party license/source audit before public packaging. |
+| Connector marketplace/setup UX | Connector marketplaces and MCP ecosystem expectations | Original connector catalog, MCP protocol concepts, read-only policy | `addin/apps/taskpane/src/lib/runtime/connector-catalog.ts`, `IntegrationsSection.tsx` | Original setup flow; connector brand assets require separate third-party license/source audit before public packaging. |
 | Visual/image generation workflows | ChatGPT image workflows and Office visual-assistant expectations | OpenAI Images API where configured, Office.js insertion paths | `generate_image`, `ImageBlock`, image model catalog | Original implementation; provider support honesty tracked separately in `BUG-006`. |
 | Rewind/checkpoint workflow | AI editor undo/review expectations | Original browser checkpoint store and Office snapshot contracts | `BrowserCheckpointStore`, taskpane rewind UI | Original implementation; Excel formula fidelity tracked in `BUG-008`. |
 | Companion sandbox direction | Codex/OpenCode safety patterns | Original companion architecture and future sandbox policy | `AGENTS.md`, `SECURITY-006` | No raw shell implementation is present; detailed sandbox design remains a separate P0 task. |
-| Workflow packs/playbooks | Claude host playbook density and professional Office tasks | Original Pi-Office skill/playbook specs | `packages/pi-office-pack/skills`, `FEATURE-003` | Planned work must add rows here before release. |
+| Workflow packs/playbooks | Claude host playbook density and professional Office tasks | Original Pi-Office skill/playbook specs | `addin/packages/pi-office-pack/skills`, `FEATURE-003` | Planned work must add rows here before release. |
 
 ## Asset Notes
 
-- Pi-Office brand assets under `apps/taskpane/public/brand` are project-owned/provided assets; generated PNG sizes are derived from the project SVG.
-- Connector logos under `apps/taskpane/public/connectors` are vendor-identification assets, not competitor-add-in assets. Their source/license status should be audited before public distribution; this is tracked separately in `SECURITY-007`.
+- Pi-Office brand assets under `addin/apps/taskpane/public/brand` are project-owned/provided assets; generated PNG sizes are derived from the project SVG.
+- Connector logos under `addin/apps/taskpane/public/connectors` are vendor-identification assets, not competitor-add-in assets. Their source/license status should be audited before public distribution; this is tracked separately in `SECURITY-007`.
 - Do not import icons, screenshots, SVGs, prompt text, or bundled resources from competitor add-ins.
 
 ## Contribution Rules

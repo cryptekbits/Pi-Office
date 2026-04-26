@@ -69,7 +69,7 @@ try {
   run("npm", ["run", "build", "--workspace", "@pi-office/pi-office-pack"]);
   run("npx", ["tsc", "-p", "scripts/office-tests/tsconfig.json", "--outDir", outDir]);
   rewriteCompiledRelativeImports(outDir);
-  const testDir = join(outDir, "scripts/office-tests/src");
+  const testDir = join(outDir, "addin/scripts/office-tests/src");
   const testFiles = readdirSync(testDir)
     .filter((entry) => entry.endsWith(".test.js"))
     .map((entry) => join(testDir, entry));

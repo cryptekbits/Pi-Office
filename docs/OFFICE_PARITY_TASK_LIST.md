@@ -14,7 +14,7 @@ Reach feature parity with the current Claude Office add-ins for raw Office docum
 - Parity by behavior, not by structure. We should match user-visible capabilities without mirroring Claude's internal tool taxonomy or code layout.
 - Keep Pi integration stable. The Pi extension layer should remain the main control surface; richer Office actions should sit behind the existing companion <-> taskpane bridge.
 - Prefer typed host actions over prompt-shaped strings. Complex Excel and PowerPoint work will not stay reliable if everything is funneled through `content: string`.
-- Split host logic by domain. The current monolithic `apps/taskpane/src/lib/office.ts` should be decomposed into shared helpers plus `word`, `excel`, and `powerpoint` host adapters.
+- Split host logic by domain. The current monolithic `addin/apps/taskpane/src/lib/office.ts` should be decomposed into shared helpers plus `word`, `excel`, and `powerpoint` host adapters.
 - Preserve native Office objects. When we create or edit charts, tables, shapes, comments, or tracked changes, the result must remain editable in Office.
 - Favor Office.js first, OOXML/ZIP/document transforms second, and desktop-native helpers only when Office.js cannot close the gap cleanly.
 
@@ -22,12 +22,12 @@ Reach feature parity with the current Claude Office add-ins for raw Office docum
 
 Implemented on 2026-04-02:
 
-- Typed anchor and action contracts in `packages/pi-office-pack/src/protocol.ts`
-- Tool schema widening in `packages/pi-office-pack/src/extension.ts`
-- Real `office_navigate` dispatch in `apps/taskpane/src/lib/office-tools.ts`
+- Typed anchor and action contracts in `addin/packages/pi-office-pack/src/protocol.ts`
+- Tool schema widening in `addin/packages/pi-office-pack/src/extension.ts`
+- Real `office_navigate` dispatch in `addin/apps/taskpane/src/lib/office-tools.ts`
 - Anchor-aware `office_get_context` payloads for Word, Excel, and PowerPoint
 - Standardized action/navigation result envelopes with touched and created object references
-- Structured host actions in `apps/taskpane/src/lib/office.ts` for:
+- Structured host actions in `addin/apps/taskpane/src/lib/office.ts` for:
   - Word navigation to headings, paragraphs, comments, and revisions
   - Word native edits for text, HTML, comments, tables, and base64 file insertion
   - Excel navigation to sheets, named items, ranges, tables, charts, and pivot tables
@@ -71,14 +71,14 @@ Still pending from the plan:
 ## Current Anchors In This Repo
 
 - Protocol and tool surface:
-  - `packages/pi-office-pack/src/protocol.ts`
-  - `packages/pi-office-pack/src/extension.ts`
+  - `addin/packages/pi-office-pack/src/protocol.ts`
+  - `addin/packages/pi-office-pack/src/extension.ts`
 - Taskpane bridge and host implementation:
-  - `apps/taskpane/src/lib/office-tools.ts`
-  - `apps/taskpane/src/lib/office.ts`
+  - `addin/apps/taskpane/src/lib/office-tools.ts`
+  - `addin/apps/taskpane/src/lib/office.ts`
 - Companion orchestration:
-  - `apps/companion/src/office-session.ts`
-  - `apps/companion/src/viewport-capture.ts`
+  - `companion/src/office-session.ts`
+  - `companion/src/viewport-capture.ts`
 
 ## Out Of Scope
 
@@ -92,12 +92,12 @@ Still pending from the plan:
 
 ### Phase 0. Foundation Refactor
 
-- [x] Split `apps/taskpane/src/lib/office.ts` into host-specific adapters:
-  - `apps/taskpane/src/lib/office/shared/*`
-  - `apps/taskpane/src/lib/office/word/*`
-  - `apps/taskpane/src/lib/office/excel/*`
-  - `apps/taskpane/src/lib/office/powerpoint/*`
-- [x] Introduce a typed Office action model in `packages/pi-office-pack/src/protocol.ts`:
+- [x] Split `addin/apps/taskpane/src/lib/office.ts` into host-specific adapters:
+  - `addin/apps/taskpane/src/lib/office/shared/*`
+  - `addin/apps/taskpane/src/lib/office/word/*`
+  - `addin/apps/taskpane/src/lib/office/excel/*`
+  - `addin/apps/taskpane/src/lib/office/powerpoint/*`
+- [x] Introduce a typed Office action model in `addin/packages/pi-office-pack/src/protocol.ts`:
   - richer context payloads
   - anchor descriptors
   - structured edit actions

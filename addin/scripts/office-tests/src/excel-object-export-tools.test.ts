@@ -512,7 +512,7 @@ test("Excel guidance aligns formula-first, auditable-cell expectations with runt
 });
 
 test("investigation artifact includes Excel manual checklist scenarios for workbook context, formatting/tables, charts/pivots, and taskpane stability", () => {
-  const investigationPath = join(process.cwd(), "CLAUDE_ADDIN_INVESTIGATION_AND_TRACKING.md");
+  const investigationPath = join(process.cwd(), "..", "docs", "CLAUDE_ADDIN_INVESTIGATION_AND_TRACKING.md");
   const investigationText = readFileSync(investigationPath, "utf8");
   assert.match(investigationText, /Manual Testing Scenarios and Steps/i);
   assert.match(investigationText, /excel-context-citations/);

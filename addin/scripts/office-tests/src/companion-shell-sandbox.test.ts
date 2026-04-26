@@ -12,7 +12,7 @@ import {
   type ShellSandboxRunner,
   type ShellSandboxRunnerRequest,
   type ShellSandboxRunnerResult,
-} from "../../../apps/companion/src/shell-sandbox.js";
+} from "../../../../companion/src/shell-sandbox.js";
 
 class FakeShellRunner implements ShellSandboxRunner {
   readonly backend = "test" as const;

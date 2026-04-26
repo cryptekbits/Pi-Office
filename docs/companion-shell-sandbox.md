@@ -92,8 +92,8 @@ Before shell can become available, automated probes must prove:
 ## Current Implementation Status
 
 - The active companion exposes read-only file tools, read-only MCP execution, and fail-closed shell sandbox capability/execution routes.
-- `apps/companion/src/shell-sandbox.ts` now implements the policy engine, platform/backend detection, destructive policy probes, execution result shape, environment scrubbing, timeout/output-cap plumbing, and a custom Pi `BashOperations` adapter that routes through the companion sandbox instead of local raw bash.
+- `companion/src/shell-sandbox.ts` now implements the policy engine, platform/backend detection, destructive policy probes, execution result shape, environment scrubbing, timeout/output-cap plumbing, and a custom Pi `BashOperations` adapter that routes through the companion sandbox instead of local raw bash.
 - The companion exposes shell capability discovery plus `/v1/sessions/:sessionId/shell/execute`, but the route returns structured denied/unavailable results unless the sandbox capability is `available`.
 - The taskpane only publishes a `bash` tool when a saved-document session has a connected companion whose shell capability state is `available`; default taskpane sessions still have no `bash`, `edit`, or `write` tool.
-- `scripts/office-tests/src/companion-shell-sandbox.test.ts` covers default-disabled detection, degraded platform fallback, destructive policy probes, scratch-only writes, unavailable execution, environment scrubbing, output caps, timeouts, and the custom `BashOperations` adapter.
-- `scripts/office-tests/src/external-context-gaps.test.ts` asserts that raw `bash`, `edit`, and `write` tools are not present by default and that companion shell execution goes through `CompanionShellSandbox`.
+- `addin/scripts/office-tests/src/companion-shell-sandbox.test.ts` covers default-disabled detection, degraded platform fallback, destructive policy probes, scratch-only writes, unavailable execution, environment scrubbing, output caps, timeouts, and the custom `BashOperations` adapter.
+- `addin/scripts/office-tests/src/external-context-gaps.test.ts` asserts that raw `bash`, `edit`, and `write` tools are not present by default and that companion shell execution goes through `CompanionShellSandbox`.

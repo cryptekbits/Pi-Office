@@ -454,8 +454,8 @@ test("raw shell tools stay unavailable unless the companion sandbox reports avai
   assert.equal(toolNames.has("read"), false, "External file tools require a connected companion and saved-folder session binding.");
   socket.close();
 
-  const companionServer = readFileSync(join(process.cwd(), "apps", "companion", "src", "server.ts"), "utf8");
-  const shellSandbox = readFileSync(join(process.cwd(), "apps", "companion", "src", "shell-sandbox.ts"), "utf8");
+  const companionServer = readFileSync(join(process.cwd(), "..", "companion", "src", "server.ts"), "utf8");
+  const shellSandbox = readFileSync(join(process.cwd(), "..", "companion", "src", "shell-sandbox.ts"), "utf8");
   assert.match(companionServer, /\/v1\/sessions\/:sessionId\/shell\/execute/);
   assert.match(companionServer, /CompanionShellSandbox/);
   assert.match(companionServer, /\/v1\/sessions\/:sessionId\/files\/:toolName/);

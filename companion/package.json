@@ -6,8 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "pretypecheck": "npm run build --prefix ../../packages/pi-office-pack",
-    "prebuild": "npm run build --prefix ../../packages/pi-office-pack",
+    "pretypecheck": "npm run build --prefix ../addin/packages/pi-office-pack",
+    "prebuild": "npm run build --prefix ../addin/packages/pi-office-pack",
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -15,7 +15,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@mariozechner/pi-coding-agent": "0.64.0",
-    "@pi-office/pi-office-pack": "file:../../packages/pi-office-pack",
+    "@pi-office/pi-office-pack": "file:../addin/packages/pi-office-pack",
     "express": "^4.21.2"
   },
   "devDependencies": {

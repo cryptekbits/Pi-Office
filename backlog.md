@@ -51,7 +51,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] The UI cannot manually approve OAuth completion in a way that bypasses the contract.
     - [x] Importing a connector bundle never creates usable OAuth state without a verified credential or token.
     - [x] Connector status clearly reports incomplete, failed, and expired OAuth flows.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/app/components/IntegrationsSection.tsx` sending `approved: true`, `apps/taskpane/src/lib/runtime/browser-connectors.ts` setting OAuth state from that flag, `getExportBundle` exporting `credentialSource` without secrets, and `applyImport` setting `oauthConnected` from the imported credential source. 2026-04-26 hardening removed the visible manual "Complete sign-in" UI path, changed callback completion to remain incomplete without a verified credential handoff, and reset imported OAuth connectors to `oauthConnected: false`. 2026-04-26 closure removed the remaining manual completion callback path from Settings/Integrations UI, replaced the callback contract with `ConnectorOAuthCredentialHandoff`, requires a verified access-token handoff before setting `oauthConnected: true`, preserves OAuth tokens only in secret storage fields, normalizes old/imported OAuth records without tokens back to `auth_required`, and surfaces re-auth reasons through `lastError`/diagnostics. Tests in `scripts/office-tests/src/external-context-gaps.test.ts` cover no-token, cancelled, state-mismatch, expired, success, export-without-secret, and import-reset paths. Validation: `npm run test:office` passed with 92 tests; `npm run typecheck` passed.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/app/components/IntegrationsSection.tsx` sending `approved: true`, `addin/apps/taskpane/src/lib/runtime/browser-connectors.ts` setting OAuth state from that flag, `getExportBundle` exporting `credentialSource` without secrets, and `applyImport` setting `oauthConnected` from the imported credential source. 2026-04-26 hardening removed the visible manual "Complete sign-in" UI path, changed callback completion to remain incomplete without a verified credential handoff, and reset imported OAuth connectors to `oauthConnected: false`. 2026-04-26 closure removed the remaining manual completion callback path from Settings/Integrations UI, replaced the callback contract with `ConnectorOAuthCredentialHandoff`, requires a verified access-token handoff before setting `oauthConnected: true`, preserves OAuth tokens only in secret storage fields, normalizes old/imported OAuth records without tokens back to `auth_required`, and surfaces re-auth reasons through `lastError`/diagnostics. Tests in `addin/scripts/office-tests/src/external-context-gaps.test.ts` cover no-token, cancelled, state-mismatch, expired, success, export-without-secret, and import-reset paths. Validation: `npm run test:office` passed with 92 tests; `npm run typecheck` passed.
 
 - [x] SECURITY-002: Tool permission prompts time out as allow-by-default
   - Category: Security
@@ -69,7 +69,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] No permission request can become allowed without an explicit user action or a pre-existing approved policy.
     - [x] Timed-out requests are visible as expired/denied and do not execute.
     - [x] Automated tests prove timeout, disconnect, and cleanup paths fail closed.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` resolving allowed on timeout and `packages/pi-office-pack/src/protocol.ts` defining tool categories/autonomy levels. 2026-04-26 hardening changed timeout resolution to `allowed: false`, added a `tool_permission_expired` bridge event, clears the visible prompt when the matching request expires, and added a static regression test in `scripts/office-tests/src/runtime-permission-policy.test.ts`. 2026-04-26 closure added protocol-level coverage in `scripts/office-tests/src/protocol-parity.test.ts` proving write-doc, connector, read-external, and write-external permission timeouts resolve denied; existing disconnect coverage rejects pending permission prompts when the bridge closes; new cleanup coverage rejects pending permissions when a session is force-reopened/disposed. Validation: `npm run test:office` passed with 89 tests.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` resolving allowed on timeout and `addin/packages/pi-office-pack/src/protocol.ts` defining tool categories/autonomy levels. 2026-04-26 hardening changed timeout resolution to `allowed: false`, added a `tool_permission_expired` bridge event, clears the visible prompt when the matching request expires, and added a static regression test in `addin/scripts/office-tests/src/runtime-permission-policy.test.ts`. 2026-04-26 closure added protocol-level coverage in `addin/scripts/office-tests/src/protocol-parity.test.ts` proving write-doc, connector, read-external, and write-external permission timeouts resolve denied; existing disconnect coverage rejects pending permission prompts when the bridge closes; new cleanup coverage rejects pending permissions when a session is force-reopened/disposed. Validation: `npm run test:office` passed with 89 tests.
 
 - [x] SECURITY-003: `office_execute_js` raw Office.js escape hatch can be auto-approved as a normal document write
   - Category: Security
@@ -88,7 +88,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] `office_execute_js` cannot execute under default medium autonomy without explicit approval.
     - [x] Regex gating is not presented as an isolated sandbox.
     - [x] Tests cover auto-approval, explicit approval, explicit denial, and blocked-code paths.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/office/document-tools.ts` using `new Function`, `packages/pi-office-pack/src/protocol.ts` mapping `office_execute_js` to `write-doc`, and the default `autonomyLevel: "medium"`. 2026-04-26 hardening introduced the `escape-hatch` tool category, moved `office_execute_js` into it, excluded it from all autonomy auto-approval sets, and added tests proving it stays manual-only. 2026-04-26 closure normalized escape-hatch permission responses to `scope: "once"` even if a client sends `scope: "session"`, limited the permission popup to one-time approval for escape-hatch requests, and added protocol/UI contract tests for medium/high/extreme autonomy, explicit denial, explicit approval, attempted session approval, and blocked-code paths. Existing first-class tool inventory/registration tests and tool descriptions route common Office work toward structured tools before raw execution. Validation: `npm run test:office` passed with 91 tests; `npm run typecheck:taskpane` passed.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` using `new Function`, `addin/packages/pi-office-pack/src/protocol.ts` mapping `office_execute_js` to `write-doc`, and the default `autonomyLevel: "medium"`. 2026-04-26 hardening introduced the `escape-hatch` tool category, moved `office_execute_js` into it, excluded it from all autonomy auto-approval sets, and added tests proving it stays manual-only. 2026-04-26 closure normalized escape-hatch permission responses to `scope: "once"` even if a client sends `scope: "session"`, limited the permission popup to one-time approval for escape-hatch requests, and added protocol/UI contract tests for medium/high/extreme autonomy, explicit denial, explicit approval, attempted session approval, and blocked-code paths. Existing first-class tool inventory/registration tests and tool descriptions route common Office work toward structured tools before raw execution. Validation: `npm run test:office` passed with 91 tests; `npm run typecheck:taskpane` passed.
 
 - [ ] SECURITY-004: Add taskpane CSP/security policy and public privacy/storage disclosure
   - Category: Security
@@ -143,17 +143,17 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] No raw host bash is available from the add-in or companion by default.
     - [x] Shell commands cannot modify user workspace/document files outside the approved scratch path.
     - [x] Sandbox probes prove denied filesystem, secret, and network operations fail closed before shell is enabled.
-  - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second. 2026-04-26 first slice added `docs/companion-shell-sandbox.md` with the required policy, platform backends, protocol contract, and destructive probes; README then stated shell/bash was unavailable until that policy was implemented; `scripts/office-tests/src/external-context-gaps.test.ts` asserted the active session did not expose `bash`, `edit`, or `write` tools and the companion server had no shell/bash/exec route. 2026-04-26 closure added shared shell capability/request/result protocol types, `apps/companion/src/shell-sandbox.ts` with fail-closed backend detection, policy validation, destructive probes, environment scrubbing, output caps, timeout plumbing, and `createCompanionBashOperations`; companion health/session routes now expose shell capability and a sandboxed execute endpoint that returns unavailable/denied unless the sandbox state is `available`; the taskpane only publishes `bash` for saved documents with a connected companion whose sandbox capability is available. Tests in `scripts/office-tests/src/companion-shell-sandbox.test.ts` cover default-disabled detection, degraded Windows/Linux/macOS-style fallback, destructive probes, scratch-only writes, unavailable execution, env scrubbing, output caps, timeouts, and the BashOperations adapter. `scripts/office-tests/src/external-context-gaps.test.ts` proves default sessions still expose no raw `bash`, `edit`, or `write` tools and that companion shell routing goes through `CompanionShellSandbox`. Validation: `npm run test:office` passed with 98 tests; `npm run typecheck:taskpane` and `npm run typecheck:companion` passed.
+  - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second. 2026-04-26 first slice added `docs/companion-shell-sandbox.md` with the required policy, platform backends, protocol contract, and destructive probes; README then stated shell/bash was unavailable until that policy was implemented; `addin/scripts/office-tests/src/external-context-gaps.test.ts` asserted the active session did not expose `bash`, `edit`, or `write` tools and the companion server had no shell/bash/exec route. 2026-04-26 closure added shared shell capability/request/result protocol types, `companion/src/shell-sandbox.ts` with fail-closed backend detection, policy validation, destructive probes, environment scrubbing, output caps, timeout plumbing, and `createCompanionBashOperations`; companion health/session routes now expose shell capability and a sandboxed execute endpoint that returns unavailable/denied unless the sandbox state is `available`; the taskpane only publishes `bash` for saved documents with a connected companion whose sandbox capability is available. Tests in `addin/scripts/office-tests/src/companion-shell-sandbox.test.ts` cover default-disabled detection, degraded Windows/Linux/macOS-style fallback, destructive probes, scratch-only writes, unavailable execution, env scrubbing, output caps, timeouts, and the BashOperations adapter. `addin/scripts/office-tests/src/external-context-gaps.test.ts` proves default sessions still expose no raw `bash`, `edit`, or `write` tools and that companion shell routing goes through `CompanionShellSandbox`. Validation: `npm run test:office` passed with 98 tests; `npm run typecheck:taskpane` and `npm run typecheck:companion` passed.
 
 - [ ] SECURITY-007: Audit third-party connector logo licensing and source provenance before public packaging
   - Category: Security
   - Status: open
   - Priority: P1
   - Source: 2026-04-26 `SECURITY-005` provenance audit.
-  - Details: The active taskpane contains connector logo/image assets under `apps/taskpane/public/connectors`. They are not copied competitor-add-in assets, but they are third-party vendor-identification marks and should have source/license notes or neutral fallback badges before a public package/release is cut.
+  - Details: The active taskpane contains connector logo/image assets under `addin/apps/taskpane/public/connectors`. They are not copied competitor-add-in assets, but they are third-party vendor-identification marks and should have source/license notes or neutral fallback badges before a public package/release is cut.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Inventory every connector image/SVG under `apps/taskpane/public/connectors`.
+    - [ ] Inventory every connector image/SVG under `addin/apps/taskpane/public/connectors`.
     - [ ] Record source, license, trademark usage note, and replacement/fallback plan for each asset.
     - [ ] Replace any asset that lacks acceptable source/license provenance with an original neutral badge or generated non-brand icon.
     - [ ] Add a release check or doc section proving packaged connector assets match the approved inventory.
@@ -180,7 +180,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] `npm run build` works on a clean checkout with no `certs/` directory.
     - [x] `npm run dev` still uses the trusted local HTTPS certs and fails with clear guidance when they are missing.
     - [x] GitHub Actions can run install, typecheck, build, bundle budget, manifest validation, and Office tests without local-only files.
-  - Notes/Evidence: Review pointed to `.github/workflows/ci.yml`, `.gitignore`, and `apps/taskpane/vite.config.ts`. Fixed in `a8a5a0d` and `43b2a5b`: CI now runs install/typecheck/build/bundle/manifests/Office tests, preflight scripts validate cert and sideload resources, and Vite reads cert files only for `serve`. Validation included `npm run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, `npm run test:office`, `npm run preflight:dev`, and `npm run build:taskpane` with `certs/` temporarily absent.
+  - Notes/Evidence: Review pointed to `.github/workflows/ci.yml`, `.gitignore`, and `addin/apps/taskpane/vite.config.ts`. Fixed in `a8a5a0d` and `43b2a5b`: CI now runs install/typecheck/build/bundle-budget/manifest validation/Office tests, preflight scripts validate cert and sideload resources, and Vite reads cert files only for `serve`. Validation included `npm run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, `npm run test:office`, `npm run preflight:dev`, and `npm run build:taskpane` with `certs/` temporarily absent.
 
 - [x] BUG-002: Remote HTTP connectors are marked executable but do not appear to be exposed to the agent
   - Category: Bug
@@ -198,7 +198,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] A connector shown as execution-available is callable by Pi in the active session.
     - [x] A connector not callable by Pi is visibly marked unavailable or setup-only.
     - [x] Remote HTTP and local stdio connector behavior is covered by tests.
-  - Notes/Evidence: Review pointed to `buildCompanionSessionConnectors` filtering `local_stdio`, non-local statuses receiving `executionAvailable: true`, and only companion-backed `mcp` tool registration. 2026-04-26 fix chose setup-only browser behavior until remote MCP execution exists, updated runtime metadata/diagnostics/README, and added `remote HTTP connectors are marked setup-only until browser execution exists` in `scripts/office-tests/src/external-context-gaps.test.ts`.
+  - Notes/Evidence: Review pointed to `buildCompanionSessionConnectors` filtering `local_stdio`, non-local statuses receiving `executionAvailable: true`, and only companion-backed `mcp` tool registration. 2026-04-26 fix chose setup-only browser behavior until remote MCP execution exists, updated runtime metadata/diagnostics/README, and added `remote HTTP connectors are marked setup-only until browser execution exists` in `addin/scripts/office-tests/src/external-context-gaps.test.ts`.
 
 - [ ] BUG-003: Local stdio connector credential and environment propagation is incomplete
   - Category: Bug
@@ -216,13 +216,13 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Local stdio connectors receive required credentials through the intended env variable.
     - [ ] Custom env does not break command discovery or PATH-dependent launches.
     - [ ] Secrets are not printed in diagnostics, status cards, logs, or exported connector bundles.
-  - Notes/Evidence: Review pointed to `apps/companion/src/connector-bridge.ts` computing credentials but building local runtime without credential injection.
+  - Notes/Evidence: Review pointed to `companion/src/connector-bridge.ts` computing credentials but building local runtime without credential injection.
 
 - [ ] BUG-004: Office state refresh race and deduping follow-up
   - Category: Bug
   - Status: open
   - Priority: P2
-  - Source: `TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS5 and observation mapping.
+  - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS5 and observation mapping.
   - Details: The transition plan called out office state refresh race potential during the independent taskpane migration. Selection-change handlers, polling, and session state sync can overlap in Office hosts, especially Word desktop, leading to noisy refresh failures or stale document/selection state.
   - Dependencies: None.
   - Subtasks:
@@ -253,7 +253,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] A newly saved key is not labeled fully ready unless it has been verified or successfully used.
     - [ ] Auth failures update provider status visibly.
     - [ ] Model selection cannot imply a provider is usable when only an unverified credential string exists.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` accepting API keys and using `hasAuth`, plus `apps/taskpane/src/app/components/SettingsPage.tsx` deriving ready counts from model `configured`.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` accepting API keys and using `hasAuth`, plus `addin/apps/taskpane/src/app/components/SettingsPage.tsx` deriving ready counts from model `configured`.
 
 - [ ] BUG-006: Image-generation UI and catalog imply providers that browser runtime cannot execute
   - Category: Bug
@@ -271,7 +271,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] The UI never lists an image provider as usable unless runtime execution exists.
     - [ ] Unsupported image providers fail at configuration/catalog time with clear messaging, not only during generation.
     - [ ] Tests cover image-provider catalog/runtime consistency.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/app/components/SettingsPage.tsx` mentioning OpenAI/Google/OpenRouter and `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` throwing for non-OpenAI image generation.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/app/components/SettingsPage.tsx` mentioning OpenAI/Google/OpenRouter and `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` throwing for non-OpenAI image generation.
 
 - [ ] BUG-007: Visual capture tools overstate screenshot and range-image fidelity
   - Category: Bug
@@ -289,7 +289,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Tool descriptions and Settings copy do not claim pixel screenshots or range imagery unless actually produced.
     - [ ] Word layout prompts clearly distinguish metadata/context-derived views from true screenshots.
     - [ ] Excel visual range workflows either return a real image of the requested range or report the limitation clearly.
-  - Notes/Evidence: Review pointed to `office_capture_viewport` comments in `apps/taskpane/src/lib/office-bridge.ts`, `read_range_image` fallback in `apps/taskpane/src/lib/office/excel-context.ts`, and Settings tool descriptions.
+  - Notes/Evidence: Review pointed to `office_capture_viewport` comments in `addin/apps/taskpane/src/lib/office-bridge.ts`, `read_range_image` fallback in `addin/apps/taskpane/src/lib/office/excel-context.ts`, and Settings tool descriptions.
 
 - [ ] BUG-008: Excel rewind restores values and number formats but drops formulas
   - Category: Bug
@@ -307,7 +307,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Rewinding an Excel checkpoint preserves formulas for captured formula cells.
     - [ ] The tool reports any unsupported workbook elements that were not restored.
     - [ ] Tests protect DCF-style workbook formulas from value-only flattening.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/office/document-tools.ts` loading `formulas` during capture but restoring only values and number formats.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` loading `formulas` during capture but restoring only values and number formats.
 
 - [ ] BUG-009: PowerPoint shape anchoring and slide-master tooling can mislead agents
   - Category: Bug
@@ -325,7 +325,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Selected shape anchors resolve to the actual slide instead of defaulting to the first slide.
     - [ ] `edit_slide_master` naming and behavior match exactly.
     - [ ] Tests cover at least one multi-slide or non-first-slide shape operation.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/office/powerpoint-context.ts` using `slides.items[0]` for selected shapes and `apps/taskpane/src/lib/office-bridge.ts` limiting `edit_slide_master` to apply-layout operations.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/powerpoint-context.ts` using `slides.items[0]` for selected shapes and `addin/apps/taskpane/src/lib/office-bridge.ts` limiting `edit_slide_master` to apply-layout operations.
 
 ### Features
 
@@ -333,7 +333,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Category: Feature
   - Status: open
   - Priority: P2
-  - Source: `TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS3; parked/deferred by stakeholder.
+  - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS3; parked/deferred by stakeholder.
   - Details: Saved-document mode should eventually expose workspace-aware filesystem/coding-agent class capabilities, but only with strict saved-folder binding and policy controls. Unsaved documents must remain without local filesystem access. Current architecture treats the optional companion as the local file/MCP capability provider, so this task must align with that direction and avoid resurrecting companion-era runtime assumptions.
   - Dependencies: SECURITY-001, BUG-003, and any final architecture decision about optional companion versus browser-only file tooling.
   - Subtasks:
@@ -384,7 +384,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] The package ships multiple domain-specific workflow packs beyond generic Office tool prompts.
     - [ ] Workflows include verification and review criteria, not only generation instructions.
     - [ ] Users can invoke or discover workflows from the taskpane without reading code.
-  - Notes/Evidence: Competitor review highlighted Claude's host playbooks and the local `packages/pi-office-pack/skills` surface as a place to grow.
+  - Notes/Evidence: Competitor review highlighted Claude's host playbooks and the local `addin/packages/pi-office-pack/skills` surface as a place to grow.
 
 - [ ] FEATURE-004: Expand first-class native Office editing coverage for professional document work
   - Category: Feature
@@ -441,7 +441,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Office.js calls still execute only inside the active Office taskpane.
     - [ ] Switching Basic -> Advanced preserves non-secret preferences automatically and handles secrets through an explicit safe migration flow.
     - [ ] Reconnect/fallback behavior is visible and tested.
-  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `apps/companion/src/server.ts` only exposes health, read-only file tools, and MCP execution.
+  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `companion/src/server.ts` only exposes health, read-only file tools, and MCP execution.
 
 ### Improvements
 
@@ -467,7 +467,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Category: Improvement
   - Status: open
   - Priority: P2
-  - Source: `TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS6 and risk list.
+  - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS6 and risk list.
   - Details: The architecture now separates the independent taskpane from an optional companion. Release packaging must make clear what ships as the Office taskpane, what is optional local companion functionality, how certs/dev-only assets are handled, and what users need for sideload versus packaged deployment.
   - Dependencies: BUG-001 and connector execution decisions in BUG-002.
   - Subtasks:
@@ -486,7 +486,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Status: open
   - Priority: P2
   - Source: 2026-04-26 Office-host and competitor/inspiration review.
-  - Details: Tool contracts and descriptions are duplicated across `packages/pi-office-pack`, the in-process kernel, the Office bridge, and Settings UI. This creates drift: for example, Settings calls `office_capture_snapshot` a visual screenshot while the actual implementation is selection/context snapshots plus metadata, and PowerPoint `edit_slide_master` wording is broader than its current apply-layout behavior. A single source or generated registry would make capability honesty easier to preserve.
+  - Details: Tool contracts and descriptions are duplicated across `addin/packages/pi-office-pack`, the in-process kernel, the Office bridge, and Settings UI. This creates drift: for example, Settings calls `office_capture_snapshot` a visual screenshot while the actual implementation is selection/context snapshots plus metadata, and PowerPoint `edit_slide_master` wording is broader than its current apply-layout behavior. A single source or generated registry would make capability honesty easier to preserve.
   - Dependencies: BUG-007 and BUG-009 for known contract mismatches.
   - Subtasks:
     - [ ] Inventory all Office tool names, labels, descriptions, categories, parameters, and runtime support paths.
@@ -497,7 +497,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Each Office tool has one canonical capability description consumed by the UI and runtime where feasible.
     - [ ] Tests catch obvious drift between advertised and executable tool behavior.
     - [ ] User-facing copy clearly marks host-only, metadata-only, experimental, or escape-hatch tools.
-  - Notes/Evidence: Review pointed to `packages/pi-office-pack/src/extension.ts`, `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `apps/taskpane/src/lib/office-bridge.ts`, and `apps/taskpane/src/app/components/SettingsPage.tsx`.
+  - Notes/Evidence: Review pointed to `addin/packages/pi-office-pack/src/extension.ts`, `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `addin/apps/taskpane/src/lib/office-bridge.ts`, and `addin/apps/taskpane/src/app/components/SettingsPage.tsx`.
 
 - [ ] IMPROVEMENT-004: Build a professional PowerPoint visual asset and icon pipeline
   - Category: Improvement
@@ -515,7 +515,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Inserted icons/assets render professionally in PowerPoint rather than as plain glyph placeholders except when explicitly requested.
     - [ ] Asset insertion reports source, format, and fallback behavior.
     - [ ] At least one deck-quality asset workflow is validated in PowerPoint.
-  - Notes/Evidence: Review pointed to the small runtime icon catalog and glyph-textbox insertion path in `apps/taskpane/src/lib/office/powerpoint-actions.ts`, plus ChatGPT inspiration assets around generated slide stores and slide screenshots.
+  - Notes/Evidence: Review pointed to the small runtime icon catalog and glyph-textbox insertion path in `addin/apps/taskpane/src/lib/office/powerpoint-actions.ts`, plus ChatGPT inspiration assets around generated slide stores and slide screenshots.
 
 - [ ] IMPROVEMENT-005: Simplify provider, model, and settings UX into guided and advanced surfaces
   - Category: Improvement
@@ -535,7 +535,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Advanced users can still find and enable the complete catalog.
     - [ ] Regional/enterprise-risk providers are clearly labeled and not enabled by default.
     - [ ] Model lists avoid stale versions when newer replacements exist unless the user enables advanced/legacy mode.
-  - Notes/Evidence: 2026-04-26 review found default enabled models/providers include broad Pi catalog entries, China-linked/regional providers, and old model revisions in `apps/taskpane/src/hooks/usePreferences.ts`, with Settings rendering all enabled-provider models together. 2026-04-26 hardening narrowed the default shortlist to OpenAI, Anthropic, and Google current/recommended entries and added `scripts/office-tests/src/model-curation.test.ts`; full metadata, regional labeling, and guided/advanced IA remain open.
+  - Notes/Evidence: 2026-04-26 review found default enabled models/providers include broad Pi catalog entries, China-linked/regional providers, and old model revisions in `addin/apps/taskpane/src/hooks/usePreferences.ts`, with Settings rendering all enabled-provider models together. 2026-04-26 hardening narrowed the default shortlist to OpenAI, Anthropic, and Google current/recommended entries and added `addin/scripts/office-tests/src/model-curation.test.ts`; full metadata, regional labeling, and guided/advanced IA remain open.
 
 ### Testing
 
@@ -543,7 +543,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Category: Testing
   - Status: open
   - Priority: P1
-  - Source: `TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` P0 checklist.
+  - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` P0 checklist.
   - Details: The transition plan marked many core regressions fixed, but left an unchecked task to add failing tests for those regressions where feasible. Future work should ensure that encrypted auth migration, saved-mode prompt behavior, checkpoint route handling, focus/scroll stability, preflight behavior, and lockfile/workspace drift are covered by automated or targeted smoke tests as appropriate.
   - Dependencies: BUG-001 for CI clean-checkout viability.
   - Subtasks:
@@ -562,7 +562,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Category: Testing
   - Status: open
   - Priority: P1
-  - Source: `TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` validation matrix.
+  - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` validation matrix.
   - Details: The automated validation matrix was marked complete in the transition plan, but the manual Word desktop first scenarios remain unchecked. These scenarios matter because Office taskpane focus, scroll, OAuth, connector execution, checkpoint rewind, and viewport capture behavior can differ in the real desktop host from browser or unit-test behavior.
   - Dependencies: BUG-001, BUG-002, SECURITY-001, and BUG-003 for meaningful connector/OAuth validation.
   - Subtasks:

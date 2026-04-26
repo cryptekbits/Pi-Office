@@ -48,7 +48,8 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - The durable product goal is an open-source, provider-flexible, privacy-conscious Office AI workbench that can use a user's existing AI subscription/provider access instead of locking them into one expensive enterprise assistant.
 - The originality policy is idea-level inspiration only: competitor captures can guide capability analysis, but Pi-Office must use original code, prompts, UI text, assets, and public API implementations.
 - Advanced companion direction is now explicit: companion-owned inference/providers/MCP/non-Office tools, with taskpane-owned Office.js execution and seamless settings migration from taskpane-only mode.
-- The active surface is `apps/taskpane` plus `packages/pi-office-pack`; companion-era code is archival unless a task explicitly scopes it back in.
+- The active add-in surface now lives under `addin/`: `addin/apps/taskpane`, `addin/packages/pi-office-pack`, `addin/manifests`, and `addin/scripts`. The optional companion is split into the top-level `companion/` package; old companion-era archive references remain archival unless a task explicitly scopes them back in.
+- The repo root is a lightweight command router. Add-in dependencies and lockfile live in `addin/`; companion dependencies and lockfile live in `companion/`; there is no Turbo/Nx workspace layer.
 - The repo now has a canonical `backlog.md` for review findings, feature gaps, bugs, improvements, security items, and testing work, with IDs intended to be referenced in commits and future implementation.
 - The 2026-04-26 implementation review identified release-blocking "capability honesty" work around OAuth, remote connectors, provider readiness, raw Office.js execution, permission prompts, visual capture fidelity, and privacy/storage disclosure.
 - Current hardening makes tool permissions fail closed on timeout, makes `office_execute_js` a manual-only escape hatch category, prevents connector imports/OAuth completion from creating false connected OAuth state, and marks remote HTTP connectors setup-only until execution exists.
@@ -73,6 +74,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - 2026-04-26: Closed `SECURITY-005` by turning provenance notes into an audit matrix with evidence commands, adding contributor originality guidance, linking it from README, and replacing a copied-looking competitor reference in CSS; created `SECURITY-007` for third-party connector logo source/licensing review.
 - 2026-04-26: Started `SECURITY-006` with a companion shell sandbox policy doc, README warning, and no-raw-shell regression coverage for active taskpane tools and companion routes; full sandbox backend/probes are still pending.
 - 2026-04-26: Closed `SECURITY-006` by adding shared shell capability protocol, `CompanionShellSandbox`, capability/execute routes, taskpane `bash` gating behind available sandbox state, policy/destructive probe tests, environment scrubbing, output caps/timeouts, and a custom Pi `BashOperations` adapter; `npm run test:office` passed with 98 tests and companion/taskpane typechecks passed.
+- 2026-04-26: Refactored the repository into independent `addin/`, `companion/`, `website/`, and `docs/` areas, keeping the root as a normal npm script router and preserving add-in/companion behavior with path-only config, CI, test, and documentation updates.
 
 ## Core rules
 
@@ -80,7 +82,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - Keep Git configuration repo-local only.
 - Treat Pi as an external dependency, not vendored source.
 - Keep host-side `Office.js` execution separate from Pi runtime and auth concerns.
-- Treat companion-era references as archival unless a task explicitly says to touch them.
+- Treat old companion-era archive references as archival unless a task explicitly says to touch them.
 
 ## Backlog stewardship
 
@@ -104,11 +106,13 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 
 ## Repo shape
 
-- `apps/taskpane`: Office-hosted React UI and Office bridge executor
-- `apps/companion`: archived/removed active runtime; do not treat as the current architecture
-- `packages/pi-office-pack`: Office-specific Pi package
-- `manifests`: host-specific XML manifests
-- `scripts`: validation and local setup helpers
+- `addin/apps/taskpane`: Office-hosted React UI and Office bridge executor
+- `addin/packages/pi-office-pack`: Office-specific Pi package
+- `addin/manifests`: host-specific XML manifests
+- `addin/scripts`: add-in validation and local setup helpers
+- `companion`: optional local companion package for read-only file/MCP support and gated sandbox capability
+- `website`: placeholder for the future public website
+- `docs`: detailed project docs, trackers, provenance notes, and design references
 
 ## Quality bar
 

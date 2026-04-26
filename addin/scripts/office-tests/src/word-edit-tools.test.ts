@@ -349,7 +349,7 @@ test("Word guidance aligns first-class review/editing contract with runtime cons
 });
 
 test("investigation artifact includes Word manual checklist scenarios for anchors, structured edits, visual verification, and taskpane stability", () => {
-  const investigationPath = join(process.cwd(), "CLAUDE_ADDIN_INVESTIGATION_AND_TRACKING.md");
+  const investigationPath = join(process.cwd(), "..", "docs", "CLAUDE_ADDIN_INVESTIGATION_AND_TRACKING.md");
   const investigationText = readFileSync(investigationPath, "utf8");
   assert.match(investigationText, /Manual Testing Scenarios and Steps/i);
   assert.match(investigationText, /word-review-anchors/);
