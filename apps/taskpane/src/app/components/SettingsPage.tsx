@@ -9,7 +9,6 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
-  ConnectorOAuthCallbackResponse,
   ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
@@ -125,13 +124,6 @@ interface SettingsPageProps {
   onTestConnector: (request: ConnectorSetupRequest) => Promise<ConnectorTestResponse>;
   onReverifyConnector: (connectorId: string, scopeContext?: ConnectorScopeContext) => Promise<ConnectorTestResponse>;
   onStartConnectorOAuth: (connectorId: string) => Promise<ConnectorOAuthStartResponse>;
-  onCompleteConnectorOAuth: (request: {
-    connectorId: string;
-    state: string;
-    approved?: boolean;
-    error?: string;
-    expiresInSeconds?: number;
-  }) => Promise<ConnectorOAuthCallbackResponse>;
   onRemoveConnector: (storedConnectorId: string) => Promise<void>;
   onSetConnectorFavorite: (request: ConnectorFavoriteRequest) => Promise<void>;
   onUpdateConnectorScope: (request: ConnectorScopeUpdateRequest) => Promise<void>;
@@ -173,7 +165,6 @@ export function SettingsPage({
   onTestConnector,
   onReverifyConnector,
   onStartConnectorOAuth,
-  onCompleteConnectorOAuth,
   onRemoveConnector,
   onSetConnectorFavorite,
   onUpdateConnectorScope,
@@ -294,7 +285,6 @@ export function SettingsPage({
               onTestConnector={onTestConnector}
               onReverifyConnector={onReverifyConnector}
               onStartOAuth={onStartConnectorOAuth}
-              onCompleteOAuth={onCompleteConnectorOAuth}
               onRemoveConnector={onRemoveConnector}
               onSetFavorite={onSetConnectorFavorite}
               onUpdateScope={onUpdateConnectorScope}

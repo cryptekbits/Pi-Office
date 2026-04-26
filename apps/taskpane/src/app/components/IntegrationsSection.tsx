@@ -9,7 +9,6 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
-  ConnectorOAuthCallbackResponse,
   ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
@@ -80,13 +79,6 @@ interface IntegrationsSectionProps {
   onTestConnector: (request: ConnectorSetupRequest) => Promise<ConnectorTestResponse>;
   onReverifyConnector: (connectorId: string, scopeContext?: ConnectorScopeContext) => Promise<ConnectorTestResponse>;
   onStartOAuth: (connectorId: string) => Promise<ConnectorOAuthStartResponse>;
-  onCompleteOAuth: (request: {
-    connectorId: string;
-    state: string;
-    approved?: boolean;
-    error?: string;
-    expiresInSeconds?: number;
-  }) => Promise<ConnectorOAuthCallbackResponse>;
   onRemoveConnector: (storedConnectorId: string) => Promise<void>;
   onSetFavorite: (request: ConnectorFavoriteRequest) => Promise<void>;
   onUpdateScope: (request: ConnectorScopeUpdateRequest) => Promise<void>;
@@ -384,7 +376,6 @@ export function IntegrationsSection({
   onTestConnector,
   onReverifyConnector,
   onStartOAuth,
-  onCompleteOAuth,
   onRemoveConnector,
   onSetFavorite,
   onUpdateScope,
@@ -402,7 +393,7 @@ export function IntegrationsSection({
   const [draft, setDraft] = useState<ConnectorDraftState>();
   const [loadingPrepare, setLoadingPrepare] = useState(false);
   const [working, setWorking] = useState<"testing" | "saving" | "oauth" | "removing" | "reverify" | "export" | "import" | undefined>();
-  const [result, setResult] = useState<ConnectorTestResponse | ConnectorSetupResponse | ConnectorOAuthCallbackResponse>();
+  const [result, setResult] = useState<ConnectorTestResponse | ConnectorSetupResponse>();
   const [logs, setLogs] = useState<ConnectorLogResponse>();
   const [importPreview, setImportPreview] = useState<ConnectorImportPreviewResponse>();
   const [pendingOAuth, setPendingOAuth] = useState<Record<string, PendingOAuthState>>({});
@@ -582,41 +573,6 @@ export function IntegrationsSection({
         },
       }));
       setLiveMessage("OAuth sign-in started. Complete sign-in after authenticating in the browser.");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setWorking(undefined);
-    }
-  }
-
-  async function handleCompleteOAuth(targetId?: string) {
-    const connectorId = targetId ?? selectedStatus?.id;
-    if (!connectorId) {
-      setError("No connector is selected for OAuth completion.");
-      return;
-    }
-    const pending = pendingOAuth[connectorId];
-    if (!pending) {
-      setError("No OAuth sign-in is pending. Start sign-in first.");
-      return;
-    }
-    setWorking("oauth");
-    setError(undefined);
-    try {
-      const response = await onCompleteOAuth({
-        connectorId,
-        state: pending.state,
-        approved: true,
-      });
-      setResult(response);
-      setPendingOAuth((current) => {
-        const next = { ...current };
-        delete next[connectorId];
-        return next;
-      });
-      setLiveMessage(response.status.healthState === "ready"
-        ? "Connector sign-in completed."
-        : "Connector sign-in updated; reverify if needed.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {

@@ -33,25 +33,25 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 ### Security
 
-- [ ] SECURITY-001: Connector OAuth can be marked connected without a real callback, token exchange, or imported secret
+- [x] SECURITY-001: Connector OAuth can be marked connected without a real callback, token exchange, or imported secret
   - Category: Security
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-26 worktree review; 2026-04-26 provider/auth/privacy subagent review.
   - Details: The connector OAuth UI currently allows a user to click a "Complete sign-in" action that sends `approved: true` for a pending OAuth state. The browser runtime then sets `credentialSource = "oauth"` and `oauthConnected = true` without proving that a provider callback occurred or that a usable access token/credential was stored. Connector bundle import can also recreate an OAuth-connected record from `credentialSource: "oauth"` even though exports intentionally omit secrets. These paths can produce false "signed in" connector state and may cause later connector execution to fail silently or misleadingly.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Define the supported OAuth contract for connector setup: callback URL, state validation, token/credential source, and failure state.
-    - [ ] Remove or gate any UI path that marks OAuth complete without a real callback or credential handoff.
-    - [ ] Reset imported OAuth connectors to `auth_required` unless a verified secure credential migration path exists.
-    - [ ] Persist only verified OAuth state and keep expired or incomplete flows visible as `auth_required` or `auth_expired`.
-    - [ ] Add tests for success, cancelled, expired, state-mismatch, and no-token OAuth completion paths.
+    - [x] Define the supported OAuth contract for connector setup: callback URL, state validation, token/credential source, and failure state.
+    - [x] Remove or gate any UI path that marks OAuth complete without a real callback or credential handoff.
+    - [x] Reset imported OAuth connectors to `auth_required` unless a verified secure credential migration path exists.
+    - [x] Persist only verified OAuth state and keep expired or incomplete flows visible as `auth_required` or `auth_expired`.
+    - [x] Add tests for success, cancelled, expired, state-mismatch, and no-token OAuth completion paths.
   - Acceptance Criteria:
-    - [ ] A connector cannot become `oauthConnected: true` unless a verified callback or credential exchange has completed.
-    - [ ] The UI cannot manually approve OAuth completion in a way that bypasses the contract.
-    - [ ] Importing a connector bundle never creates usable OAuth state without a verified credential or token.
-    - [ ] Connector status clearly reports incomplete, failed, and expired OAuth flows.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/app/components/IntegrationsSection.tsx` sending `approved: true`, `apps/taskpane/src/lib/runtime/browser-connectors.ts` setting OAuth state from that flag, `getExportBundle` exporting `credentialSource` without secrets, and `applyImport` setting `oauthConnected` from the imported credential source. 2026-04-26 hardening removed the visible manual "Complete sign-in" UI path, changed callback completion to remain incomplete without a verified credential handoff, and reset imported OAuth connectors to `oauthConnected: false`; the full OAuth contract and token exchange work remains open.
+    - [x] A connector cannot become `oauthConnected: true` unless a verified callback or credential exchange has completed.
+    - [x] The UI cannot manually approve OAuth completion in a way that bypasses the contract.
+    - [x] Importing a connector bundle never creates usable OAuth state without a verified credential or token.
+    - [x] Connector status clearly reports incomplete, failed, and expired OAuth flows.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/app/components/IntegrationsSection.tsx` sending `approved: true`, `apps/taskpane/src/lib/runtime/browser-connectors.ts` setting OAuth state from that flag, `getExportBundle` exporting `credentialSource` without secrets, and `applyImport` setting `oauthConnected` from the imported credential source. 2026-04-26 hardening removed the visible manual "Complete sign-in" UI path, changed callback completion to remain incomplete without a verified credential handoff, and reset imported OAuth connectors to `oauthConnected: false`. 2026-04-26 closure removed the remaining manual completion callback path from Settings/Integrations UI, replaced the callback contract with `ConnectorOAuthCredentialHandoff`, requires a verified access-token handoff before setting `oauthConnected: true`, preserves OAuth tokens only in secret storage fields, normalizes old/imported OAuth records without tokens back to `auth_required`, and surfaces re-auth reasons through `lastError`/diagnostics. Tests in `scripts/office-tests/src/external-context-gaps.test.ts` cover no-token, cancelled, state-mismatch, expired, success, export-without-secret, and import-reset paths. Validation: `npm run test:office` passed with 92 tests; `npm run typecheck` passed.
 
 - [x] SECURITY-002: Tool permission prompts time out as allow-by-default
   - Category: Security

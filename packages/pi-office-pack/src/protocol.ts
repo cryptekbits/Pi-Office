@@ -663,11 +663,20 @@ export interface ConnectorOAuthStartResponse {
   expiresAt: string;
 }
 
+export interface ConnectorOAuthCredentialHandoff {
+  accessToken: string;
+  refreshToken?: string | undefined;
+  tokenType?: string | undefined;
+  scope?: string | undefined;
+  expiresAt?: string | undefined;
+  expiresInSeconds?: number | undefined;
+}
+
 export interface ConnectorOAuthCallbackRequest {
   connectorId: string;
   state: string;
-  approved?: boolean | undefined;
   error?: string | undefined;
+  credential?: ConnectorOAuthCredentialHandoff | undefined;
   expiresAt?: string | undefined;
   expiresInSeconds?: number | undefined;
 }

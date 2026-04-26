@@ -103,6 +103,60 @@ async function loadKernelModule() {
   return import(specifier);
 }
 
+async function setupOAuthConnector(runtime: { dispatchKernelRequest: (path: string, init?: RequestInit) => Promise<unknown> }, name: string) {
+  return runtime.dispatchKernelRequest("/v1/connectors/setup/connect", {
+    method: "POST",
+    body: JSON.stringify({
+      connectorId: "custom",
+      name,
+      enabled: true,
+      favorite: false,
+      scopeTarget: "global",
+      setupKind: "remote_oauth",
+      authMethod: "oauth",
+      transport: "remote_http",
+      credentialSource: "oauth",
+      url: `https://${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.example.test/mcp`,
+    }),
+  }) as Promise<{
+    ok: true;
+    status: {
+      id: string;
+      healthState: string;
+      needsCredential: boolean;
+      connected: boolean;
+      credentialSource: string;
+      lastError?: string;
+    };
+  }>;
+}
+
+async function startConnectorOAuth(runtime: { dispatchKernelRequest: (path: string, init?: RequestInit) => Promise<unknown> }, connectorId: string) {
+  return runtime.dispatchKernelRequest("/v1/connectors/oauth/start", {
+    method: "POST",
+    body: JSON.stringify({ connectorId }),
+  }) as Promise<{ ok: true; connectorId: string; state: string; expiresAt: string }>;
+}
+
+async function connectorStatus(runtime: { dispatchKernelRequest: (path: string, init?: RequestInit) => Promise<unknown> }, connectorId: string) {
+  const statuses = await runtime.dispatchKernelRequest("/v1/connectors/status", {
+    method: "POST",
+    body: JSON.stringify({}),
+  }) as {
+    connectors: Array<{
+      id: string;
+      healthState: string;
+      needsCredential: boolean;
+      connected: boolean;
+      credentialSource: string;
+      lastError?: string;
+    }>;
+  };
+  const status = statuses.connectors.find((entry) => entry.id === connectorId);
+  assert.ok(status, `Expected connector ${connectorId} in status response.`);
+  return status;
+}
+
 test("external gap closures keep refresh/skill/web helpers out of first-class Office tool inventory", () => {
   const inventory = new Set<string>(OFFICE_TOOL_NAMES);
   assert.equal(inventory.has("refresh_mcp_connectors"), false);
@@ -223,6 +277,136 @@ test("remote HTTP connectors are marked setup-only until browser execution exist
   assert.ok(saved, "saved remote connector should be returned by status route");
   assert.equal(saved.executionEnvironment, "browser");
   assert.equal(saved.executionAvailable, false);
+});
+
+test("connector OAuth callbacks cannot create connected state without a credential handoff", async () => {
+  const runtime = await loadKernelModule();
+  const setup = await setupOAuthConnector(runtime, "OAuth Contract");
+  assert.equal(setup.status.healthState, "auth_required");
+  assert.equal(setup.status.needsCredential, true);
+  assert.equal(setup.status.connected, false);
+
+  const missingToken = await startConnectorOAuth(runtime, setup.status.id);
+  const missingTokenCallback = await runtime.dispatchKernelRequest("/v1/connectors/oauth/callback", {
+    method: "POST",
+    body: JSON.stringify({
+      connectorId: setup.status.id,
+      state: missingToken.state,
+    }),
+  }) as {
+    ok: true;
+    status: { healthState: string; needsCredential: boolean; connected: boolean; lastError?: string };
+    diagnostics: Array<{ code: string; message: string }>;
+  };
+  assert.equal(missingTokenCallback.status.healthState, "auth_required");
+  assert.equal(missingTokenCallback.status.needsCredential, true);
+  assert.equal(missingTokenCallback.status.connected, false);
+  assert.equal(missingTokenCallback.diagnostics[0]?.code, "oauth_not_completed");
+  assert.match(missingTokenCallback.status.lastError ?? "", /verified credential handoff/i);
+
+  const cancelled = await startConnectorOAuth(runtime, setup.status.id);
+  const cancelledCallback = await runtime.dispatchKernelRequest("/v1/connectors/oauth/callback", {
+    method: "POST",
+    body: JSON.stringify({
+      connectorId: setup.status.id,
+      state: cancelled.state,
+      error: "access_denied",
+    }),
+  }) as { status: { healthState: string; needsCredential: boolean; connected: boolean; lastError?: string } };
+  assert.equal(cancelledCallback.status.healthState, "auth_required");
+  assert.equal(cancelledCallback.status.needsCredential, true);
+  assert.equal(cancelledCallback.status.connected, false);
+  assert.match(cancelledCallback.status.lastError ?? "", /access_denied/);
+
+  const mismatch = await startConnectorOAuth(runtime, setup.status.id);
+  await assert.rejects(
+    () =>
+      runtime.dispatchKernelRequest("/v1/connectors/oauth/callback", {
+        method: "POST",
+        body: JSON.stringify({
+          connectorId: setup.status.id,
+          state: `${mismatch.state}-wrong`,
+          credential: { accessToken: "wrong-state-token" },
+        }),
+      }),
+    /OAuth callback state was not found/,
+  );
+  const afterMismatch = await connectorStatus(runtime, setup.status.id);
+  assert.equal(afterMismatch.healthState, "auth_required");
+  assert.equal(afterMismatch.needsCredential, true);
+  assert.equal(afterMismatch.connected, false);
+
+  const expired = await startConnectorOAuth(runtime, setup.status.id);
+  const realDateNow = Date.now;
+  Date.now = () => realDateNow() + 11 * 60 * 1000;
+  try {
+    await assert.rejects(
+      () =>
+        runtime.dispatchKernelRequest("/v1/connectors/oauth/callback", {
+          method: "POST",
+          body: JSON.stringify({
+            connectorId: setup.status.id,
+            state: expired.state,
+            credential: { accessToken: "expired-token" },
+          }),
+        }),
+      /OAuth callback state expired/,
+    );
+  } finally {
+    Date.now = realDateNow;
+  }
+  const afterExpired = await connectorStatus(runtime, setup.status.id);
+  assert.equal(afterExpired.healthState, "auth_required");
+  assert.equal(afterExpired.needsCredential, true);
+  assert.equal(afterExpired.connected, false);
+  assert.match(afterExpired.lastError ?? "", /expired/i);
+
+  const successful = await startConnectorOAuth(runtime, setup.status.id);
+  const successCallback = await runtime.dispatchKernelRequest("/v1/connectors/oauth/callback", {
+    method: "POST",
+    body: JSON.stringify({
+      connectorId: setup.status.id,
+      state: successful.state,
+      credential: {
+        accessToken: "verified-access-token",
+        tokenType: "Bearer",
+        expiresInSeconds: 3600,
+      },
+    }),
+  }) as {
+    status: { healthState: string; needsCredential: boolean; connected: boolean; credentialSource: string };
+    diagnostics: Array<{ code: string }>;
+  };
+  assert.equal(successCallback.status.healthState, "ready");
+  assert.equal(successCallback.status.needsCredential, false);
+  assert.equal(successCallback.status.connected, true);
+  assert.equal(successCallback.status.credentialSource, "oauth");
+  assert.equal(successCallback.diagnostics[0]?.code, "oauth_completed");
+
+  const bundle = await runtime.dispatchKernelRequest("/v1/connectors/export") as {
+    connectors: Array<{ connectorId: string; credentialSource: string; secret?: string }>;
+    scopeOverrides: unknown[];
+    favorites: string[];
+    auditPreference: { enabled: boolean };
+    version: number;
+    exportedAt: string;
+  };
+  const exported = bundle.connectors.find((entry) => entry.credentialSource === "oauth");
+  assert.ok(exported, "OAuth connector should be included in export bundle.");
+  assert.equal(Object.prototype.hasOwnProperty.call(exported, "secret"), false);
+
+  const importedRuntime = await loadKernelModule();
+  const imported = await importedRuntime.dispatchKernelRequest("/v1/connectors/import/apply", {
+    method: "POST",
+    body: JSON.stringify({ bundle }),
+  }) as { importedConnectorIds: string[] };
+  assert.equal(imported.importedConnectorIds.length, 1);
+  const importedStatus = await connectorStatus(importedRuntime, imported.importedConnectorIds[0]!);
+  assert.equal(importedStatus.credentialSource, "oauth");
+  assert.equal(importedStatus.healthState, "auth_required");
+  assert.equal(importedStatus.needsCredential, true);
+  assert.equal(importedStatus.connected, false);
+  assert.match(importedStatus.lastError ?? "", /not included in connector imports/i);
 });
 
 test("skill closure path uses packaged skill injection plus explicit unsaved-document gating", () => {

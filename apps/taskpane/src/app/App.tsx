@@ -18,7 +18,6 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
-  ConnectorOAuthCallbackResponse,
   ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
@@ -1515,27 +1514,6 @@ export function App() {
     }
   }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
 
-  const handleCompleteConnectorOAuth = useCallback(async (request: {
-    connectorId: string;
-    state: string;
-    approved?: boolean;
-    error?: string;
-    expiresInSeconds?: number;
-  }) => {
-    try {
-      const response = await postJson<ConnectorOAuthCallbackResponse>("/v1/connectors/oauth/callback", request);
-      await refreshConnectorState(connectorScopeContext);
-      pushSystemMessage(response.status.healthState === "ready"
-        ? `Connector sign-in completed: ${response.status.name}.`
-        : `Connector sign-in updated for ${response.status.name}.`);
-      return response;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      pushErrorMessage(`Connector sign-in completion failed: ${message}`);
-      throw error;
-    }
-  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
-
   const handleRemoveConnector = useCallback(async (storedConnectorId: string) => {
     try {
       await deleteJson<{ ok: true }>(`/v1/connectors/${storedConnectorId}`);
@@ -1702,7 +1680,6 @@ export function App() {
           onTestConnector={handleTestConnector}
           onReverifyConnector={handleReverifyConnector}
           onStartConnectorOAuth={handleStartConnectorOAuth}
-          onCompleteConnectorOAuth={handleCompleteConnectorOAuth}
           onRemoveConnector={handleRemoveConnector}
           onSetConnectorFavorite={handleSetConnectorFavorite}
           onUpdateConnectorScope={handleUpdateConnectorScope}

@@ -523,6 +523,9 @@ export class BrowserConnectorRuntime {
         oauthLastAuthError: item.credentialSource === "oauth"
           ? "OAuth credentials are not included in connector imports. Sign in again before use."
           : undefined,
+        lastError: item.credentialSource === "oauth"
+          ? "OAuth credentials are not included in connector imports. Sign in again before use."
+          : undefined,
       };
 
       this.state.connectors.push(next);
@@ -705,10 +708,12 @@ export class BrowserConnectorRuntime {
     }
     const pending = this.state.oauthFlows.find((entry) => entry.connectorId === connectorId && entry.state === state);
     if (!pending) {
+      await this.markOAuthIncomplete(connectorId, "OAuth callback state was not found or already completed.");
       throw new Error("OAuth callback state was not found or already completed.");
     }
     if (Date.parse(pending.expiresAt) <= Date.now()) {
       this.state.oauthFlows = this.state.oauthFlows.filter((entry) => !(entry.connectorId === connectorId && entry.state === state));
+      await this.markOAuthIncomplete(connectorId, "OAuth callback state expired. Start sign-in again.");
       await this.persist();
       throw new Error("OAuth callback state expired. Start sign-in again.");
     }
@@ -722,21 +727,65 @@ export class BrowserConnectorRuntime {
     }
 
     const now = nowIso();
+    const accessToken = trimString(request.credential?.accessToken);
+    const callbackError = trimString(request.error);
+    if (!accessToken || callbackError) {
+      record.credentialSource = "oauth";
+      record.secret = undefined;
+      record.oauthConnected = false;
+      record.oauthLastAuthError = callbackError
+        ?? "OAuth callback did not include a verified credential handoff. Manual completion is not supported.";
+      record.oauthExpiresAt = undefined;
+      record.lastError = record.oauthLastAuthError;
+      record.updatedAt = now;
+      this.state.oauthFlows = this.state.oauthFlows.filter((entry) => !(entry.connectorId === connectorId && entry.state === state));
+
+      this.upsertRecord(record);
+      const diagnostics: ConnectorDiagnostic[] = [{
+        level: "warning",
+        code: "oauth_not_completed",
+        title: "OAuth incomplete",
+        message: record.oauthLastAuthError,
+        connectorId: record.connectorId,
+      }];
+
+      this.appendLog({
+        connectorId: record.id,
+        connectorName: record.name,
+        kind: "setup",
+        level: "warning",
+        message: "OAuth sign-in incomplete.",
+        healthState: this.toStatus(record, scopeContext).healthState,
+      });
+      await this.persist();
+      return {
+        ok: true,
+        status: this.toStatus(record, scopeContext),
+        diagnostics,
+      };
+    }
+
     record.credentialSource = "oauth";
-    record.oauthConnected = false;
-    record.oauthLastAuthError = trimString(request.error)
-      ?? "OAuth callback did not include a verified credential handoff. Manual completion is not supported.";
-    record.oauthExpiresAt = undefined;
-    record.lastError = record.oauthLastAuthError;
+    record.secret = accessToken;
+    record.oauthConnected = true;
+    record.oauthLastAuthAt = now;
+    record.oauthLastAuthError = undefined;
+    record.oauthExpiresAt = this.resolveOAuthExpiry({
+      expiresAt: request.credential?.expiresAt ?? request.expiresAt,
+      expiresInSeconds: request.credential?.expiresInSeconds ?? request.expiresInSeconds,
+    }, now);
+    record.lastError = undefined;
+    record.lastTestedAt = now;
+    record.lastHealthyAt = now;
     record.updatedAt = now;
     this.state.oauthFlows = this.state.oauthFlows.filter((entry) => !(entry.connectorId === connectorId && entry.state === state));
 
     this.upsertRecord(record);
     const diagnostics: ConnectorDiagnostic[] = [{
-      level: "warning",
-      code: "oauth_not_completed",
-      title: "OAuth incomplete",
-      message: record.oauthLastAuthError,
+      level: "info",
+      code: "oauth_completed",
+      title: "OAuth complete",
+      message: "OAuth callback included a verified credential handoff.",
       connectorId: record.connectorId,
     }];
 
@@ -744,8 +793,8 @@ export class BrowserConnectorRuntime {
       connectorId: record.id,
       connectorName: record.name,
       kind: "setup",
-      level: "warning",
-      message: "OAuth sign-in incomplete.",
+      level: "info",
+      message: "OAuth sign-in completed.",
       healthState: this.toStatus(record, scopeContext).healthState,
     });
     await this.persist();
@@ -989,6 +1038,7 @@ export class BrowserConnectorRuntime {
     if (record.credentialSource === "env") return !trimString(record.secretEnvKey);
     if (record.credentialSource === "detected_env") return !trimString(record.useDetectedEnvKey);
     if (record.credentialSource === "oauth") {
+      if (!trimString(record.secret)) return true;
       if (record.oauthConnected !== true) return true;
       if (record.oauthExpiresAt && Date.parse(record.oauthExpiresAt) <= Date.now()) return true;
       return false;
@@ -996,7 +1046,10 @@ export class BrowserConnectorRuntime {
     return true;
   }
 
-  private resolveOAuthExpiry(request: ConnectorOAuthCallbackRequest, fallbackIso: string): string {
+  private resolveOAuthExpiry(
+    request: Pick<ConnectorOAuthCallbackRequest, "expiresAt" | "expiresInSeconds">,
+    fallbackIso: string,
+  ): string {
     const explicitExpiry = trimString(request.expiresAt);
     if (explicitExpiry) {
       const parsed = Date.parse(explicitExpiry);
@@ -1008,6 +1061,35 @@ export class BrowserConnectorRuntime {
       ? Math.max(60, Math.min(60 * 60 * 24 * 30, Math.floor(request.expiresInSeconds as number)))
       : 60 * 60 * 24;
     return new Date(Date.parse(fallbackIso) + seconds * 1000).toISOString();
+  }
+
+  private async markOAuthIncomplete(connectorId: string, message: string): Promise<void> {
+    const record = this.state.connectors.find((entry) => entry.id === connectorId);
+    if (!record || record.authMethod !== "oauth") {
+      return;
+    }
+    if (record.oauthConnected === true && trimString(record.secret)) {
+      record.oauthLastAuthError = message;
+      record.lastError = message;
+    } else {
+      record.credentialSource = "oauth";
+      record.secret = undefined;
+      record.oauthConnected = false;
+      record.oauthExpiresAt = undefined;
+      record.oauthLastAuthError = message;
+      record.lastError = message;
+    }
+    record.updatedAt = nowIso();
+    this.upsertRecord(record);
+    this.appendLog({
+      connectorId: record.id,
+      connectorName: record.name,
+      kind: "setup",
+      level: "warning",
+      message,
+      healthState: this.toStatus(record).healthState,
+    });
+    await this.persist();
   }
 
   private computeHealth(record: StoredConnectorRecord, enabled: boolean, needsCredential: boolean): ConnectorHealthState {
@@ -1133,7 +1215,10 @@ export class BrowserConnectorRuntime {
     const preserveStoredSecret = request.preserveStoredSecret === true;
     const nextSecret = credentialSource === "manual"
       ? (trimString(request.secret) ?? (preserveStoredSecret ? existing?.secret : undefined))
+      : credentialSource === "oauth" && existing?.credentialSource === "oauth"
+        ? trimString(existing.secret)
       : undefined;
+    const hasOAuthCredential = credentialSource === "oauth" && Boolean(nextSecret);
 
     return {
       id,
@@ -1163,9 +1248,9 @@ export class BrowserConnectorRuntime {
       lastError: existing?.lastError,
       verification: existing?.verification,
       capabilities: existing?.capabilities,
-      oauthConnected: credentialSource === "oauth" ? (existing?.oauthConnected === true) : undefined,
-      oauthExpiresAt: credentialSource === "oauth" ? existing?.oauthExpiresAt : undefined,
-      oauthLastAuthAt: credentialSource === "oauth" ? existing?.oauthLastAuthAt : undefined,
+      oauthConnected: credentialSource === "oauth" ? (hasOAuthCredential && existing?.oauthConnected === true) : undefined,
+      oauthExpiresAt: credentialSource === "oauth" && hasOAuthCredential ? existing?.oauthExpiresAt : undefined,
+      oauthLastAuthAt: credentialSource === "oauth" && hasOAuthCredential ? existing?.oauthLastAuthAt : undefined,
       oauthLastAuthError: credentialSource === "oauth" ? existing?.oauthLastAuthError : undefined,
     };
   }
@@ -1451,13 +1536,31 @@ export class BrowserConnectorRuntime {
   private normalizeState(state: StoredConnectorState): StoredConnectorState {
     return {
       ...state,
-      connectors: state.connectors.map((record) => ({
-        ...record,
-        oauthConnected: record.credentialSource === "oauth" ? record.oauthConnected === true : undefined,
-        oauthExpiresAt: record.credentialSource === "oauth" ? record.oauthExpiresAt : undefined,
-        oauthLastAuthAt: record.credentialSource === "oauth" ? record.oauthLastAuthAt : undefined,
-        oauthLastAuthError: record.credentialSource === "oauth" ? record.oauthLastAuthError : undefined,
-      })),
+      connectors: state.connectors.map((record) => {
+        if (record.credentialSource !== "oauth") {
+          return {
+            ...record,
+            oauthConnected: undefined,
+            oauthExpiresAt: undefined,
+            oauthLastAuthAt: undefined,
+            oauthLastAuthError: undefined,
+          };
+        }
+
+        const hasCredential = Boolean(trimString(record.secret));
+        const connected = hasCredential && record.oauthConnected === true;
+        return {
+          ...record,
+          secret: hasCredential ? record.secret : undefined,
+          oauthConnected: connected,
+          oauthExpiresAt: connected ? record.oauthExpiresAt : undefined,
+          oauthLastAuthAt: connected ? record.oauthLastAuthAt : undefined,
+          oauthLastAuthError: connected
+            ? record.oauthLastAuthError
+            : (record.oauthLastAuthError ?? "OAuth credential missing. Sign in again before use."),
+          lastError: connected ? record.lastError : (record.lastError ?? "OAuth credential missing. Sign in again before use."),
+        };
+      }),
       oauthFlows: (state.oauthFlows ?? []).filter((entry) =>
         Boolean(entry.connectorId) &&
         Boolean(entry.state) &&
