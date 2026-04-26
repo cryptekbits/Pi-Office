@@ -33,60 +33,154 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 ### Security
 
-- [ ] SECURITY-001: Connector OAuth can be marked connected without a real callback or token exchange
+- [ ] SECURITY-001: Connector OAuth can be marked connected without a real callback, token exchange, or imported secret
   - Category: Security
   - Status: open
   - Priority: P0
-  - Source: 2026-04-26 worktree review.
-  - Details: The connector OAuth UI currently allows a user to click a "Complete sign-in" action that sends `approved: true` for a pending OAuth state. The browser runtime then sets `credentialSource = "oauth"` and `oauthConnected = true` without proving that a provider callback occurred or that a usable access token/credential was stored. This can produce false "signed in" connector state and may cause later connector execution to fail silently or misleadingly.
+  - Source: 2026-04-26 worktree review; 2026-04-26 provider/auth/privacy subagent review.
+  - Details: The connector OAuth UI currently allows a user to click a "Complete sign-in" action that sends `approved: true` for a pending OAuth state. The browser runtime then sets `credentialSource = "oauth"` and `oauthConnected = true` without proving that a provider callback occurred or that a usable access token/credential was stored. Connector bundle import can also recreate an OAuth-connected record from `credentialSource: "oauth"` even though exports intentionally omit secrets. These paths can produce false "signed in" connector state and may cause later connector execution to fail silently or misleadingly.
   - Dependencies: None.
   - Subtasks:
     - [ ] Define the supported OAuth contract for connector setup: callback URL, state validation, token/credential source, and failure state.
     - [ ] Remove or gate any UI path that marks OAuth complete without a real callback or credential handoff.
+    - [ ] Reset imported OAuth connectors to `auth_required` unless a verified secure credential migration path exists.
     - [ ] Persist only verified OAuth state and keep expired or incomplete flows visible as `auth_required` or `auth_expired`.
     - [ ] Add tests for success, cancelled, expired, state-mismatch, and no-token OAuth completion paths.
   - Acceptance Criteria:
     - [ ] A connector cannot become `oauthConnected: true` unless a verified callback or credential exchange has completed.
     - [ ] The UI cannot manually approve OAuth completion in a way that bypasses the contract.
+    - [ ] Importing a connector bundle never creates usable OAuth state without a verified credential or token.
     - [ ] Connector status clearly reports incomplete, failed, and expired OAuth flows.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/app/components/IntegrationsSection.tsx` sending `approved: true` and `apps/taskpane/src/lib/runtime/browser-connectors.ts` setting OAuth state from that flag.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/app/components/IntegrationsSection.tsx` sending `approved: true`, `apps/taskpane/src/lib/runtime/browser-connectors.ts` setting OAuth state from that flag, `getExportBundle` exporting `credentialSource` without secrets, and `applyImport` setting `oauthConnected` from the imported credential source. 2026-04-26 hardening removed the visible manual "Complete sign-in" UI path, changed callback completion to remain incomplete without a verified credential handoff, and reset imported OAuth connectors to `oauthConnected: false`; the full OAuth contract and token exchange work remains open.
+
+- [ ] SECURITY-002: Tool permission prompts time out as allow-by-default
+  - Category: Security
+  - Status: open
+  - Priority: P0
+  - Source: 2026-04-26 product-goal review and provider/auth/privacy subagent review.
+  - Details: `requestToolPermission` resolves a pending approval as `{ allowed: true, scope: "once" }` after 120 seconds. Silence, hidden taskpane UI, host disconnect, or an unattended machine should not authorize document writes, connector calls, external reads, or future write-external tools. This conflicts with the privacy-conscious and reviewable-workbench product goal.
+  - Dependencies: None.
+  - Subtasks:
+    - [ ] Change permission timeout behavior to deny, expire, or abort the tool call instead of allowing it.
+    - [ ] Surface expired permission requests clearly in the UI and model/tool result.
+    - [ ] Ensure disconnect, session teardown, and pending-request cleanup cannot produce allow decisions.
+    - [ ] Add tests for timeout behavior across write-doc, connector, read-external, and write-external categories.
+  - Acceptance Criteria:
+    - [ ] No permission request can become allowed without an explicit user action or a pre-existing approved policy.
+    - [ ] Timed-out requests are visible as expired/denied and do not execute.
+    - [ ] Automated tests prove timeout, disconnect, and cleanup paths fail closed.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` resolving allowed on timeout and `packages/pi-office-pack/src/protocol.ts` defining tool categories/autonomy levels. 2026-04-26 hardening changed timeout resolution to `allowed: false`, added a `tool_permission_expired` bridge event, clears the visible prompt when the matching request expires, and added a static regression test in `scripts/office-tests/src/runtime-permission-policy.test.ts`; disconnect/cleanup-specific tests still need coverage before closing.
+
+- [ ] SECURITY-003: `office_execute_js` raw Office.js escape hatch can be auto-approved as a normal document write
+  - Category: Security
+  - Status: open
+  - Priority: P0
+  - Source: 2026-04-26 product-goal review; 2026-04-26 Office-host subagent review.
+  - Details: `office_execute_js` executes arbitrary Office.js snippets through `new Function` after a best-effort regex blocklist. The tool is categorized as `write-doc`, and the default user preference is medium autonomy, which auto-approves `write-doc`. This makes the raw escape hatch much easier to invoke than its risk profile warrants. Structured native tools should remain the default path, and raw Office.js should require an explicit owner/user decision.
+  - Dependencies: SECURITY-002 for fail-closed permission prompts.
+  - Subtasks:
+    - [ ] Give `office_execute_js` a separate high-risk category or disable it by default.
+    - [ ] Require explicit per-call approval for `office_execute_js` regardless of medium/high document-write autonomy.
+    - [ ] Add UI and prompt wording that frames it as an escape hatch, not a normal edit tool.
+    - [ ] Add tests proving default autonomy cannot auto-approve `office_execute_js`.
+    - [ ] Inventory existing structured Office tools and route common use cases away from raw execution.
+  - Acceptance Criteria:
+    - [ ] `office_execute_js` cannot execute under default medium autonomy without explicit approval.
+    - [ ] Regex gating is not presented as an isolated sandbox.
+    - [ ] Tests cover auto-approval, explicit approval, explicit denial, and blocked-code paths.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/office/document-tools.ts` using `new Function`, `packages/pi-office-pack/src/protocol.ts` mapping `office_execute_js` to `write-doc`, and the default `autonomyLevel: "medium"`. 2026-04-26 hardening introduced the `escape-hatch` tool category, moved `office_execute_js` into it, excluded it from all autonomy auto-approval sets, and added tests proving it stays manual-only.
+
+- [ ] SECURITY-004: Add taskpane CSP/security policy and public privacy/storage disclosure
+  - Category: Security
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 competitor review against ChatGPT, Claude, and Ghostwriter inspiration captures.
+  - Details: The taskpane is intended to be open-source and privacy-conscious, but the current implementation stores provider API keys, connector state/secrets, and chat history in browser storage. API key and connector envelopes use AES-GCM, but the crypto keys are also stored in localStorage, so this is local obfuscation rather than strong protection against same-origin script access or XSS. The taskpane shell also lacks an obvious CSP comparable to the ChatGPT inspiration capture. Users need a plain privacy/auth panel and docs that state what leaves the machine, what stays in browser storage, provider/connector call boundaries, telemetry defaults, clear-data controls, and the limits of localStorage encryption.
+  - Dependencies: SECURITY-001, BUG-002, BUG-005 for accurate connector/provider disclosures.
+  - Subtasks:
+    - [ ] Add a taskpane CSP or equivalent deployment security-header policy compatible with Office add-in hosts.
+    - [ ] Add in-app privacy/auth disclosure covering provider calls, connector calls, local chat history, audit logs, and localStorage credential limits.
+    - [ ] Add clear-data controls for provider auth, connector config/logs, and chat history.
+    - [ ] Document telemetry defaults and ensure any telemetry or analytics are opt-in and visibly disclosed.
+    - [ ] Evaluate stronger storage options for packaged builds or the optional companion, such as OS keychain/token broker storage.
+  - Acceptance Criteria:
+    - [ ] Users can tell where keys, prompts, document snippets, connector requests, and chat history are stored or sent.
+    - [ ] A user can clear locally stored sensitive state from the UI.
+    - [ ] The taskpane has an explicit CSP/security policy or a documented Office-host-compatible reason why a different mechanism is used.
+  - Notes/Evidence: Review pointed to `BrowserAuthStore` and connector storage storing crypto keys in localStorage, `useChatHistory` persisting messages to localStorage, and inspiration add-ins with more explicit CSP/privacy surfaces.
+
+- [ ] SECURITY-005: Maintain originality/provenance audit for competitor-inspired capabilities
+  - Category: Security
+  - Status: open
+  - Priority: P0
+  - Source: 2026-04-26 plan implementation after user raised DMCA/IP risk from Claude, ChatGPT, Copilot, and other add-in inspiration.
+  - Details: Pi-Office may study competitor add-ins to understand user expectations and capability gaps, but public release should not include copied source code, bundled assets, prompts, UI text, private API contracts, or distinctive expression from those products. Each competitor-inspired capability needs a short provenance trail showing the public API basis, original Pi-Office design, original implementation, and replacement status for any borrowed-looking artifact.
+  - Dependencies: None.
+  - Subtasks:
+    - [ ] Create or maintain a provenance matrix covering local inspiration captures and major public competitors.
+    - [ ] Audit prompts, UI strings, assets, icons, and code for copied or near-copied competitor expression.
+    - [ ] Replace any copied-looking artifact with original Pi-Office text, design, or licensed/public-domain material.
+    - [ ] Add contribution guidance so external contributors understand idea-level inspiration versus copying expression.
+  - Acceptance Criteria:
+    - [ ] Public-release files have no copied competitor code, prompts, private API contracts, or bundled assets unless explicitly licensed.
+    - [ ] Every competitor-inspired feature can be traced to an original Pi-Office spec and implementation.
+    - [ ] `AGENTS.md` and contributor-facing docs explain the originality policy.
+  - Notes/Evidence: 2026-04-26 added `AGENTS.md` originality/provenance policy and started `docs/provenance.md`; a full file-by-file audit still needs to be completed before release.
+
+- [ ] SECURITY-006: Design and enforce read-only companion shell sandbox before exposing bash
+  - Category: Security
+  - Status: open
+  - Priority: P0
+  - Source: 2026-04-26 plan implementation after user asked for Codex/OpenCode/pi sandbox analysis and a safe companion bridge design.
+  - Details: SOTA coding models often use bash for analysis, but raw host bash from an Office chat can be prompt-injected into modifying files outside the document workspace. Pi-Office must not expose raw host bash. If shell capability is added, it must route through a companion-owned sandbox using Pi's pluggable tool operations, with user-selected roots mounted/readable only, writable scratch separated from user files, denied secret patterns, no network by default, timeouts/output caps, command audit logs, and fail-closed approvals. On Windows, prefer WSL2/Docker/Hyper-V-backed isolation until native sandbox behavior is proven.
+  - Dependencies: FEATURE-006 and SECURITY-002.
+  - Subtasks:
+    - [ ] Specify the companion shell policy, including readable roots, writable scratch, denied patterns, network policy, and command categories.
+    - [ ] Implement a custom Pi `BashOperations` backend that routes through the companion sandbox instead of local raw bash.
+    - [ ] Add Windows, WSL2/Linux, and macOS capability detection with safe fallback to "shell unavailable".
+    - [ ] Add destructive sandbox probes for write/delete outside scratch, `.env` reads, symlink escape, network calls, package installs, and git push.
+  - Acceptance Criteria:
+    - [ ] No raw host bash is available from the add-in or companion by default.
+    - [ ] Shell commands cannot modify user workspace/document files outside the approved scratch path.
+    - [ ] Sandbox probes prove denied filesystem, secret, and network operations fail closed before shell is enabled.
+  - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second.
 
 ### Bugs
 
-- [ ] BUG-001: CI clean checkout can fail because Vite reads gitignored certificate files at config load
+- [x] BUG-001: CI clean checkout can fail because Vite reads gitignored certificate files at config load
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-26 worktree review.
   - Details: The GitHub Actions workflow runs `npm run build`, which invokes the taskpane Vite build. The current Vite config reads `certs/localhost.pfx` and `certs/passphrase.txt` unconditionally when the config module loads. The `certs/` directory is intentionally gitignored, and CI does not run `npm run prepare:certs` before `npm run build`, so a fresh checkout can fail before the build starts.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Change taskpane Vite config so HTTPS cert files are only required for the dev server, not production builds.
-    - [ ] Ensure CI either does not need local cert files for build or explicitly generates them before config load.
-    - [ ] Add a regression check or CI comment documenting why clean checkout builds do not require `certs/`.
+    - [x] Change taskpane Vite config so HTTPS cert files are only required for the dev server, not production builds.
+    - [x] Ensure CI either does not need local cert files for build or explicitly generates them before config load.
+    - [x] Add a regression check or CI comment documenting why clean checkout builds do not require `certs/`.
   - Acceptance Criteria:
-    - [ ] `npm run build` works on a clean checkout with no `certs/` directory.
-    - [ ] `npm run dev` still uses the trusted local HTTPS certs and fails with clear guidance when they are missing.
-    - [ ] GitHub Actions can run install, typecheck, build, bundle budget, manifest validation, and Office tests without local-only files.
-  - Notes/Evidence: Review pointed to `.github/workflows/ci.yml`, `.gitignore`, and `apps/taskpane/vite.config.ts`.
+    - [x] `npm run build` works on a clean checkout with no `certs/` directory.
+    - [x] `npm run dev` still uses the trusted local HTTPS certs and fails with clear guidance when they are missing.
+    - [x] GitHub Actions can run install, typecheck, build, bundle budget, manifest validation, and Office tests without local-only files.
+  - Notes/Evidence: Review pointed to `.github/workflows/ci.yml`, `.gitignore`, and `apps/taskpane/vite.config.ts`. Fixed in `a8a5a0d` and `43b2a5b`: CI now runs install/typecheck/build/bundle/manifests/Office tests, preflight scripts validate cert and sideload resources, and Vite reads cert files only for `serve`. Validation included `npm run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, `npm run test:office`, `npm run preflight:dev`, and `npm run build:taskpane` with `certs/` temporarily absent.
 
-- [ ] BUG-002: Remote HTTP connectors are marked executable but do not appear to be exposed to the agent
+- [x] BUG-002: Remote HTTP connectors are marked executable but do not appear to be exposed to the agent
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-26 worktree review plus transition plan WS2.
   - Details: Connector status metadata reports non-local connectors as browser-executable, but the runtime path that builds companion session connectors filters to `local_stdio`, and the agent-facing `mcp` tool is only registered when companion connector tool names exist. This creates a product gap where remote HTTP connectors may look available in Settings but are not actually callable by Pi during a session.
   - Dependencies: SECURITY-001 if OAuth-backed remote connectors are part of the first fixed path.
   - Subtasks:
-    - [ ] Decide and document the execution path for remote HTTP MCP connectors in the independent taskpane architecture.
-    - [ ] If browser execution is supported, expose read-only verified remote HTTP connector tools to the agent with the same allow/block policy as local connectors.
-    - [ ] If browser execution is not supported yet, mark remote HTTP connectors as configured but not execution-available and update UI messaging.
-    - [ ] Add route/runtime tests proving status metadata and actual agent tool availability cannot drift.
+    - [x] Decide and document the execution path for remote HTTP MCP connectors in the independent taskpane architecture.
+    - [x] Document that browser execution is not supported yet instead of exposing unimplemented remote HTTP tools.
+    - [x] Mark remote HTTP connectors as configured but not execution-available and update UI messaging.
+    - [x] Add route/runtime tests proving status metadata and actual agent tool availability cannot drift.
   - Acceptance Criteria:
-    - [ ] A connector shown as execution-available is callable by Pi in the active session.
-    - [ ] A connector not callable by Pi is visibly marked unavailable or setup-only.
-    - [ ] Remote HTTP and local stdio connector behavior is covered by tests.
-  - Notes/Evidence: Review pointed to `buildCompanionSessionConnectors` filtering `local_stdio`, non-local statuses receiving `executionAvailable: true`, and only companion-backed `mcp` tool registration.
+    - [x] A connector shown as execution-available is callable by Pi in the active session.
+    - [x] A connector not callable by Pi is visibly marked unavailable or setup-only.
+    - [x] Remote HTTP and local stdio connector behavior is covered by tests.
+  - Notes/Evidence: Review pointed to `buildCompanionSessionConnectors` filtering `local_stdio`, non-local statuses receiving `executionAvailable: true`, and only companion-backed `mcp` tool registration. 2026-04-26 fix chose setup-only browser behavior until remote MCP execution exists, updated runtime metadata/diagnostics/README, and added `remote HTTP connectors are marked setup-only until browser execution exists` in `scripts/office-tests/src/external-context-gaps.test.ts`.
 
 - [ ] BUG-003: Local stdio connector credential and environment propagation is incomplete
   - Category: Bug
@@ -124,6 +218,97 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Word desktop smoke testing confirms selection/context updates remain stable.
   - Notes/Evidence: Transition plan lists "Office state refresh race potential" under WS5.
 
+- [ ] BUG-005: Provider readiness reports stored credentials as ready without validating usability
+  - Category: Bug
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 product-goal review and provider/auth/privacy subagent review.
+  - Details: Provider/model status treats the presence of a stored API key as configured/ready. The taskpane accepts and persists a string, `BrowserModelRegistry` reports models as configured via `hasAuth(providerId)`, and Settings displays ready counts from that flag. A mistyped, expired, revoked, or incompatible key can therefore appear ready until the first real model call fails. For a provider-flexible product, "stored" and "verified usable" need separate states.
+  - Dependencies: FEATURE-002 for broader provider-auth capability modeling.
+  - Subtasks:
+    - [ ] Split provider auth state into at least `credentialStored`, `verifiedUsable`, `verificationFailed`, and `notConfigured`.
+    - [ ] Add a lightweight validation path where provider APIs support it, or mark keys unverified until the first successful request.
+    - [ ] Demote provider/model readiness after 401/403/auth failures and surface actionable recovery text.
+    - [ ] Update Settings labels so unverified credentials do not read as fully ready.
+    - [ ] Add tests for saved-but-invalid, verified, expired/revoked, and recovered provider credentials.
+  - Acceptance Criteria:
+    - [ ] A newly saved key is not labeled fully ready unless it has been verified or successfully used.
+    - [ ] Auth failures update provider status visibly.
+    - [ ] Model selection cannot imply a provider is usable when only an unverified credential string exists.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` accepting API keys and using `hasAuth`, plus `apps/taskpane/src/app/components/SettingsPage.tsx` deriving ready counts from model `configured`.
+
+- [ ] BUG-006: Image-generation UI and catalog imply providers that browser runtime cannot execute
+  - Category: Bug
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-26 product-goal review and provider/auth/privacy subagent review.
+  - Details: Settings copy tells users to configure OpenAI, Google, or OpenRouter for image models, and protocol constants include multiple image API styles. The browser runtime currently hard-errors unless the selected image model provider is OpenAI. This creates capability drift for visual reasoning and diagram/image workflows.
+  - Dependencies: FEATURE-002 if non-OpenAI image providers are implemented through the broader provider matrix.
+  - Subtasks:
+    - [ ] Decide whether v1 image generation is OpenAI-only or multi-provider.
+    - [ ] If OpenAI-only, restrict catalog/UI copy to OpenAI and explain other providers are not implemented yet.
+    - [ ] If multi-provider, implement Google/OpenRouter image execution paths with provider-specific request/response handling.
+    - [ ] Add tests proving the configured image model catalog matches executable providers.
+  - Acceptance Criteria:
+    - [ ] The UI never lists an image provider as usable unless runtime execution exists.
+    - [ ] Unsupported image providers fail at configuration/catalog time with clear messaging, not only during generation.
+    - [ ] Tests cover image-provider catalog/runtime consistency.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/app/components/SettingsPage.tsx` mentioning OpenAI/Google/OpenRouter and `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` throwing for non-OpenAI image generation.
+
+- [ ] BUG-007: Visual capture tools overstate screenshot and range-image fidelity
+  - Category: Bug
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 product-goal review; 2026-04-26 Office-host subagent review.
+  - Details: The product goal depends on vision and layout reasoning for diagrams, images, pitch decks, resumes, and polished documents. Current Word viewport capture is explicitly metadata/context-derived and cannot capture a pixel-perfect window/page screenshot after the companion-based window capture was removed. Excel `read_range_image` is described as first-class range imagery but falls back to generic selected-image capture rather than rendering/copying the requested range. Settings also calls `office_capture_snapshot` a visual screenshot even though the actual contract is selection/context snapshots plus metadata.
+  - Dependencies: TESTING-002 for manual Office desktop validation.
+  - Subtasks:
+    - [ ] Reconcile tool names/descriptions so they match current fidelity exactly.
+    - [ ] Decide whether to restore a safe owner-approved viewport/window capture capability or keep metadata-only capture.
+    - [ ] Implement a real Excel range image path or downgrade `read_range_image` messaging until one exists.
+    - [ ] Add visual QA tests/manual scripts for Word viewport and Excel range-image scenarios.
+  - Acceptance Criteria:
+    - [ ] Tool descriptions and Settings copy do not claim pixel screenshots or range imagery unless actually produced.
+    - [ ] Word layout prompts clearly distinguish metadata/context-derived views from true screenshots.
+    - [ ] Excel visual range workflows either return a real image of the requested range or report the limitation clearly.
+  - Notes/Evidence: Review pointed to `office_capture_viewport` comments in `apps/taskpane/src/lib/office-bridge.ts`, `read_range_image` fallback in `apps/taskpane/src/lib/office/excel-context.ts`, and Settings tool descriptions.
+
+- [ ] BUG-008: Excel rewind restores values and number formats but drops formulas
+  - Category: Bug
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 Office-host subagent review.
+  - Details: Excel checkpoint capture stores formulas, values, and number formats, but restore writes only `range.values` and `range.numberFormat`. For DCFs, financial models, and analytical workbooks, a rewind that flattens formulas into values can silently destroy the model while appearing successful.
+  - Dependencies: None.
+  - Subtasks:
+    - [ ] Define the intended Excel checkpoint fidelity contract for formulas, formats, tables, charts, validations, and workbook structure.
+    - [ ] Restore formulas when formula data exists, preserving values only where formulas are absent.
+    - [ ] Add safety messaging when a snapshot cannot fully restore workbook semantics.
+    - [ ] Add tests for formula preservation, mixed formula/value ranges, and number-format preservation.
+  - Acceptance Criteria:
+    - [ ] Rewinding an Excel checkpoint preserves formulas for captured formula cells.
+    - [ ] The tool reports any unsupported workbook elements that were not restored.
+    - [ ] Tests protect DCF-style workbook formulas from value-only flattening.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/office/document-tools.ts` loading `formulas` during capture but restoring only values and number formats.
+
+- [ ] BUG-009: PowerPoint shape anchoring and slide-master tooling can mislead agents
+  - Category: Bug
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 Office-host subagent review.
+  - Details: PowerPoint selected-shape descriptors and anchors currently appear to attach selected shapes to `slides.items[0]`, which can produce bad anchors for cross-slide or multi-slide operations. Separately, `edit_slide_master` is named and described as layout/master editing, but the bridge currently supports only `apply_layout`. These gaps can make agents confidently target the wrong slide or overpromise master/layout mutation.
+  - Dependencies: TESTING-002 for manual PowerPoint validation if desktop behavior differs from tests.
+  - Subtasks:
+    - [ ] Verify selected-shape slide ownership for single-slide, multi-slide, and cross-slide selection scenarios.
+    - [ ] Fix selected-shape descriptors/anchors to include the actual owning slide where Office.js exposes it.
+    - [ ] Rename or narrow `edit_slide_master`, or implement real master/layout mutation beyond `apply_layout`.
+    - [ ] Add tests or fixtures for selected shape anchors and slide-layout operations.
+  - Acceptance Criteria:
+    - [ ] Selected shape anchors resolve to the actual slide instead of defaulting to the first slide.
+    - [ ] `edit_slide_master` naming and behavior match exactly.
+    - [ ] Tests cover at least one multi-slide or non-first-slide shape operation.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/office/powerpoint-context.ts` using `slides.items[0]` for selected shapes and `apps/taskpane/src/lib/office-bridge.ts` limiting `edit_slide_master` to apply-layout operations.
+
 ### Features
 
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards
@@ -145,25 +330,120 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Root-guard tests cover normal paths, traversal attempts, absolute paths, symlinks/junctions if supported, and missing folders.
   - Notes/Evidence: Transition plan marks workspace runtime restoration as parked/deferred; keep this task open until stakeholder explicitly removes or completes the feature.
 
+- [ ] FEATURE-002: Define and implement provider/auth matrix for subscription-backed and API-key-backed AI access
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 product-goal narrative and implementation review.
+  - Details: The product thesis is that users should be able to bring an existing AI subscription or inference provider instead of buying another enterprise add-in subscription. Current browser provider catalog discovers Pi models and supports API-key storage, but reports `oauthSupported: false` for providers and `/v1/auth/start` throws that OAuth is unavailable in browser-only mode. Provider support needs an explicit capability matrix covering API key, OAuth, official SDK constraints, subscription-backed routes, browser compatibility, companion requirements, image support, and any legal/provider policy restrictions.
+  - Dependencies: SECURITY-004 for user-facing disclosure; BUG-005 for honest readiness state.
+  - Subtasks:
+    - [ ] Create a provider/auth matrix for Pi, OpenAI/ChatGPT, Anthropic-compatible official paths, GitHub Copilot, OpenCode, OpenRouter, Cloudflare, Vercel, and other target providers.
+    - [ ] Mark each provider as supported, planned, blocked, or research-only with the required auth method and runtime surface.
+    - [ ] Implement provider auth flows one at a time behind honest capability flags.
+    - [ ] Ensure UI copy never advertises OAuth/subscription access until a real flow exists.
+    - [ ] Add provider-level tests for catalog flags, auth start behavior, readiness, and model execution.
+  - Acceptance Criteria:
+    - [ ] Provider catalog flags match implemented auth/runtime capability.
+    - [ ] Users can distinguish API-key providers, OAuth providers, companion-required providers, and unsupported providers.
+    - [ ] At least one non-API-key provider path is implemented or explicitly deferred with documented constraints before any UI promise.
+  - Notes/Evidence: Review pointed to `BrowserModelRegistry.getProviderCatalog()` hardcoding `oauthSupported: false`, `/v1/auth/start` throwing for browser-only mode, and the new `AGENTS.md` product goal requiring provider flexibility.
+
+- [ ] FEATURE-003: Add professional workflow packs and host playbooks for high-value Office artifacts
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 product-goal narrative and competitor/inspiration review.
+  - Details: Pi-Office should be more than generic chat in a taskpane. Claude's extracted add-in has dense host-specific behavior and verification guidance, while Pi-Office currently has a strong tool surface but only a small skill/playbook library. The product needs curated workflows for research papers, pitch decks, resumes, specs, business user stories, DCFs, legal review, spreadsheets, and similar professional artifacts.
+  - Dependencies: BUG-007 for visual truthfulness where workflows rely on layout/vision; FEATURE-004 for deeper native edit coverage.
+  - Subtasks:
+    - [ ] Define workflow-pack structure for task intent, required context, preferred tools, review gates, and completion checks.
+    - [ ] Add Word workflows for research papers, resumes, specs, legal/professional review, and business user stories.
+    - [ ] Add Excel workflows for DCF/financial model review, formula auditing, table/chart improvement, and narrative export.
+    - [ ] Add PowerPoint workflows for pitch-deck outline, slide polish, visual consistency, speaker notes, and data-backed slides.
+    - [ ] Add tests or snapshot checks proving workflow prompts register and route to the expected tools.
+  - Acceptance Criteria:
+    - [ ] The package ships multiple domain-specific workflow packs beyond generic Office tool prompts.
+    - [ ] Workflows include verification and review criteria, not only generation instructions.
+    - [ ] Users can invoke or discover workflows from the taskpane without reading code.
+  - Notes/Evidence: Competitor review highlighted Claude's host playbooks and the local `packages/pi-office-pack/skills` surface as a place to grow.
+
+- [ ] FEATURE-004: Expand first-class native Office editing coverage for professional document work
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 Office-host subagent review.
+  - Details: The current Office tool inventory is broad, but professional editing still needs more structured native operations so agents do not fall back to raw execution or broad rewrites. Word gaps include styles, paragraph/list formatting, table-cell edits, headers/footers, page setup, field updates, content-control updates, and footnote/endnote body targeting. PowerPoint and Excel also need deeper object-level actions for polished artifacts.
+  - Dependencies: SECURITY-003 to reduce reliance on raw Office.js execution.
+  - Subtasks:
+    - [ ] Inventory native Office.js APIs for the highest-value Word/Excel/PowerPoint editing gaps.
+    - [ ] Add structured Word tools for style/paragraph/list/table/header/footer/field/content-control operations.
+    - [ ] Add deterministic targeting for footnote/endnote bodies rather than only the reference marker.
+    - [ ] Add structured PowerPoint and Excel object edits where current tools require raw code or weak anchors.
+    - [ ] Add tests for each new first-class operation and update prompt/tool guidance to prefer them.
+  - Acceptance Criteria:
+    - [ ] Common professional document edits can be expressed through structured tools instead of `office_execute_js`.
+    - [ ] Word footnote/endnote edits target the note body correctly.
+    - [ ] Tests cover representative Word, Excel, and PowerPoint native edits.
+  - Notes/Evidence: Review pointed to Word context already exposing rich objects while action coverage remains thinner than the product bar.
+
+- [ ] FEATURE-005: Add explicit cross-host artifact workflows
+  - Category: Feature
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-26 competitor/inspiration review.
+  - Details: A best-in-class Office assistant should help users move work between Excel, Word, and PowerPoint with reviewable intent, such as turning Excel tables/charts into deck slides, converting specs into user stories, or creating Word summaries from workbook analysis. Current host tools are mostly per-host. Cross-host workflows need clear data movement, provenance, and user-visible confirmation.
+  - Dependencies: FEATURE-003 and BUG-007 for workflow and visual verification foundations.
+  - Subtasks:
+    - [ ] Define initial cross-host flows, starting with Excel-to-PowerPoint and Excel-to-Word.
+    - [ ] Track source ranges/slides/sections and generated target artifacts for provenance.
+    - [ ] Add user-visible review steps before inserting or replacing content in another host.
+    - [ ] Add tests or manual validation scripts for at least one cross-host flow.
+  - Acceptance Criteria:
+    - [ ] At least one cross-host workflow is usable from the taskpane with source provenance and review.
+    - [ ] Generated target content clearly identifies source document/range/slide context where appropriate.
+    - [ ] The workflow does not imply cross-host Office.js access that is not actually available in the active host.
+  - Notes/Evidence: Competitor review recommended explicit cross-host handoff workflows as a way for Pi-Office to outperform generic add-ins.
+
+- [ ] FEATURE-006: Add advanced mode where companion owns inference, providers, MCP, memory, and non-Office tools
+  - Category: Feature
+  - Status: open
+  - Priority: P0
+  - Source: 2026-04-26 plan implementation after user clarified "Companion owns all" for advanced mode.
+  - Details: The current taskpane owns the Pi agent, model/provider catalog, provider auth, and tool loop, while the companion is a sidecar for read-only file and local MCP calls. Advanced mode should invert that ownership: the companion owns inference, providers, model auth, MCP, memory, non-Office tools, and tool calling. The taskpane remains the Office-hosted presentation layer and structured Office.js executor. Basic taskpane-only mode must remain usable when the companion is absent.
+  - Dependencies: SECURITY-006, FEATURE-002, BUG-003, SECURITY-001.
+  - Subtasks:
+    - [ ] Define a versioned taskpane-companion protocol for capabilities, settings sync, chat streaming, tool requests, Office tool execution, and auth migration.
+    - [ ] Add companion-side Pi agent/session ownership while keeping Office tools proxied back to the taskpane.
+    - [ ] Add a Basic/Advanced mode switch with seamless migration of settings, preferences, enabled providers/models, and connector configuration.
+    - [ ] Store or broker provider secrets through the companion using OS keychain-compatible storage where available.
+    - [ ] Preserve taskpane-only fallback when the companion disconnects or is not installed.
+  - Acceptance Criteria:
+    - [ ] In Advanced mode, provider/model inference and non-Office tool calls are executed by the companion, not the browser taskpane.
+    - [ ] Office.js calls still execute only inside the active Office taskpane.
+    - [ ] Switching Basic -> Advanced preserves non-secret preferences automatically and handles secrets through an explicit safe migration flow.
+    - [ ] Reconnect/fallback behavior is visible and tested.
+  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `apps/companion/src/server.ts` only exposes health, read-only file tools, and MCP execution.
+
 ### Improvements
 
-- [ ] IMPROVEMENT-001: Clean up worktree hygiene for untracked archive and generated artifacts
+- [x] IMPROVEMENT-001: Clean up worktree hygiene for untracked archive and generated artifacts
   - Category: Improvement
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: 2026-04-26 worktree review.
   - Details: The worktree contains untracked `.factory/`, `.github/`, `archive/`, and other generated or transitional artifacts. In particular, `archive/companion/node_modules` is present under an untracked archive tree. This can confuse future reviews, inflate diffs, and accidentally commit vendored dependencies or generated output.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Decide which untracked artifacts are intended source/documentation versus generated local state.
-    - [ ] Add ignore rules for generated archive dependency folders and local factory/cache outputs that should never be committed.
-    - [ ] If archive source is intentionally retained, keep source files only and exclude built output/dependencies unless there is a documented reason.
-    - [ ] Re-run `git status --short` and document the intended remaining untracked files.
+    - [x] Decide which untracked artifacts are intended source/documentation versus generated local state.
+    - [x] Add ignore rules for generated archive dependency folders and local factory/cache outputs that should never be committed.
+    - [x] If archive source is intentionally retained, keep source files only and exclude built output/dependencies unless there is a documented reason.
+    - [x] Re-run `git status --short` and document the intended remaining untracked files.
   - Acceptance Criteria:
-    - [ ] No `node_modules`, built `dist`, caches, or generated local-only files remain staged or visible as intended source.
-    - [ ] `git status --short` clearly distinguishes product changes from local/generated artifacts.
-    - [ ] `.gitignore` covers repeatable generated artifacts without hiding important source files.
-  - Notes/Evidence: Review observed untracked archive/vendor artifacts while inspecting the worktree.
+    - [x] No `node_modules`, built `dist`, caches, or generated local-only files remain staged or visible as intended source.
+    - [x] `git status --short` clearly distinguishes product changes from local/generated artifacts.
+    - [x] `.gitignore` covers repeatable generated artifacts without hiding important source files.
+  - Notes/Evidence: Review observed untracked archive/vendor artifacts while inspecting the worktree. Fixed in `2b5f058` by ignoring `.factory/`; the grouped runtime commit retained archive source while generated `archive/companion/node_modules`, `archive/companion/dist`, and taskpane build output remained ignored.
 
 - [ ] IMPROVEMENT-002: Clarify release packaging and runtime assumptions after the independent taskpane transition
   - Category: Improvement
@@ -182,6 +462,62 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] CI/release docs do not imply dev certs or local-only files are committed.
     - [ ] Optional companion limitations are explicit and do not conflict with taskpane-first architecture.
   - Notes/Evidence: Transition plan lists "Release packaging/runtime assumptions unclear" under WS6.
+
+- [ ] IMPROVEMENT-003: Consolidate Office tool contracts and user-facing descriptions
+  - Category: Improvement
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-26 Office-host and competitor/inspiration review.
+  - Details: Tool contracts and descriptions are duplicated across `packages/pi-office-pack`, the in-process kernel, the Office bridge, and Settings UI. This creates drift: for example, Settings calls `office_capture_snapshot` a visual screenshot while the actual implementation is selection/context snapshots plus metadata, and PowerPoint `edit_slide_master` wording is broader than its current apply-layout behavior. A single source or generated registry would make capability honesty easier to preserve.
+  - Dependencies: BUG-007 and BUG-009 for known contract mismatches.
+  - Subtasks:
+    - [ ] Inventory all Office tool names, labels, descriptions, categories, parameters, and runtime support paths.
+    - [ ] Choose a canonical registry or generation path for tool metadata used by prompts, Settings, and runtime registration.
+    - [ ] Add drift tests that fail when Settings/prompt descriptions disagree with implemented support.
+    - [ ] Update misleading descriptions found during the 2026-04-26 review.
+  - Acceptance Criteria:
+    - [ ] Each Office tool has one canonical capability description consumed by the UI and runtime where feasible.
+    - [ ] Tests catch obvious drift between advertised and executable tool behavior.
+    - [ ] User-facing copy clearly marks host-only, metadata-only, experimental, or escape-hatch tools.
+  - Notes/Evidence: Review pointed to `packages/pi-office-pack/src/extension.ts`, `apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `apps/taskpane/src/lib/office-bridge.ts`, and `apps/taskpane/src/app/components/SettingsPage.tsx`.
+
+- [ ] IMPROVEMENT-004: Build a professional PowerPoint visual asset and icon pipeline
+  - Category: Improvement
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-26 Office-host subagent review and ChatGPT inspiration comparison.
+  - Details: PowerPoint `insert_icon` currently relies on a tiny taskpane runtime catalog and can fall back to glyph text boxes unless base64 content is supplied. For pitch decks and professional slides, Pi-Office needs a higher-quality asset pipeline for icons, generated images, slide screenshots/previews, and reusable visual components.
+  - Dependencies: BUG-006 for image-provider execution honesty; BUG-007 for visual verification fidelity.
+  - Subtasks:
+    - [ ] Define supported asset sources for icons, generated images, user-provided images, and reusable slide components.
+    - [ ] Replace glyph-textbox fallback with higher-quality Office-compatible icon/image insertion where possible.
+    - [ ] Add preview/verification support for inserted assets.
+    - [ ] Add tests or manual validation for icon insertion, generated-image insertion, and asset fallback behavior.
+  - Acceptance Criteria:
+    - [ ] Inserted icons/assets render professionally in PowerPoint rather than as plain glyph placeholders except when explicitly requested.
+    - [ ] Asset insertion reports source, format, and fallback behavior.
+    - [ ] At least one deck-quality asset workflow is validated in PowerPoint.
+  - Notes/Evidence: Review pointed to the small runtime icon catalog and glyph-textbox insertion path in `apps/taskpane/src/lib/office/powerpoint-actions.ts`, plus ChatGPT inspiration assets around generated slide stores and slide screenshots.
+
+- [ ] IMPROVEMENT-005: Simplify provider, model, and settings UX into guided and advanced surfaces
+  - Category: Improvement
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-26 plan implementation after user noted the current provider/model/settings catalog is overwhelming for nontechnical users and includes regional/legacy models that can scare enterprises.
+  - Details: Settings currently exposes a large provider/model list and many toggles without a strong basic/advanced information architecture. Default users should see a guided shortlist of recommended current models and plain-language provider choices. Advanced users should still be able to opt into the full catalog, including legacy, experimental, regional, and higher-risk providers. Provider/model metadata needs to include region/jurisdiction, enterprise-risk messaging, capability flags, auth methods, current-vs-legacy status, and replacement suggestions.
+  - Dependencies: FEATURE-002 and BUG-005.
+  - Subtasks:
+    - [ ] Define model/provider metadata fields: visibility, status, replacedBy, region, enterpriseRisk, authMethods, capabilities, and companionRequired.
+    - [ ] Curate a default guided shortlist for Word/Excel/PowerPoint professional work.
+    - [ ] Move legacy, experimental, China-hosted/regional, and niche providers behind an explicit advanced catalog.
+    - [ ] Group settings into basic, advanced, privacy/security, providers, companion, and diagnostics using plain-language labels.
+    - [ ] Add tests that default enabled models/providers do not include advanced-only or region-risk entries unless the user opts in.
+  - Acceptance Criteria:
+    - [ ] A first-time nontechnical user can pick a recommended provider/model without reading a large model catalog.
+    - [ ] Advanced users can still find and enable the complete catalog.
+    - [ ] Regional/enterprise-risk providers are clearly labeled and not enabled by default.
+    - [ ] Model lists avoid stale versions when newer replacements exist unless the user enables advanced/legacy mode.
+  - Notes/Evidence: 2026-04-26 review found default enabled models/providers include broad Pi catalog entries, China-linked/regional providers, and old model revisions in `apps/taskpane/src/hooks/usePreferences.ts`, with Settings rendering all enabled-provider models together. 2026-04-26 hardening narrowed the default shortlist to OpenAI, Anthropic, and Google current/recommended entries and added `scripts/office-tests/src/model-curation.test.ts`; full metadata, regional labeling, and guided/advanced IA remain open.
 
 ### Testing
 
