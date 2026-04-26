@@ -6,11 +6,22 @@ This repository contains a Pi-powered Microsoft Office add-in stack centered on 
 
 ## Core rules
 
-- Do not create Git commits unless the user explicitly asks.
+- Do not create Git commits unless the user explicitly asks, except when explicitly working a `backlog.md` task; backlog task work must be committed per the Backlog stewardship rules.
 - Keep Git configuration repo-local only.
 - Treat Pi as an external dependency, not vendored source.
 - Keep host-side `Office.js` execution separate from Pi runtime and auth concerns.
 - Treat companion-era references as archival unless a task explicitly says to touch them.
+
+## Backlog stewardship
+
+- `backlog.md` is the canonical running backlog for bugs, features, improvements, security concerns, and testing gaps.
+- Create backlog tasks automatically when you observe actionable gaps during reviews, investigations, plan-mode exits, implementation work, verification, or unrelated work that reveals a real issue.
+- Update backlog tasks automatically when you explicitly work on them, prove them fixed, discover new evidence, split/merge scope, or realize a task is obsolete or no longer required.
+- Do not delete backlog history. Mark tasks `done` or `obsolete` with evidence and keep enough context for a future agent with no chat history.
+- Every backlog task must include category, status, priority, source, details, dependencies, subtasks, acceptance criteria, and notes/evidence.
+- Keep task checkboxes unchecked unless the task status is `done` or `obsolete`.
+- When working on a backlog task, commit that task's code/doc/test changes right away after validation, and keep the commit scoped to that backlog item only. Use conventional commit style and include the backlog ID in the subject, for example `fix(BUG-001): make taskpane build independent of local certs`.
+- Backlog maintenance may be delegated to a subagent when the session explicitly allows delegation; prefer `gpt-5.3-codex` with high reasoning if model selection is available. The parent agent remains responsible for reviewing and integrating the backlog update.
 
 ## Architecture priorities
 
