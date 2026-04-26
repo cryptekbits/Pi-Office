@@ -11,9 +11,8 @@ const certDir = new URL("../../certs/", import.meta.url);
 const certPfxPath = fileURLToPath(new URL("localhost.pfx", certDir));
 const certPassphrasePath = fileURLToPath(new URL("passphrase.txt", certDir));
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
+function loadDevServerConfig() {
+  return {
     host: "localhost",
     port: 3443,
     strictPort: true,
@@ -21,7 +20,12 @@ export default defineConfig({
       pfx: readFileSync(certPfxPath),
       passphrase: readFileSync(certPassphrasePath, "utf8").trim(),
     },
-  },
+  };
+}
+
+export default defineConfig(({ command }) => ({
+  plugins: [react()],
+  ...(command === "serve" ? { server: loadDevServerConfig() } : {}),
   resolve: {
     alias: {
       "vscode-jsonrpc/lib/common/cancellation.js": fileURLToPath(new URL("cancellation.js", vscodeJsonRpcCommonDir)),
@@ -32,4 +36,4 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: true,
   },
-});
+}));
