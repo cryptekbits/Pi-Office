@@ -367,6 +367,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Connector setup changes update the active session tool inventory without requiring a Word restart.
   - Notes/Evidence: Implemented `companion/src/http.ts` for loopback CORS, `companion/src/runtime-diagnostics.ts` plus `/v1/diagnostics`, taskpane `CompanionClient.getConnectorDiagnostics()`, companion-routed diagnostics in `inprocess-kernel.ts`, connector-session resync calls in `App.tsx`, remote-HTTP companion connector definitions in `browser-connectors.ts`, and visible diagnostic details in `IntegrationsSection.tsx`. Regression coverage added in `addin/scripts/office-tests/src/companion-discovery.test.ts` and updated in `external-context-gaps.test.ts`. Validation passed: `npm run typecheck:companion`, `npm run typecheck:addin`, `npm run test:office` with 131 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
+- [x] BUG-012: Browser-opened taskpane fails with unsupported Office host instead of useful preview mode
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-26 browser debugging report; direct `https://localhost:3443/` load reproduced `Connection failed: Unsupported Office host: undefined`.
+  - Details: The user needs to debug taskpane UI in a normal browser because Word desktop debugging is hard to share. Loading the dev taskpane outside Office makes Microsoft `Office.js` log that it is outside an Office client, returns no host from `Office.onReady`, and Pi-Office falls into the generic connection-failure UI. This blocks browser inspection of Settings, provider catalog, connector setup, and general taskpane chrome. The fix must not fake real Office.js document capabilities: browser preview should be clearly labeled and should not expose Office document tools to the model.
+  - Dependencies: None.
+  - Subtasks:
+    - [x] Add a dev-only browser preview fallback when Office host discovery fails outside Word, Excel, or PowerPoint.
+    - [x] Use a synthetic unsaved Office state with host selection by query string for UI debugging.
+    - [x] Keep Office.js document tools out of browser-preview model tool inventory.
+    - [x] Document the browser preview flow and its Office.js limitations.
+    - [x] Add regression coverage for preview state and fallback gating.
+  - Acceptance Criteria:
+    - [x] Opening `https://localhost:3443/` in a normal development browser reaches a usable preview instead of a connection-failed state.
+    - [x] Preview mode clearly states no real Office host is attached.
+    - [x] The active model cannot call Office document read/write tools while in preview mode.
+    - [x] Normal Office sideload behavior remains unchanged.
+  - Notes/Evidence: Initial reproduction showed the header stuck at `Bridge offline`, context bar `Waiting for Office...`, and a visible error `Connection failed: Unsupported Office host: undefined`; browser logs showed `Warning: Office.js is loaded outside of Office client`. Closed 2026-04-26 by adding `BROWSER_DEBUG_OFFICE_CAPABILITY`, `createBrowserDebugOfficeState`, and dev-only fallback gating in `office/shared.ts`; wiring `App.tsx` to open a synthetic unsaved preview session when Office host discovery fails in dev; filtering Office document tools out of preview model sessions in `inprocess-kernel.ts`; and documenting `?piOfficeHost=excel|powerpoint` plus `?piOfficeBrowserDebug=0` in `README.md`. Browser verification showed `Bridge ready`, `Browser Preview (Word)`, one preview notice, and no connection-failed card. Regression coverage added in `browser-debug-office-state.test.ts` and `protocol-parity.test.ts`. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 144 tests, `npm run build:addin`, `npm run check:bundle`, and `npm run validate:manifests`.
+
 ### Features
 
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards

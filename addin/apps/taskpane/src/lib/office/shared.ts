@@ -17,6 +17,8 @@ import type {
 import { HOST_LABELS } from "@pi-office/pi-office-pack/defaults";
 import type { OfficeCaptureOptions } from "../office-host-adapter-types";
 
+export const BROWSER_DEBUG_OFFICE_CAPABILITY = "browser-debug:no-office-host";
+
 export interface OfficeThemeSnapshot {
   bodyBackgroundColor: string;
   bodyForegroundColor: string;
@@ -62,6 +64,75 @@ export function mapHost(host: Office.HostType | string): OfficeHost {
     default:
       throw new Error(`Unsupported Office host: ${String(host)}`);
   }
+}
+
+export function resolveBrowserDebugOfficeHost(search = ""): OfficeHost {
+  const params = new URLSearchParams(search);
+  const candidate = params.get("piOfficeHost") ?? params.get("host");
+  if (candidate === "excel" || candidate === "powerpoint" || candidate === "word") {
+    return candidate;
+  }
+  return "word";
+}
+
+export function createBrowserDebugOfficeState(search = ""): OfficeStateUpdate {
+  const host = resolveBrowserDebugOfficeHost(search);
+  const hostLabel = HOST_LABELS[host];
+  return {
+    host,
+    document: {
+      id: `browser-debug:${host}`,
+      title: `Browser Preview (${hostLabel})`,
+      saved: false,
+    },
+    selection: {
+      label: "No Office host attached",
+      kind: "empty",
+      imageCount: 0,
+      objectCount: 0,
+      details: [
+        "Browser preview mode",
+        "Open in Word, Excel, or PowerPoint to test Office.js document reads and edits.",
+      ],
+    },
+    capabilities: [BROWSER_DEBUG_OFFICE_CAPABILITY],
+    timestamp: new Date().toISOString(),
+  };
+}
+
+export function isBrowserDebugOfficeState(state: OfficeStateUpdate | undefined): boolean {
+  return Boolean(state?.capabilities.includes(BROWSER_DEBUG_OFFICE_CAPABILITY));
+}
+
+export function isOfficeHostUnavailableForBrowserDebug(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /Office\.js is not available/i.test(message) ||
+    /Office host is not available/i.test(message) ||
+    /Timed out waiting for the Office host/i.test(message) ||
+    /Unsupported Office host: undefined/i.test(message)
+  );
+}
+
+export function shouldUseBrowserDebugOfficeState(
+  error: unknown,
+  options: { isDev: boolean; search?: string | undefined },
+): boolean {
+  if (!isOfficeHostUnavailableForBrowserDebug(error)) {
+    return false;
+  }
+
+  const params = new URLSearchParams(options.search ?? "");
+  const rawFlag = params.get("piOfficeBrowserDebug") ?? params.get("officeDebug");
+  const flag = rawFlag?.trim().toLowerCase();
+  if (flag === "0" || flag === "false" || flag === "off") {
+    return false;
+  }
+  if (flag === "1" || flag === "true" || flag === "on") {
+    return true;
+  }
+
+  return options.isDev;
 }
 
 export function basename(input: string): string {
@@ -1369,7 +1440,12 @@ export async function waitForOfficeReady(): Promise<OfficeHost> {
     Office.onReady((info) => {
       window.clearTimeout(timeout);
       try {
-        resolve(mapHost(info.host ?? Office.context?.host));
+        const readyHost = info.host ?? Office.context?.host;
+        if (!readyHost) {
+          reject(new Error("Office host is not available. Open the add-in inside Word, Excel, or PowerPoint."));
+          return;
+        }
+        resolve(mapHost(readyHost));
       } catch (error) {
         reject(error instanceof Error ? error : new Error(String(error)));
       }

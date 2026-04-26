@@ -29,6 +29,7 @@ import {
   DEFAULT_USER_PREFERENCES,
   EDIT_REJECT_REASON_LABELS,
   OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH,
+  OFFICE_TOOL_NAMES,
   TOOL_CATEGORY_MAP,
   type AskUserQuestion,
   type AskUserRequest,
@@ -113,10 +114,13 @@ import {
   getProviderSettingsPreference,
 } from "@pi-office/pi-office-pack/provider-model-preferences";
 import { executeOfficeTool } from "../office-tools";
+import { isBrowserDebugOfficeState } from "../office/shared";
 import { BrowserConnectorRuntime } from "./browser-connectors";
 import { CompanionClient, type CompanionSessionBinding } from "./companion-client";
 
 type JsonRecord = Record<string, unknown>;
+
+const OFFICE_TOOL_NAME_SET = new Set<string>(OFFICE_TOOL_NAMES);
 
 interface StoredAuthRecord {
   provider: string;
@@ -1846,6 +1850,9 @@ class BrowserOfficeSession {
   }
 
   private buildSystemPrompt(availableToolNames: readonly string[]): string {
+    const browserDebugGuidance = this.isBrowserDebugMode()
+      ? "\n\nBrowser preview mode: no real Office host is attached. Do not call Office tools or claim document state. Use this session only for taskpane UI, settings, provider, and non-document debugging."
+      : "";
     return `${OFFICE_APPEND_SYSTEM_PROMPT}\n\n${composeAutonomyPrompt(
       this.getPreferences(),
       this.canUseCompanionFileTools(),
@@ -1853,7 +1860,11 @@ class BrowserOfficeSession {
     )}\n\n${composeOfficeAwarePrompt(
       "Prefer Office tools as the source of truth for the active document.",
       this.officeState,
-    )}\n\n${summarizeCompanionForPrompt(this.companionState, this.officeState.document.saved)}`;
+    )}\n\n${summarizeCompanionForPrompt(this.companionState, this.officeState.document.saved)}${browserDebugGuidance}`;
+  }
+
+  private isBrowserDebugMode(): boolean {
+    return isBrowserDebugOfficeState(this.officeState);
   }
 
   private buildPromptSuggestionContext(
@@ -2549,6 +2560,7 @@ class BrowserOfficeSession {
       },
     });
 
+    const browserDebugMode = this.isBrowserDebugMode();
     const tools: AgentTool[] = ([
       simpleOfficeTool(
         "office_get_context",
@@ -2950,7 +2962,7 @@ class BrowserOfficeSession {
           };
         },
       },
-    ] as AgentTool[]).filter((tool) => isToolAvailable(tool.name));
+    ] as AgentTool[]).filter((tool) => isToolAvailable(tool.name) && (!browserDebugMode || !OFFICE_TOOL_NAME_SET.has(tool.name)));
 
     if (this.canUseCompanionNativeCapture()) {
       tools.push({

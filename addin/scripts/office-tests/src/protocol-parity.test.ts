@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createBrowserDebugOfficeState } from "../../../apps/taskpane/src/lib/office/shared.js";
+
 class MemoryStorage {
   private readonly store = new Map<string, string>();
 
@@ -309,6 +311,26 @@ test("protocol parity: Smart Auto hides viewport screenshots until companion nat
   }>;
   assert.equal(companionCapabilities.find((capability) => capability.id === "native_viewport_capture")?.activeRuntime, "companion");
   assert.equal(companionCapabilities.find((capability) => capability.id === "inference")?.fallbackRuntime, undefined);
+  socket.close();
+});
+
+test("protocol parity: browser preview sessions hide Office document tools", async () => {
+  const { runtime, socket, session } = await openSessionHarness("browser-preview-tools");
+  const typedSession = session as unknown as {
+    sessionId: string;
+    agent: { state: { tools: Array<{ name: string }> } };
+  };
+
+  await runtime.dispatchKernelRequest(`/v1/sessions/${typedSession.sessionId}/office-state`, {
+    method: "POST",
+    body: JSON.stringify(createBrowserDebugOfficeState("")),
+  });
+
+  const toolNames = new Set(typedSession.agent.state.tools.map((tool) => tool.name));
+  assert.equal(toolNames.has("office_get_context"), false);
+  assert.equal(toolNames.has("office_apply_edit"), false);
+  assert.equal(toolNames.has("office_execute_js"), false);
+  assert.equal(toolNames.has("ask_user"), true);
   socket.close();
 });
 

@@ -57,6 +57,8 @@ npm run dev
 
 This starts the taskpane web host on `https://localhost:3443`.
 
+Opening `https://localhost:3443` directly in a normal browser starts dev-only browser preview mode. The preview uses a synthetic unsaved Office context so the React taskpane, settings, provider catalog, connector setup UI, and browser-safe runtime surfaces can be debugged without Word/Excel/PowerPoint. Real Office.js document reads, edits, selection refresh, and visual snapshots still require sideloading inside an Office host. Use `?piOfficeHost=excel` or `?piOfficeHost=powerpoint` to preview host-specific chrome, and `?piOfficeBrowserDebug=0` to disable the fallback.
+
 5. Optionally start the local companion:
 
 ```bash

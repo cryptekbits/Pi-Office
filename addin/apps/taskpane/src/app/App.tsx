@@ -62,8 +62,10 @@ import {
   captureDocumentSnapshot,
   capturePromptVisuals,
   collectOfficeState,
+  createBrowserDebugOfficeState,
   readOfficeTheme,
   restoreDocumentSnapshot,
+  shouldUseBrowserDebugOfficeState,
   subscribeToOfficeChanges,
   waitForOfficeReady,
   type OfficeThemeSnapshot,
@@ -358,6 +360,15 @@ export function App() {
 
   const pushSystemMessage = useCallback((text: string) => {
     setMessages((c) => [...c, createEntry("system", text)]);
+  }, []);
+
+  const pushUniqueSystemMessage = useCallback((text: string) => {
+    setMessages((c) => {
+      if (c.some((entry) => entry.role === "system" && entry.text === text)) {
+        return c;
+      }
+      return [...c, createEntry("system", text)];
+    });
   }, []);
 
   const pushErrorMessage = useCallback((text: string) => {
@@ -1309,7 +1320,23 @@ export function App() {
         await Promise.all([refreshProviderState(), refreshConnectorState(undefined), refreshCompanionState()]);
         if (!active) return;
 
-        const host = await waitForOfficeReady();
+        let host: Awaited<ReturnType<typeof waitForOfficeReady>>;
+        try {
+          host = await waitForOfficeReady();
+        } catch (error) {
+          if (!shouldUseBrowserDebugOfficeState(error, { isDev: import.meta.env.DEV, search: window.location.search })) {
+            throw error;
+          }
+
+          const debugState = createBrowserDebugOfficeState(window.location.search);
+          setOfficeTheme(undefined);
+          setOfficeState(debugState);
+          pushUniqueSystemMessage(
+            "Browser preview mode: no real Office host is attached, so Office.js document reads and edits are disabled. Open the add-in inside Word, Excel, or PowerPoint to test document behavior.",
+          );
+          await openSession(debugState);
+          return;
+        }
         if (!active) return;
         setOfficeTheme(readOfficeTheme());
         const initialState = await collectOfficeState(host);
@@ -1371,7 +1398,7 @@ export function App() {
       assistantEntryIdRef.current = undefined;
       setSessionStats(undefined);
     };
-  }, [applySessionState, openSession, pushErrorMessage, refreshCompanionState, refreshConnectorState, refreshProviderState]);
+  }, [applySessionState, openSession, pushErrorMessage, pushUniqueSystemMessage, refreshCompanionState, refreshConnectorState, refreshProviderState]);
 
   useEffect(() => {
     if (lastSelectionFingerprintRef.current && lastSelectionFingerprintRef.current !== selectionFingerprint) {
