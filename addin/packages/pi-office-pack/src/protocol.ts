@@ -26,6 +26,13 @@ export interface CompanionCapabilities {
   memory?: CompanionSimpleCapability | undefined;
 }
 
+export interface CompanionDiscoveryAttempt {
+  endpoint: string;
+  ok: boolean;
+  message?: string | undefined;
+  durationMs?: number | undefined;
+}
+
 export interface CompanionState {
   status: CompanionStatus;
   endpoint?: string | undefined;
@@ -33,6 +40,7 @@ export interface CompanionState {
   lastError?: string | undefined;
   manualEndpoint?: string | undefined;
   lastSuccessfulEndpoint?: string | undefined;
+  lastDiscoveryAttempts?: CompanionDiscoveryAttempt[] | undefined;
   sessionId?: string | undefined;
   connectorToolNames?: string[] | undefined;
   capabilities: CompanionCapabilities;

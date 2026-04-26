@@ -62,6 +62,7 @@ import {
   type ConnectorScopeContext,
   type ConnectorScopeUpdateRequest,
   type ConnectorSetupRequest,
+  type ConnectorSetupProfile,
   type ConnectorSetupResponse,
   type ConnectorStatus,
   type ConnectorStatusResponse,
@@ -3321,21 +3322,42 @@ class InProcessKernel {
     ];
   }
 
+  private setupProfileIsHostedHttp(profile: ConnectorSetupProfile | undefined): boolean {
+    if (profile?.transport !== "remote_http" || profile.availability === "needs_companion") {
+      return false;
+    }
+    const endpoint = profile.endpoint ?? "";
+    try {
+      const host = new URL(endpoint).hostname.toLowerCase();
+      return host !== "localhost" && host !== "127.0.0.1" && host !== "0.0.0.0" && host !== "::1" && host !== "[::1]";
+    } catch {
+      return true;
+    }
+  }
+
+  private setupProfileNeedsCompanion(profile: ConnectorSetupProfile | undefined, transport: ConnectorSetupRequest["transport"]): boolean {
+    if (this.setupProfileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && profile?.setupDisabled !== true) {
+      return false;
+    }
+    return profile?.requiresCompanion === true || profile?.availability === "needs_companion" || profile?.transport === "local_stdio" || transport === "local_stdio";
+  }
+
   private applyCompanionExecutionMetadata(
     status: ConnectorStatusResponse["connectors"][number],
     overlay?: ConnectorStatus | undefined,
+    forceCompanion = false,
   ): ConnectorStatus {
     const catalog = getConnectorCatalogItem(status.connectorId);
     const profile = catalog?.setupProfiles?.find((entry) => entry.id === status.setupProfileId)
       ?? catalog?.setupProfiles?.find((entry) => entry.defaultWhenCompanionAbsent)
       ?? catalog?.setupProfiles?.[0];
-    const browserDirect = profile?.transport === "remote_http" && profile.browserDirect === "supported" && profile.requiresCompanion !== true;
-    const usesCompanion = !browserDirect && (profile?.requiresCompanion === true || status.transport === "local_stdio" || status.transport === "remote_http");
+    const browserDirect = !forceCompanion && this.setupProfileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && profile?.setupDisabled !== true;
+    const usesCompanion = forceCompanion || (!browserDirect && this.setupProfileNeedsCompanion(profile, status.transport));
     return {
       ...status,
       ...(overlay ?? {}),
       executionEnvironment: browserDirect ? "browser" : (usesCompanion ? "companion" : "browser"),
-      executionAvailable: overlay?.executionAvailable ?? (browserDirect && status.healthState === "ready" && Boolean(status.capabilities?.allowedTools.length)),
+      executionAvailable: overlay?.executionAvailable ?? (!usesCompanion && browserDirect && status.healthState === "ready" && Boolean(status.capabilities?.allowedTools.length)),
     };
   }
 
@@ -3345,7 +3367,11 @@ class InProcessKernel {
   ): ConnectorStatusResponse {
     const overlayById = new Map((overlayStatuses ?? []).map((status) => [status.id, status]));
     return {
-      connectors: statuses.map((status) => this.applyCompanionExecutionMetadata(status, overlayById.get(status.id))),
+      connectors: statuses.map((status) => this.applyCompanionExecutionMetadata(
+        status,
+        overlayById.get(status.id),
+        Boolean(this.connectorRuntime.buildCompanionConnectorDefinition(status.id)),
+      )),
     };
   }
 
@@ -3543,7 +3569,7 @@ class InProcessKernel {
       const response = this.connectorRuntime.prepareConnector(connectorId, request?.scopeContext);
       const selectedProfile = response.connector.setupProfiles?.find((profile) => profile.id === response.draft?.setupProfileId)
         ?? response.connector.setupProfiles?.[0];
-      const requiresCompanion = selectedProfile?.requiresCompanion === true || selectedProfile?.transport === "local_stdio";
+      const requiresCompanion = this.setupProfileNeedsCompanion(selectedProfile, selectedProfile?.transport ?? response.connector.transport);
       return {
         ...response,
         diagnostics: this.addCompanionDiagnostics(response.diagnostics, selectedProfile?.transport ?? response.connector.transport, companion, requiresCompanion),
@@ -3575,7 +3601,7 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
@@ -3606,7 +3632,7 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
@@ -3645,7 +3671,7 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,

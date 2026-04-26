@@ -327,12 +327,32 @@ function metadataUrlForEndpoint(url: string | undefined): string | undefined {
   return origin ? `${origin}/.well-known/oauth-authorization-server` : undefined;
 }
 
+function endpointIsLocalHttp(url: string | undefined): boolean {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return false;
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+function profileIsHostedHttp(profile: ConnectorSetupProfile | undefined): boolean {
+  return profile?.transport === "remote_http" && !endpointIsLocalHttp(profile.endpoint) && profile.availability !== "needs_companion";
+}
+
 function profileIsBrowserDirect(profile: ConnectorSetupProfile | undefined): boolean {
-  return profile?.transport === "remote_http" && profile.browserDirect === "supported" && profile.requiresCompanion !== true && profile.setupDisabled !== true;
+  return profileIsHostedHttp(profile) && profile?.browserDirect === "supported" && profile.setupDisabled !== true;
+}
+
+function profileCanTryBrowserMcp(profile: ConnectorSetupProfile | undefined): boolean {
+  return profileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && !profileSetupDisabled(profile);
 }
 
 function profileNeedsCompanion(profile: ConnectorSetupProfile | undefined, transport: ConnectorTransport | undefined): boolean {
-  if (profile?.requiresCompanion === true) return true;
+  if (profileCanTryBrowserMcp(profile)) return false;
+  if (profile?.requiresCompanion === true || profile?.availability === "needs_companion") return true;
   if (transport === "local_stdio") return true;
   return false;
 }
@@ -479,11 +499,11 @@ function buildCustomConnectorCatalogItem(name = "Custom MCP"): ConnectorCatalogI
       {
         id: "custom-hosted-http",
         label: "Connect online",
-        description: "Connect to a hosted MCP endpoint through the optional companion.",
+        description: "Connect to a hosted MCP endpoint.",
         transport: "remote_http",
         setupKind: "remote_url_token",
         authMethod: "bearer_token",
-        requiresCompanion: true,
+        requiresCompanion: false,
         officialness: "community",
         availability: "advanced",
         browserDirect: "unknown",
@@ -910,6 +930,9 @@ export class BrowserConnectorRuntime {
     }
 
     const profile = catalog ? profileForConnector(catalog, stored.setupProfileId) : undefined;
+    if (profileSetupDisabled(profile)) {
+      throw new Error(profile?.riskNotes?.[0] ?? "This connector sign-in path is not available yet.");
+    }
     const canUseMcpOAuthDiscovery = profile?.transport === "remote_http" && profile.authMethod === "oauth" && !profileSetupDisabled(profile);
     if (!canUseMcpOAuthDiscovery) {
       const url = trimString(catalog?.authUrl);
@@ -943,7 +966,12 @@ export class BrowserConnectorRuntime {
     if (!metadataUrl || typeof fetch !== "function") {
       throw new Error("This connector does not expose browser-readable OAuth metadata.");
     }
-    const metadataResponse = await fetch(metadataUrl, { headers: { accept: "application/json" } });
+    let metadataResponse: Response;
+    try {
+      metadataResponse = await fetch(metadataUrl, { headers: { accept: "application/json" } });
+    } catch {
+      throw new Error("OAuth metadata discovery is blocked by this provider from the Office taskpane. Pi-Office needs a secure OAuth broker or companion-mediated sign-in before this connector can sign in.");
+    }
     if (!metadataResponse.ok) {
       throw new Error(`OAuth metadata discovery failed with HTTP ${metadataResponse.status}.`);
     }
@@ -962,21 +990,26 @@ export class BrowserConnectorRuntime {
     let clientId: string | undefined;
     let clientSecret: string | undefined;
     if (metadata.registration_endpoint) {
-      const registrationResponse = await fetch(metadata.registration_endpoint, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-        },
-        body: JSON.stringify({
-          client_name: "Pi-Office",
-          redirect_uris: [redirectUri],
-          grant_types: ["authorization_code", "refresh_token"],
-          response_types: ["code"],
-          token_endpoint_auth_method: "none",
-          application_type: "web",
-        }),
-      });
+      let registrationResponse: Response;
+      try {
+        registrationResponse = await fetch(metadata.registration_endpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json",
+          },
+          body: JSON.stringify({
+            client_name: "Pi-Office",
+            redirect_uris: [redirectUri],
+            grant_types: ["authorization_code", "refresh_token"],
+            response_types: ["code"],
+            token_endpoint_auth_method: "none",
+            application_type: "web",
+          }),
+        });
+      } catch {
+        throw new Error("OAuth dynamic client registration is blocked by this provider from the Office taskpane. Pi-Office needs a secure OAuth broker or companion-mediated sign-in before this connector can sign in.");
+      }
       if (!registrationResponse.ok) {
         throw new Error(`OAuth dynamic client registration failed with HTTP ${registrationResponse.status}.`);
       }
@@ -1076,14 +1109,20 @@ export class BrowserConnectorRuntime {
       if (pending.clientSecret) {
         form.set("client_secret", pending.clientSecret);
       }
-      const tokenResponse = await fetch(pending.tokenEndpoint, {
-        method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          accept: "application/json",
-        },
-        body: form.toString(),
-      });
+      let tokenResponse: Response;
+      try {
+        tokenResponse = await fetch(pending.tokenEndpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            accept: "application/json",
+          },
+          body: form.toString(),
+        });
+      } catch {
+        await this.markOAuthIncomplete(connectorId, "OAuth token exchange is blocked by this provider from the Office taskpane. Pi-Office needs a secure OAuth broker or companion-mediated sign-in before this connector can finish sign-in.");
+        throw new Error("OAuth token exchange is blocked by this provider from the Office taskpane. Pi-Office needs a secure OAuth broker or companion-mediated sign-in before this connector can finish sign-in.");
+      }
       if (!tokenResponse.ok) {
         const bodyText = await tokenResponse.text().catch(() => "");
         await this.markOAuthIncomplete(connectorId, `OAuth token exchange failed with HTTP ${tokenResponse.status}.`);
@@ -1372,7 +1411,8 @@ export class BrowserConnectorRuntime {
       return undefined;
     }
     const profile = profileForConnector(catalog, record.setupProfileId);
-    if (!profileNeedsCompanion(profile, record.transport)) {
+    const localRemoteEndpoint = record.transport === "remote_http" && endpointIsLocalHttp(record.url);
+    if (!localRemoteEndpoint && !profileNeedsCompanion(profile, record.transport)) {
       return undefined;
     }
 
@@ -1412,10 +1452,11 @@ export class BrowserConnectorRuntime {
       : buildCustomConnectorCatalogItem(record.name);
     if (!catalog) return undefined;
     const profile = profileForConnector(catalog, record.setupProfileId);
-    if (!profileIsBrowserDirect(profile)) return undefined;
+    if (!profileCanTryBrowserMcp(profile)) return undefined;
     if (record.transport !== "remote_http") return undefined;
     const url = normalizeUrl(record.url ?? profile?.endpoint);
     if (!url) return undefined;
+    if (endpointIsLocalHttp(url)) return undefined;
     if (record.remoteHttpHeadersFromEnv?.length) return undefined;
     if (record.credentialSource === "env" || record.credentialSource === "detected_env") return undefined;
     if (record.authMethod === "oauth" && this.needsCredential(record)) return undefined;
@@ -1754,13 +1795,15 @@ export class BrowserConnectorRuntime {
         { key: "python", label: "Python", ok: false, detail: "Local runtime unavailable in browser-only mode." },
       ];
     }
-    if (profileIsBrowserDirect(profile)) {
+    if (profileCanTryBrowserMcp(profile)) {
       return [
         {
           key: "git",
-          label: "Browser-direct MCP",
+          label: profileIsBrowserDirect(profile) ? "Browser-direct MCP" : "Hosted MCP",
           ok: true,
-          detail: "This hosted MCP can be verified and executed directly from the taskpane after sign-in.",
+          detail: profileIsBrowserDirect(profile)
+            ? "This hosted MCP can be verified and executed directly from the taskpane after sign-in."
+            : "Pi-Office will try direct taskpane verification for this hosted MCP and fail closed if the provider blocks browser access.",
         },
       ];
     }

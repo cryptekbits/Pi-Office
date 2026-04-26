@@ -124,12 +124,11 @@ export class CompanionServer {
 
   private mountRoutes(app: express.Express): void {
     app.get("/v1/health", (_request, response) => {
-      const shell = createShellSandbox(this.config).getCapability();
       const body: CompanionHealthResponse = {
         ok: true,
         endpoint: this.config.endpoint,
         identity: this.config.identity,
-        capabilities: createCompanionState(this.config, undefined, [], shell).capabilities,
+        capabilities: createCompanionState(this.config, undefined, []).capabilities,
       };
       response.json(body);
     });

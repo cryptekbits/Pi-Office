@@ -162,11 +162,11 @@ const CUSTOM_CONNECTOR_CARD: ConnectorCatalogItem = {
     {
       id: "custom-hosted-http",
       label: "Connect online",
-      description: "Connect to a hosted MCP endpoint through the optional companion.",
+      description: "Connect to a hosted MCP endpoint.",
       transport: "remote_http",
       setupKind: "remote_url_token",
       authMethod: "bearer_token",
-      requiresCompanion: true,
+      requiresCompanion: false,
       officialness: "community",
       availability: "advanced",
       browserDirect: "unknown",
@@ -240,13 +240,14 @@ function companionIsOnline(companion: CompanionState | undefined): boolean {
 }
 
 function setupProfileNeedsCompanion(profile: ConnectorSetupProfile | undefined, transport: ConnectorSetupRequest["transport"] | undefined): boolean {
-  if (profile?.requiresCompanion === true) return true;
+  if (profile?.transport === "remote_http" && setupProfileIsHostedHttp(profile)) return false;
+  if (profile?.requiresCompanion === true || profile?.availability === "needs_companion") return true;
   if (transport === "local_stdio" || profile?.transport === "local_stdio") return true;
   return false;
 }
 
 function setupProfileIsBrowserDirect(profile: ConnectorSetupProfile | undefined): boolean {
-  return profile?.transport === "remote_http" && profile.browserDirect === "supported" && profile.requiresCompanion !== true && profile.setupDisabled !== true;
+  return profile?.transport === "remote_http" && profile.browserDirect === "supported" && setupProfileIsHostedHttp(profile) && profile.setupDisabled !== true;
 }
 
 function setupProfileIsHostedHttp(profile: ConnectorSetupProfile | undefined): boolean {
@@ -254,6 +255,10 @@ function setupProfileIsHostedHttp(profile: ConnectorSetupProfile | undefined): b
   const endpoint = profile.endpoint ?? "";
   if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(endpoint)) return false;
   return profile.availability !== "needs_companion";
+}
+
+function setupProfileCanTryBrowserMcp(profile: ConnectorSetupProfile | undefined): boolean {
+  return setupProfileIsHostedHttp(profile) && profile?.browserDirect !== "unsupported" && !setupProfileDisabled(profile);
 }
 
 function setupProfileDisabled(profile: ConnectorSetupProfile | undefined): boolean {
@@ -746,6 +751,7 @@ export function IntegrationsSection({
   const [error, setError] = useState<string>();
   const [liveMessage, setLiveMessage] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
+  const backgroundSetupStateRef = useRef({ companion, diagnostics, selectedStatus: undefined as ConnectorStatus | undefined });
 
   const resetSelection = useCallback(() => {
     setSelectedKey(undefined);
@@ -792,6 +798,10 @@ export function IntegrationsSection({
     [selectedKey, statuses],
   );
 
+  useEffect(() => {
+    backgroundSetupStateRef.current = { companion, diagnostics, selectedStatus };
+  }, [companion, diagnostics, selectedStatus]);
+
   const selectedConnector = useMemo(() => {
     if (prepare?.connector) return prepare.connector;
     if (selectedKey === "custom" || selectedStatus?.source === "custom") {
@@ -822,7 +832,8 @@ export function IntegrationsSection({
         if (!active) return;
         const connector = nextPrepare.connector.id === "custom" ? CUSTOM_CONNECTOR_CARD : nextPrepare.connector;
         setPrepare(nextPrepare);
-        setDraft(buildDraft(connector, nextPrepare, diagnostics, selectedStatus, companion));
+        const background = backgroundSetupStateRef.current;
+        setDraft(buildDraft(connector, nextPrepare, background.diagnostics, background.selectedStatus, background.companion));
       })
       .catch((reason) => {
         if (active) setError(reason instanceof Error ? reason.message : String(reason));
@@ -834,7 +845,7 @@ export function IntegrationsSection({
     return () => {
       active = false;
     };
-  }, [companion, diagnostics, onPrepareConnector, prepareNonce, scopeContext, scopeContextKey, selectedKey, selectedStatus]);
+  }, [onPrepareConnector, prepareNonce, scopeContext, scopeContextKey, selectedKey]);
 
   useEffect(() => {
     if (!selectedStatus?.id) {
@@ -1589,9 +1600,9 @@ export function IntegrationsSection({
                             : "Not connected. Save settings anytime; use the Companion tab to start discovery, then run Check connection."}
                           {draft.transport === "local_stdio" ? " Local stdio MCP always runs on this PC through the companion process." : " This profile needs companion-side verification before it can run."}
                         </div>
-                      ) : setupProfileIsBrowserDirect(selectedDraftProfile) ? (
+                      ) : setupProfileCanTryBrowserMcp(selectedDraftProfile) ? (
                         <div className="settings-note integration-note integration-note-info">
-                          <strong>Browser sign-in</strong> This hosted MCP can be verified and used directly from the taskpane after sign-in.
+                          <strong>Hosted connector</strong> Pi-Office will verify this MCP directly from the taskpane. If the provider blocks browser access, setup will fail closed with next steps.
                         </div>
                       ) : null}
                       {(selectedConnector.setupProfiles?.length ?? 0) > 1 && (
@@ -1673,8 +1684,8 @@ export function IntegrationsSection({
                         <div className="field">
                           <span>Connection</span>
                           <p className="settings-note">
-                            {connectionTypeUserLabel(draft.transport)} — {setupProfileIsBrowserDirect(selectedDraftProfile)
-                              ? "verified and executed directly from the taskpane after sign-in."
+                            {connectionTypeUserLabel(draft.transport)} — {setupProfileCanTryBrowserMcp(selectedDraftProfile)
+                              ? "verified directly from the taskpane when the hosted MCP allows browser access."
                               : setupProfileIsHostedHttp(selectedDraftProfile)
                                 ? "hosted MCP URL saved in Pi-Office; sign-in opens in a dedicated window."
                               : selectedDraftNeedsCompanionNotice
@@ -2058,9 +2069,9 @@ export function IntegrationsSection({
                         <div className="settings-note integration-note integration-note-warning">
                           Companion is offline. Start discovery on the Companion tab, then use Check connection.
                         </div>
-                      ) : setupProfileIsBrowserDirect(selectedDraftProfile) ? (
+                      ) : setupProfileCanTryBrowserMcp(selectedDraftProfile) ? (
                         <div className="settings-note integration-note integration-note-info">
-                          Verification will use the hosted MCP directly from the taskpane.
+                          Verification will try the hosted MCP directly from the taskpane and will fail closed if the provider blocks browser access.
                         </div>
                       ) : null}
                       <p className="settings-note">Only verified read-safe tools and resource helpers become available to the model.</p>

@@ -89,12 +89,18 @@ test("all built-in connectors expose curated setup profiles", () => {
   assert.deepEqual(granola.setupProfiles?.map((profile) => profile.id), ["granola-hosted-oauth"]);
   assert.equal(granola.setupProfiles?.[0]?.authMethod, "oauth");
   assert.equal(granola.setupProfiles?.[0]?.requiresCompanion, false);
-  assert.equal(granola.setupProfiles?.[0]?.browserDirect, "supported");
+  assert.equal(granola.setupProfiles?.[0]?.browserDirect, "unknown");
 
   const perplexity = connectors.find((connector) => connector.id === "perplexity");
   assert.ok(perplexity);
   assert.deepEqual(perplexity.setupProfiles?.map((profile) => profile.id), ["perplexity-local-stdio"]);
   assert.equal(perplexity.setupProfiles?.[0]?.requiresCompanion, true);
+
+  const slack = connectors.find((connector) => connector.id === "slack");
+  assert.ok(slack);
+  assert.equal(slack.setupProfiles?.[0]?.availability, "planned");
+  assert.equal(slack.setupProfiles?.[0]?.setupDisabled, true);
+  assert.equal(slack.setupProfiles?.[0]?.browserDirect, "unsupported");
 
   const googleDrive = connectors.find((connector) => connector.id === "google-drive");
   assert.equal(googleDrive?.setupProfiles?.find((profile) => profile.id === "google-drive-official")?.setupDisabled, true);
@@ -108,6 +114,29 @@ test("browser connector runtime persists selected profile and tool policy overri
   const Runtime = await loadBrowserConnectorRuntime();
   const runtime = new Runtime();
   await runtime.ready;
+  const globalAny = globalThis as unknown as { fetch?: typeof fetch };
+  globalAny.fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    if (url === "https://search-mcp.parallel.ai/mcp" && method === "POST") {
+      const payload = JSON.parse(String(init?.body ?? "{}")) as { method?: string; id?: string };
+      const headers = new Headers({ "content-type": "application/json", "mcp-session-id": "parallel-session-1" });
+      if (payload.method === "initialize") {
+        return Response.json({ jsonrpc: "2.0", id: payload.id, result: { protocolVersion: "2025-06-18", capabilities: {} } }, { headers });
+      }
+      if (payload.method === "notifications/initialized") {
+        return new Response("", { status: 202, headers });
+      }
+      if (payload.method === "tools/list") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: payload.id,
+          result: { tools: [{ name: "web_search", description: "Search the web", annotations: { readOnlyHint: true, openWorldHint: true } }] },
+        }, { headers });
+      }
+    }
+    return new Response(`Unexpected ${method} ${url}`, { status: 500 });
+  };
 
   const response = await runtime.connectConnector({
     connectorId: "parallel-web",
@@ -145,7 +174,36 @@ test("browser connector runtime persists selected profile and tool policy overri
   assert.equal(exportedConnector?.toolPolicyOverrides?.[0]?.toolName, tool.name);
 });
 
-test("granola OAuth starts browser sign-in and browser-direct MCP verification enforces tool policy", async () => {
+test("hosted HTTP connector diagnostics do not require companion and Slack is coming soon", async () => {
+  const Runtime = await loadBrowserConnectorRuntime();
+  const runtime = new Runtime();
+  await runtime.ready;
+
+  const parallelPrepare = runtime.prepareConnector("parallel-web");
+  assert.equal(parallelPrepare.diagnostics.some((entry) => entry.code.includes("companion")), false);
+  assert.equal(parallelPrepare.runtimes.some((entry) => /optional companion/i.test(entry.detail)), false);
+  assert.equal(parallelPrepare.runtimes[0]?.label, "Hosted MCP");
+
+  const slackPrepare = runtime.prepareConnector("slack");
+  assert.equal(slackPrepare.draft?.setupProfileId, "slack-hosted-oauth");
+  assert.equal(slackPrepare.diagnostics.some((entry) => entry.code.includes("companion")), false);
+  assert.equal(slackPrepare.runtimes[0]?.detail.includes("requires a registered Slack app"), true);
+
+  const savedSlack = await runtime.connectConnector({
+    connectorId: "slack",
+    setupProfileId: "slack-hosted-oauth",
+    name: "Slack",
+    enabled: true,
+    authMethod: "oauth",
+    transport: "remote_http",
+    credentialSource: "oauth",
+    url: "https://mcp.slack.com/mcp",
+  });
+  assert.equal(savedSlack.diagnostics[0]?.code, "connector_profile_not_available");
+  await assert.rejects(() => runtime.startOAuth(savedSlack.status.id), /Slack app registration/i);
+});
+
+test("granola OAuth starts browser sign-in and hosted MCP verification enforces tool policy", async () => {
   const openedUrls: string[] = [];
   const globalAny = globalThis as unknown as {
     window?: { location?: { origin?: string }; open?: (...args: unknown[]) => unknown };
@@ -242,4 +300,42 @@ test("granola OAuth starts browser sign-in and browser-direct MCP verification e
   );
   const executed = await runtime.executeBrowserMcpTool("search_meetings", { query: "recap" }, { host: "word", documentSaved: false });
   assert.ok(executed);
+});
+
+test("OAuth DCR browser CORS failures are reported with actionable copy", async () => {
+  const Runtime = await loadBrowserConnectorRuntime();
+  const runtime = new Runtime();
+  await runtime.ready;
+  const globalAny = globalThis as unknown as { fetch?: typeof fetch };
+  globalAny.fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    if (url === "https://mcp.granola.ai/.well-known/oauth-authorization-server") {
+      return Response.json({
+        authorization_endpoint: "https://mcp-auth.granola.ai/oauth2/authorize",
+        token_endpoint: "https://mcp-auth.granola.ai/oauth2/token",
+        registration_endpoint: "https://mcp-auth.granola.ai/oauth2/register",
+      });
+    }
+    if (url === "https://mcp-auth.granola.ai/oauth2/register" && method === "POST") {
+      throw new TypeError("Failed to fetch");
+    }
+    return new Response(`Unexpected ${method} ${url}`, { status: 500 });
+  };
+
+  const saved = await runtime.connectConnector({
+    connectorId: "granola",
+    setupProfileId: "granola-hosted-oauth",
+    name: "Granola",
+    enabled: true,
+    authMethod: "oauth",
+    transport: "remote_http",
+    credentialSource: "oauth",
+    url: "https://mcp.granola.ai/mcp",
+  });
+
+  await assert.rejects(
+    () => runtime.startOAuth(saved.status.id),
+    /dynamic client registration is blocked/i,
+  );
 });

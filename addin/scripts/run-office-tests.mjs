@@ -1,9 +1,10 @@
-import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const rootDir = join(fileURLToPath(new URL(".", import.meta.url)), "..");
+const repoRoot = join(rootDir, "..");
 const outDir = join(rootDir, ".codex-office-tests-dist");
 
 function run(command, args) {
@@ -63,12 +64,25 @@ function rewriteCompiledRelativeImports(directory) {
   }
 }
 
+function linkCompanionDependencies() {
+  const companionNodeModules = join(repoRoot, "companion", "node_modules");
+  if (!existsSync(companionNodeModules)) return;
+
+  const compiledCompanionDir = join(outDir, "companion");
+  const compiledCompanionNodeModules = join(compiledCompanionDir, "node_modules");
+  mkdirSync(compiledCompanionDir, { recursive: true });
+  if (!existsSync(compiledCompanionNodeModules)) {
+    symlinkSync(companionNodeModules, compiledCompanionNodeModules, process.platform === "win32" ? "junction" : "dir");
+  }
+}
+
 rmSync(outDir, { recursive: true, force: true });
 
 try {
   run("npm", ["run", "build", "--workspace", "@pi-office/pi-office-pack"]);
   run("npx", ["tsc", "-p", "scripts/office-tests/tsconfig.json", "--outDir", outDir]);
   rewriteCompiledRelativeImports(outDir);
+  linkCompanionDependencies();
   const testDir = join(outDir, "addin/scripts/office-tests/src");
   const testFiles = readdirSync(testDir)
     .filter((entry) => entry.endsWith(".test.js"))

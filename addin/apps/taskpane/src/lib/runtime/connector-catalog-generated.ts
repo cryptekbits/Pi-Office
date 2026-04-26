@@ -652,12 +652,12 @@ export const CONNECTOR_CATALOG = [
       {
         "id": "slack-hosted-oauth",
         "label": "Sign in with Slack",
-        "description": "Official hosted Slack MCP using browser sign-in.",
+        "description": "Official hosted Slack MCP, coming soon in Pi-Office after a Slack app is registered.",
         "transport": "remote_http",
         "setupKind": "remote_oauth",
         "authMethod": "oauth",
         "endpoint": "https://mcp.slack.com/mcp",
-        "requiresCompanion": true,
+        "requiresCompanion": false,
         "officialness": "official",
         "defaultWhenCompanionAbsent": true,
         "defaultWhenCompanionPresent": true,
@@ -673,22 +673,23 @@ export const CONNECTOR_CATALOG = [
           "Environment-backed headers",
           "Tool policy"
         ],
-        "docsUrl": "https://slack.com/help/articles/48855576908307-Guide-to-the-Slack-MCP-server",
-        "endpointEvidenceUrl": "https://slack.com/help/articles/48855576908307-Guide-to-the-Slack-MCP-server",
-        "authEvidenceUrl": "https://slack.com/help/articles/48855576908307-Guide-to-the-Slack-MCP-server",
+        "docsUrl": "https://docs.slack.dev/ai/slack-mcp-server/",
+        "endpointEvidenceUrl": "https://docs.slack.dev/ai/slack-mcp-server/",
+        "authEvidenceUrl": "https://docs.slack.dev/ai/slack-mcp-server/",
         "checkedAt": "2026-04-27",
         "riskNotes": [
-          "Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this endpoint."
+          "Slack MCP does not support Dynamic Client Registration and requires a registered Slack app client ID/secret. Pi-Office will enable setup after the Slack app registration path is ready."
         ],
-        "availability": "available",
-        "browserDirect": "unknown"
+        "availability": "planned",
+        "browserDirect": "unsupported",
+        "setupDisabled": true
       }
     ],
-    "docsUrl": "https://slack.com/help/articles/48855576908307-Guide-to-the-Slack-MCP-server",
+    "docsUrl": "https://docs.slack.dev/ai/slack-mcp-server/",
     "authUrl": "https://api.slack.com/apps",
     "setupNotes": [
-      "Most Slack MCP servers use a bot or user token.",
-      "Choose a token with read scopes only when possible."
+      "Slack MCP requires a registered Slack app with confidential OAuth, so Pi-Office setup is intentionally coming soon.",
+      "Keep the connector visible as a roadmap entry until the Slack app registration and credential broker path is ready."
     ]
   },
   {
@@ -1017,10 +1018,10 @@ export const CONNECTOR_CATALOG = [
         "endpointEvidenceUrl": "https://docs.granola.ai/help-center/sharing/integrations/mcp",
         "checkedAt": "2026-04-27",
         "riskNotes": [
-          "Browser-direct OAuth/DCR was verified against Granola MCP metadata; no local companion or API-key UI should be shown."
+          "Granola is an official hosted MCP with OAuth/DCR, but live Office webviews can be blocked by provider CORS during Dynamic Client Registration. Keep the UI OAuth-only and fail closed with broker/companion guidance when browser-side registration is blocked."
         ],
         "availability": "available",
-        "browserDirect": "supported",
+        "browserDirect": "unknown",
         "authEvidenceUrl": "https://docs.granola.ai/help-center/sharing/integrations/mcp"
       }
     ],
