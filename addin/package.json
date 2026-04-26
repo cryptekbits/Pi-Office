@@ -32,18 +32,22 @@
     "generate:icons": "node ./scripts/generate-brand-icons.mjs",
     "validate:manifests": "node ./scripts/validate-manifests.mjs",
     "presideload:word": "npm run preflight:sideload",
-    "sideload:word": "office-addin-debugging start manifests/word.xml",
+    "sideload:word": "npx --yes office-addin-debugging@6.0.7 start manifests/word.xml",
     "presideload:excel": "npm run preflight:sideload",
-    "sideload:excel": "office-addin-debugging start manifests/excel.xml",
+    "sideload:excel": "npx --yes office-addin-debugging@6.0.7 start manifests/excel.xml",
     "presideload:powerpoint": "npm run preflight:sideload",
-    "sideload:powerpoint": "office-addin-debugging start manifests/powerpoint.xml",
-    "sideload:stop": "office-addin-debugging stop"
+    "sideload:powerpoint": "npx --yes office-addin-debugging@6.0.7 start manifests/powerpoint.xml",
+    "sideload:stop": "npx --yes office-addin-debugging@6.0.7 stop"
+  },
+  "overrides": {
+    "uuid": "14.0.0"
+  },
+  "dependencies": {
+    "mermaid": "^11.14.0"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "npm-run-all": "^4.1.5",
-    "office-addin-debugging": "6.0.6",
-    "office-addin-manifest": "^1.13.3",
     "typescript": "^5.7.3"
   }
 }

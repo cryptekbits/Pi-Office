@@ -1,15 +1,15 @@
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
-import { fileURLToPath, URL } from "node:url";
+import { fileURLToPath, pathToFileURL, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-const vscodeJsonRpcCommonDir = new URL(
-  "../../node_modules/vscode-languageserver-protocol/node_modules/vscode-jsonrpc/lib/common/",
-  import.meta.url,
-);
+const require = createRequire(import.meta.url);
+const vscodeJsonRpcCommonDir = new URL("./lib/common/", pathToFileURL(require.resolve("vscode-jsonrpc/package.json")));
 const certDir = new URL("../../certs/", import.meta.url);
 const certPfxPath = fileURLToPath(new URL("localhost.pfx", certDir));
 const certPassphrasePath = fileURLToPath(new URL("passphrase.txt", certDir));
+const chunkSizeWarningLimitKb = 1600;
 
 function loadDevServerConfig() {
   return {
@@ -35,5 +35,6 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: "dist",
     sourcemap: true,
+    chunkSizeWarningLimit: chunkSizeWarningLimitKb,
   },
 }));

@@ -1,7 +1,9 @@
-import mermaid from "mermaid";
 import type { OfficeThemeSnapshot } from "./office";
 
+type MermaidApi = typeof import("mermaid").default;
+
 let mermaidInitialized = false;
+let mermaidPromise: Promise<MermaidApi> | undefined;
 let renderCounter = 0;
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const DRAWIO_EMBED_URL =
@@ -53,7 +55,14 @@ function getMermaidTheme(theme: OfficeThemeSnapshot | undefined): {
   };
 }
 
-function initMermaid(theme: OfficeThemeSnapshot | undefined): void {
+async function loadMermaid(): Promise<MermaidApi> {
+  mermaidPromise ??= import("mermaid").then((module) => module.default);
+  return mermaidPromise;
+}
+
+function initMermaid(mermaid: MermaidApi, theme: OfficeThemeSnapshot | undefined): void {
+  if (mermaidInitialized) return;
+
   const config = getMermaidTheme(theme);
   mermaid.initialize({
     startOnLoad: false,
@@ -72,7 +81,8 @@ export async function renderMermaidToSvg(
   code: string,
   theme: OfficeThemeSnapshot | undefined,
 ): Promise<string> {
-  initMermaid(theme);
+  const mermaid = await loadMermaid();
+  initMermaid(mermaid, theme);
   renderCounter += 1;
   const id = `pi-mermaid-${renderCounter}-${Date.now()}`;
   const { svg } = await mermaid.render(id, code.trim());

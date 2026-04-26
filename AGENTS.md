@@ -58,6 +58,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - `SECURITY-003` is closed: `office_execute_js` is an escape-hatch tool that cannot be auto-approved and any approval is normalized to a one-time decision, even if a client sends a broader scope.
 - `SECURITY-005` is closed with an expanded `docs/provenance.md`, new `CONTRIBUTING.md` originality guidance, and a neutralized CSS comment; third-party connector logo licensing remains open as `SECURITY-007`.
 - `SECURITY-006` is closed: the companion now has shared shell capability protocol, fail-closed backend detection, policy validation, destructive probes, environment scrubbing, output caps/timeouts, a sandbox-routed Pi `BashOperations` adapter, and taskpane gating so `bash` only appears when a saved-document companion session reports shell `available`.
+- `BUG-010` is closed: add-in clean install now reports zero npm audit vulnerabilities, Vite is patched to `8.0.10`, Mermaid renders through a lazy-loaded chunk, and the build no longer emits the large-chunk warning while the custom bundle-budget gate remains active.
 - The broad independent taskpane transition is now committed: `a70cd9a` moves Pi session routes into the taskpane in-process kernel, reduces the companion to optional read-only file/MCP support, archives old companion source, and includes next-prompt suggestions, model curation, and runtime regression tests.
 - Dev and sideload hardening is now committed as `a8a5a0d` plus `43b2a5b`, including the CI workflow, bundle budget, cert/port preflight, sideload resource preflight, manifest cache-bust version `1.0.0.2`, taskpane dev host on `https://localhost:3443`, and Vite cert loading scoped to the dev server only.
 
@@ -75,6 +76,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - 2026-04-26: Started `SECURITY-006` with a companion shell sandbox policy doc, README warning, and no-raw-shell regression coverage for active taskpane tools and companion routes; full sandbox backend/probes are still pending.
 - 2026-04-26: Closed `SECURITY-006` by adding shared shell capability protocol, `CompanionShellSandbox`, capability/execute routes, taskpane `bash` gating behind available sandbox state, policy/destructive probe tests, environment scrubbing, output caps/timeouts, and a custom Pi `BashOperations` adapter; `npm run test:office` passed with 98 tests and companion/taskpane typechecks passed.
 - 2026-04-26: Refactored the repository into independent `addin/`, `companion/`, `website/`, and `docs/` areas, keeping the root as a normal npm script router and preserving add-in/companion behavior with path-only config, CI, test, and documentation updates.
+- 2026-04-26: Closed `BUG-010` by clearing the add-in npm audit findings, removing local vulnerable Office CLI packages from `npm ci`, pinning on-demand sideload/manifest CLIs, upgrading Vite to `8.0.10`, lazy-loading Mermaid, and verifying clean install/build/bundle/typecheck/manifest/test gates.
 
 ## Core rules
 

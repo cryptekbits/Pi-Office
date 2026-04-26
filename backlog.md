@@ -327,6 +327,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Tests cover at least one multi-slide or non-first-slide shape operation.
   - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/powerpoint-context.ts` using `slides.items[0]` for selected shapes and `addin/apps/taskpane/src/lib/office-bridge.ts` limiting `edit_slide_master` to apply-layout operations.
 
+- [x] BUG-010: Add-in install and build gates emit stale dependency and bundle warnings
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-26 follow-up after the repository split; user reported that `npm ci --prefix addin` still emitted npm audit findings and build still emitted the existing Vite large-chunk warning.
+  - Details: After moving the add-in into `addin/`, the clean add-in install still reported vulnerable transitive packages and the taskpane build still printed Vite's large-chunk warning. The audit noise came from local Office CLI dev dependencies plus Mermaid's vulnerable `uuid` transitive. Removing the local Office CLI chain required keeping sideload/manifest validation available through pinned on-demand CLI execution. The Vite warning should be aligned with the existing bundle-budget gate and the initial bundle should stay below that gate.
+  - Dependencies: None.
+  - Subtasks:
+    - [x] Remove vulnerable Office CLI packages from the local `addin` install path while preserving sideload and manifest validation commands.
+    - [x] Override Mermaid's `uuid` transitive to the patched version without leaving an invalid npm dependency tree.
+    - [x] Upgrade Vite to a patched 8.0.x release.
+    - [x] Lazy-load Mermaid rendering so the initial taskpane bundle remains below the existing budget.
+    - [x] Align Vite's chunk warning limit with the checked bundle-budget threshold.
+  - Acceptance Criteria:
+    - [x] `npm ci --prefix addin` completes with `found 0 vulnerabilities`.
+    - [x] `npm run build:addin` completes without Vite's large-chunk warning.
+    - [x] `npm run check:bundle` passes with the main JS bundle below budget.
+    - [x] Existing typecheck, manifest validation, and Office regression tests still pass.
+  - Notes/Evidence: Fixed by moving sideload scripts to pinned `npx --yes office-addin-debugging@6.0.7`, making manifest validation invoke pinned `office-addin-manifest@2.1.3` on demand, moving `mermaid` to the add-in root with a taskpane peer and `uuid@14.0.0` override, upgrading taskpane Vite to `8.0.10`, making Mermaid rendering a dynamic import, and resolving `vscode-jsonrpc` aliases through Node resolution after the clean lockfile changed hoisting. Validation on 2026-04-26: `npm ci --prefix addin` found 0 vulnerabilities; `npm audit --prefix addin --audit-level=low` found 0 vulnerabilities; `npm run typecheck:addin` passed; `npm run build:addin` passed with `index` 1,465.43 kB and no large-chunk warning; `npm run check:bundle` passed with `main.js=1431.1 KiB`; `npm run validate:manifests` validated Word, Excel, and PowerPoint; `npm run test:office` passed with 98 tests.
+
 ### Features
 
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards
