@@ -488,6 +488,18 @@ export interface ConnectorEnvHint {
   required?: boolean | undefined;
 }
 
+/** Static HTTP header for remote MCP (applied by the companion). */
+export interface ConnectorRemoteHttpHeader {
+  name: string;
+  value: string;
+}
+
+/** HTTP header whose value is read from the companion process environment. */
+export interface ConnectorRemoteHttpHeaderFromEnv {
+  name: string;
+  envVarName: string;
+}
+
 export interface ConnectorReadPolicy {
   mode: "hard-read-only";
   allowResources: boolean;
@@ -551,6 +563,12 @@ export interface CompanionConnectorDefinition {
   args?: string[] | undefined;
   cwd?: string | undefined;
   env?: Record<string, string> | undefined;
+  /** Extra host env var names copied into the stdio child (companion), in addition to SDK safe inherited vars. */
+  stdioEnvPassthrough?: string[] | undefined;
+  /** Static request headers for Streamable HTTP / SSE MCP (companion). */
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  /** Request headers populated from companion environment variable values. */
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
   secret?: string | undefined;
   secretEnvKey?: string | undefined;
   useDetectedEnvKey?: string | undefined;
@@ -745,6 +763,9 @@ export interface ConnectorSetupRequest {
   args?: string[] | undefined;
   cwd?: string | undefined;
   env?: Record<string, string> | undefined;
+  stdioEnvPassthrough?: string[] | undefined;
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
   preserveStoredSecret?: boolean | undefined;
   replaceExisting?: boolean | undefined;
   favorite?: boolean | undefined;
@@ -842,6 +863,9 @@ export interface ConnectorExportItem {
   args?: string[] | undefined;
   cwd?: string | undefined;
   env?: Record<string, string> | undefined;
+  stdioEnvPassthrough?: string[] | undefined;
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
   defaultEnabled: boolean;
 }
 

@@ -49,3 +49,7 @@ For Word and Excel, true visible-window capture requires the companion native ca
 ## Disconnect Behavior
 
 When the companion is absent, stopped, unhealthy, or disconnected, new turns use taskpane-supported tools only. Companion-only tools are hidden from the active model tool inventory. In-flight companion-owned calls should fail clearly and can be retried after discovery reconnects or retried through taskpane fallback when the capability supports it.
+
+## MCP Connectors (stdio and remote HTTP)
+
+Connector **configuration** (including user-pasted secrets and static HTTP headers) is saved in the taskpane's encrypted `localStorage` envelope on the device. **Verification and execution** of MCP transports (`local_stdio`, `remote_http`) run through the optional companion: the taskpane does not open stdio child processes or call remote MCP URLs directly. Users can save configuration first and run **Check connection** when the companion is online; the Integrations wizard gates verification when the companion is disconnected for those transports. See `docs/privacy-and-storage.md` for storage boundaries.

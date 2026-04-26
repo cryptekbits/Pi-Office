@@ -12,7 +12,7 @@ Pi-Office keeps Office.js execution inside the active Office taskpane. Network c
 ## What Stays In Browser Storage
 
 - Provider credentials are stored under the taskpane origin in an AES-GCM envelope in `localStorage`.
-- Connector configuration, connector secrets, OAuth credential handoffs, scope overrides, and redacted connector audit logs are stored under the taskpane origin in an AES-GCM envelope in `localStorage`.
+- Connector configuration, connector secrets, OAuth credential handoffs, scope overrides, and redacted connector audit logs are stored under the taskpane origin in an AES-GCM envelope in `localStorage`. That envelope includes MCP fields such as service URL, stdio launch settings, inline environment key/value pairs, optional stdio host-env passthrough names, and remote HTTP static headers (header name/value pairs). Header *names* paired with environment-variable references are stored; resolved header values come from the companion process environment at execution time, not from browser storage.
 - Saved chat history is stored in `localStorage` and may include prompts, document snippets, model responses, host metadata, and saved-document identifiers.
 - User preferences, enabled providers/models, recent models, and persistent permission choices are stored locally.
 

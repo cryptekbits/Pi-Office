@@ -7,6 +7,8 @@ import type {
   CompanionConnectorDefinition,
   ConnectorCredentialSource,
   ConnectorDiagnostic,
+  ConnectorRemoteHttpHeader,
+  ConnectorRemoteHttpHeaderFromEnv,
   ConnectorStatus,
   ConnectorVerificationSnapshot,
   ConnectorHealthState,
@@ -22,6 +24,7 @@ interface ResolvedConnectorRuntime {
   env?: Record<string, string> | undefined;
   url?: string | undefined;
   bearerToken?: string | undefined;
+  requestHeaders?: Record<string, string> | undefined;
 }
 
 interface PreparedExecutionTarget {
@@ -126,10 +129,58 @@ function toInventoryHash(definition: CompanionConnectorDefinition, toolNames: st
       command: definition.command,
       args: definition.args,
       url: definition.url,
+      stdioEnvPassthrough: definition.stdioEnvPassthrough,
+      remoteHttpHeaders: definition.remoteHttpHeaders,
+      remoteHttpHeadersFromEnv: definition.remoteHttpHeadersFromEnv?.map((entry) => ({
+        name: entry.name,
+        envVarName: entry.envVarName,
+      })),
       tools: toolNames,
       prompts: promptNames,
     }))
     .digest("hex");
+}
+
+function normalizeRemoteHttpHeaders(entries: ConnectorRemoteHttpHeader[] | undefined): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const entry of entries ?? []) {
+    const name = trimString(entry.name);
+    const value = trimString(entry.value);
+    if (name && value) {
+      headers[name] = value;
+    }
+  }
+  return headers;
+}
+
+function normalizeRemoteHttpHeadersFromEnv(
+  entries: ConnectorRemoteHttpHeaderFromEnv[] | undefined,
+  env: EnvironmentSource,
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const entry of entries ?? []) {
+    const name = trimString(entry.name);
+    const envVarName = trimString(entry.envVarName);
+    if (!name || !envVarName) {
+      continue;
+    }
+    const value = trimString(readEnvironmentValue(env, envVarName));
+    if (value) {
+      headers[name] = value;
+    }
+  }
+  return headers;
+}
+
+/** Build merged HTTP headers for remote MCP (static + env-sourced). Exported for tests. */
+export function buildRemoteHttpRequestHeaders(
+  definition: Pick<CompanionConnectorDefinition, "remoteHttpHeaders" | "remoteHttpHeadersFromEnv">,
+  env: EnvironmentSource = process.env,
+): Record<string, string> {
+  return {
+    ...normalizeRemoteHttpHeadersFromEnv(definition.remoteHttpHeadersFromEnv, env),
+    ...normalizeRemoteHttpHeaders(definition.remoteHttpHeaders),
+  };
 }
 
 function resolveCredential(
@@ -217,6 +268,17 @@ export function resolveLocalStdioProcessEnvironment(
   const processEnv = buildDefaultLocalStdioEnvironment(env);
   mergeConnectorEnvironment(processEnv, definition.env);
 
+  for (const rawKey of definition.stdioEnvPassthrough ?? []) {
+    const key = trimString(rawKey);
+    if (!key) {
+      continue;
+    }
+    const value = readEnvironmentValue(env, key);
+    if (typeof value === "string" && value.length) {
+      processEnv[key] = value;
+    }
+  }
+
   let credentialInjected = false;
   if (definition.authMethod !== "none" && credential.value && credential.envKey) {
     processEnv[credential.envKey] = credential.value;
@@ -233,8 +295,8 @@ export function resolveLocalStdioProcessEnvironment(
 }
 
 async function createRemoteTransport(runtime: ResolvedConnectorRuntime): Promise<ProbeTransport> {
-  const headers: Record<string, string> = {};
-  if (runtime.bearerToken) {
+  const headers: Record<string, string> = { ...(runtime.requestHeaders ?? {}) };
+  if (runtime.bearerToken && !headers.Authorization) {
     headers.Authorization = `Bearer ${runtime.bearerToken}`;
   }
 
@@ -344,10 +406,17 @@ function resolveRuntime(definition: CompanionConnectorDefinition): ResolvedConne
     };
   }
 
+  const requestHeaders = buildRemoteHttpRequestHeaders(definition);
+  let bearerToken = trimString(credential.value);
+  if (bearerToken && requestHeaders.Authorization) {
+    bearerToken = undefined;
+  }
+
   return {
     transport: definition.transport,
     url: definition.url,
-    bearerToken: credential.value,
+    bearerToken: bearerToken || undefined,
+    requestHeaders: Object.keys(requestHeaders).length ? requestHeaders : undefined,
   };
 }
 

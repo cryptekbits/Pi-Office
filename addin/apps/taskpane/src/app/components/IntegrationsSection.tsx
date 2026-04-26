@@ -1,5 +1,6 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  CompanionState,
   ConnectorAuditPreference,
   ConnectorCatalogItem,
   ConnectorDiagnostic,
@@ -21,7 +22,7 @@ import type {
   OfficeHost,
 } from "@pi-office/pi-office-pack/protocol";
 import {
-  CheckIcon,
+  CloseIcon,
   ConnectorBrandIcon,
   DiagnosticsIcon,
   DownloadIcon,
@@ -58,6 +59,9 @@ interface ConnectorDraftState {
   argsText: string;
   cwd: string;
   envText: string;
+  stdioEnvPassthroughText: string;
+  remoteHttpHeaders: Array<{ name: string; value: string }>;
+  remoteHttpHeadersFromEnv: Array<{ name: string; envVarName: string }>;
   advanced: boolean;
 }
 
@@ -69,6 +73,7 @@ interface PendingOAuthState {
 
 interface IntegrationsSectionProps {
   host: OfficeHost | undefined;
+  companion: CompanionState | undefined;
   connectors: ConnectorCatalogItem[];
   statuses: ConnectorStatus[];
   diagnostics: ConnectorDiagnosticsResponse | undefined;
@@ -94,6 +99,13 @@ const VIEW_OPTIONS: Array<{ key: IntegrationsView; label: string; Icon: () => Re
   { key: "connected", label: "Connected", Icon: LinkIcon },
   { key: "custom", label: "Add Custom", Icon: MagicIcon },
   { key: "diagnostics", label: "Diagnostics", Icon: DiagnosticsIcon },
+];
+
+const WIZARD_STEPS: Array<{ step: WizardStep; label: string }> = [
+  { step: 1, label: "Check" },
+  { step: 2, label: "Connect" },
+  { step: 3, label: "Verify" },
+  { step: 4, label: "Finish" },
 ];
 
 const CUSTOM_CONNECTOR_CARD: ConnectorCatalogItem = {
@@ -163,6 +175,29 @@ function parseEnv(value: string): Record<string, string> | undefined {
     }
   }
   return Object.keys(result).length ? result : undefined;
+}
+
+function formatPassthroughLines(keys?: string[]): string {
+  return keys?.length ? keys.join("\n") : "";
+}
+
+function parsePassthroughLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function mcpTransportNeedsCompanion(transport: ConnectorSetupRequest["transport"] | undefined): boolean {
+  return transport === "local_stdio" || transport === "remote_http";
+}
+
+function companionIsOnline(companion: CompanionState | undefined): boolean {
+  return companion?.status === "connected";
+}
+
+function connectionTypeUserLabel(transport: ConnectorSetupRequest["transport"]): string {
+  return transport === "local_stdio" ? "Local command (stdio)" : "Hosted URL (Streamable HTTP)";
 }
 
 function badgeLabel(connector: ConnectorCatalogItem): string {
@@ -272,8 +307,34 @@ function buildDraft(
     argsText: formatArgs(existingDraft?.args ?? connector.template?.args),
     cwd: existingDraft?.cwd ?? connector.template?.cwd ?? "",
     envText: formatEnv(existingDraft?.env ?? connector.template?.env),
+    stdioEnvPassthroughText: formatPassthroughLines(existingDraft?.stdioEnvPassthrough),
+    remoteHttpHeaders:
+      existingDraft?.remoteHttpHeaders?.length ? [...existingDraft.remoteHttpHeaders] : [{ name: "", value: "" }],
+    remoteHttpHeadersFromEnv:
+      existingDraft?.remoteHttpHeadersFromEnv?.length
+        ? [...existingDraft.remoteHttpHeadersFromEnv]
+        : [{ name: "", envVarName: "" }],
     advanced: false,
   };
+}
+
+function connectStepValidationMessage(d: ConnectorDraftState, scopeContext: ConnectorScopeContext | undefined): string | undefined {
+  if (!d.name.trim()) return "Enter a name for this connector.";
+  if ((d.scopeTarget === "workspace" || d.scopeTarget === "document") && scopeContext && !scopeContext.documentSaved) {
+    return "Save the Office file to use folder or document scope.";
+  }
+  if (d.transport === "remote_http" && !d.url.trim()) return "Enter the MCP service URL.";
+  if (d.transport === "local_stdio" && !d.command.trim()) return "Enter the launch command.";
+  if (d.authMethod !== "none") {
+    if (d.credentialMode === "detected" && !d.detectedEnvKey.trim()) {
+      return "No detected environment key is available. Choose another credential option.";
+    }
+    if (d.credentialMode === "env" && !d.secretEnvKey.trim()) return "Enter the environment variable name.";
+    if (d.credentialMode === "manual" && d.authMethod !== "oauth" && !d.secret && !d.preserveStoredSecret) {
+      return "Enter a credential or keep the stored secret.";
+    }
+  }
+  return undefined;
 }
 
 function buildRequest(draft: ConnectorDraftState, scopeContext: ConnectorScopeContext | undefined): ConnectorSetupRequest {
@@ -312,6 +373,13 @@ function buildRequest(draft: ConnectorDraftState, scopeContext: ConnectorScopeCo
     args: draft.transport === "local_stdio" ? parseArgs(draft.argsText) : undefined,
     cwd: draft.transport === "local_stdio" ? draft.cwd || undefined : undefined,
     env: parseEnv(draft.envText),
+    stdioEnvPassthrough: parsePassthroughLines(draft.stdioEnvPassthroughText),
+    remoteHttpHeaders: draft.remoteHttpHeaders
+      .map((row) => ({ name: row.name.trim(), value: row.value.trim() }))
+      .filter((row) => row.name && row.value),
+    remoteHttpHeadersFromEnv: draft.remoteHttpHeadersFromEnv
+      .map((row) => ({ name: row.name.trim(), envVarName: row.envVarName.trim() }))
+      .filter((row) => row.name && row.envVarName),
   };
 }
 
@@ -369,6 +437,7 @@ function sortConnectors(connectors: ConnectorCatalogItem[], statuses: ConnectorS
 
 export function IntegrationsSection({
   host,
+  companion,
   connectors,
   statuses,
   diagnostics,
@@ -391,6 +460,7 @@ export function IntegrationsSection({
   const [view, setView] = useState<IntegrationsView>("library");
   const [search, setSearch] = useState("");
   const [selectedKey, setSelectedKey] = useState<string>();
+  const [prepareNonce, setPrepareNonce] = useState(0);
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [prepare, setPrepare] = useState<ConnectorPrepareResponse>();
   const [draft, setDraft] = useState<ConnectorDraftState>();
@@ -404,7 +474,7 @@ export function IntegrationsSection({
   const [liveMessage, setLiveMessage] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
 
-  function resetSelection() {
+  const resetSelection = useCallback(() => {
     setSelectedKey(undefined);
     setPrepare(undefined);
     setDraft(undefined);
@@ -412,7 +482,7 @@ export function IntegrationsSection({
     setResult(undefined);
     setLogs(undefined);
     setWizardStep(1);
-  }
+  }, []);
   const deferredSearch = useDeferredValue(search);
   const scopeContextKey = useMemo(
     () =>
@@ -484,7 +554,7 @@ export function IntegrationsSection({
     return () => {
       active = false;
     };
-  }, [diagnostics, onPrepareConnector, scopeContext, scopeContextKey, selectedKey, selectedStatus]);
+  }, [diagnostics, onPrepareConnector, prepareNonce, scopeContext, scopeContextKey, selectedKey, selectedStatus]);
 
   useEffect(() => {
     if (!selectedStatus?.id) {
@@ -508,13 +578,24 @@ export function IntegrationsSection({
 
   async function handleTest() {
     if (!draft) return;
+    const message = connectStepValidationMessage(draft, scopeContext);
+    if (message) {
+      setError(message);
+      return;
+    }
+    if (mcpTransportNeedsCompanion(draft.transport) && !companionIsOnline(companion)) {
+      setError("Connect the optional companion on the Companion tab, then try again.");
+      return;
+    }
     setWorking("testing");
     setError(undefined);
     try {
       const response = await onTestConnector(buildRequest(draft, scopeContext));
       setResult(response);
-      setWizardStep(4);
       setLiveMessage(response.ok ? "Connector verification finished." : "Connector verification failed.");
+      if (response.ok) {
+        setWizardStep(4);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -522,16 +603,20 @@ export function IntegrationsSection({
     }
   }
 
-  async function handleSave() {
+  async function handleSaveConnector() {
     if (!draft) return;
+    const message = connectStepValidationMessage(draft, scopeContext);
+    if (message) {
+      setError(message);
+      return;
+    }
     setWorking("saving");
     setError(undefined);
     try {
       const response = await onConnectConnector(buildRequest(draft, scopeContext));
-      setResult(response);
-      setSelectedKey(response.status.source === "custom" ? response.status.id : response.status.connectorId);
-      setView("connected");
-      setWizardStep(4);
+      setSelectedKey(response.status.id);
+      setPrepareNonce((n) => n + 1);
+      setResult(undefined);
       setLiveMessage("Connector saved.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -540,9 +625,18 @@ export function IntegrationsSection({
     }
   }
 
+  function handleWizardDone() {
+    setView("connected");
+    resetSelection();
+  }
+
   async function handleReverify(targetId?: string) {
     const target = targetId ? statuses.find((status) => status.id === targetId) : selectedStatus;
     if (!target) return;
+    if (mcpTransportNeedsCompanion(target.transport) && !companionIsOnline(companion)) {
+      setError("Connect the optional companion on the Companion tab, then try again.");
+      return;
+    }
     setWorking("reverify");
     setError(undefined);
     try {
@@ -670,6 +764,62 @@ export function IntegrationsSection({
   const selectedPendingOAuth = selectedStatus ? pendingOAuth[selectedStatus.id] : undefined;
   const panelOpen = Boolean(selectedKey && selectedConnector);
 
+  useEffect(() => {
+    if (!panelOpen) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") resetSelection();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [panelOpen, resetSelection]);
+
+  function handleWizardFooterPrimary() {
+    if (loadingPrepare || !draft) return;
+    if (wizardStep === 1) {
+      setError(undefined);
+      setWizardStep(2);
+      return;
+    }
+    if (wizardStep === 2) {
+      const message = connectStepValidationMessage(draft, scopeContext);
+      if (message) {
+        setError(message);
+        return;
+      }
+      setError(undefined);
+      setWizardStep(3);
+      return;
+    }
+    if (wizardStep === 4) {
+      if (selectedStatus) {
+        handleWizardDone();
+        return;
+      }
+      void handleSaveConnector();
+    }
+  }
+
+  const wizardFooterPrimaryLabel =
+    wizardStep === 1 || wizardStep === 2
+      ? "Continue"
+      : wizardStep === 4
+        ? selectedStatus
+          ? "Done"
+          : working === "saving"
+            ? "Saving..."
+            : "Save connector"
+        : "";
+
+  const wizardFooterPrimaryDisabled =
+    loadingPrepare || !draft || (wizardStep === 4 && working === "saving");
+
+  const checkConnectionDisabled =
+    !draft ||
+    working === "testing" ||
+    (mcpTransportNeedsCompanion(draft.transport) && !companionIsOnline(companion));
+
+  const saveConnectorDisabled = !draft || working === "saving" || working === "testing";
+
   return (
     <div className="settings-section integrations-shell">
       <div className="integrations-hero">
@@ -677,8 +827,8 @@ export function IntegrationsSection({
           <div className="integrations-kicker">Read-only sources</div>
           <h3>Connect the information behind your Office work</h3>
           <p className="settings-note integrations-hero-copy">
-            Users see plain language like “Connects online” or “Runs on this PC”. The runtime handles secure local state,
-            scope-aware enablement, verification snapshots, and hard read-only filtering.
+            Connector settings are stored on this device for Pi-Office. MCP connectors are verified and executed through the optional companion;
+            the taskpane saves configuration and secrets in local storage (see Privacy). Only read-safe tools reach the model after verification.
           </p>
         </div>
         <div className="integrations-hero-badges">
@@ -726,7 +876,7 @@ export function IntegrationsSection({
         )}
       </div>
 
-      <div className={`integrations-layout ${panelOpen ? "integrations-layout-panel" : ""}`}>
+      <div className="integrations-layout">
         <div className="integrations-main">
           {view === "library" && (
             <div className="integration-card-grid">
@@ -752,7 +902,7 @@ export function IntegrationsSection({
                     </div>
                     <p className="integration-card-copy">{connector.officeValue}</p>
                     <div className="integration-badges">
-                      <span className="integration-pill">{runtimeLabel(connector.transport)}</span>
+                      <span className="integration-pill">{connectionTypeUserLabel(connector.transport)}</span>
                       <span className="integration-pill">{authLabel(connector.authMethod)}</span>
                       <span className="integration-pill">{difficultyLabel(connector.setupDifficulty)}</span>
                     </div>
@@ -787,7 +937,7 @@ export function IntegrationsSection({
                   </div>
                   <div className="integration-badges">
                     <span className="integration-pill">{scopeLabel(status.activeScope)}</span>
-                    <span className="integration-pill">{runtimeLabel(status.transport)}</span>
+                    <span className="integration-pill">{connectionTypeUserLabel(status.transport)}</span>
                     <span className="integration-pill">{authLabel(status.authMethod)}</span>
                   </div>
                   <div className="settings-actions">
@@ -885,120 +1035,660 @@ export function IntegrationsSection({
             </div>
           )}
         </div>
+      </div>
 
-        {panelOpen && selectedConnector && (
-          <aside className="integration-panel">
-            <div className="integration-panel-header">
-              <div className="integration-panel-title">
+      {panelOpen && selectedConnector && (
+        <div
+          className="modal-backdrop connector-wizard-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) resetSelection();
+          }}
+        >
+          <div
+            className="connector-wizard"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="connector-wizard-title"
+          >
+            <div className="connector-wizard-header">
+              <div className="connector-wizard-title">
                 <ConnectorBrandIcon iconKey={selectedConnector.iconKey} label={draft?.name ?? selectedConnector.name} />
-                <div>
-                  <strong>{draft?.name ?? selectedConnector.name}</strong>
+                <div className="connector-wizard-title-text">
+                  <strong id="connector-wizard-title">{draft?.name ?? selectedConnector.name}</strong>
                   <p className="settings-note">{selectedConnector.summary}</p>
                 </div>
               </div>
-              <div className="integration-stepper" role="tablist" aria-label="Connector setup steps">
-                {[1, 2, 3, 4].map((step) => (
-                  <button key={step} type="button" role="tab" aria-selected={wizardStep === step} className={`integration-step ${wizardStep === step ? "integration-step-active" : ""}`} onClick={() => setWizardStep(step as WizardStep)}>{step}</button>
-                ))}
-              </div>
+              <button type="button" className="icon-button connector-wizard-close" aria-label="Close setup" onClick={resetSelection}>
+                <CloseIcon />
+              </button>
             </div>
 
-            {loadingPrepare || !draft ? (
-              <div className="settings-card"><p className="settings-note">Checking local prerequisites and saved hints...</p></div>
-            ) : (
-              <>
-                {wizardStep === 1 && (
-                  <div className="integration-panel-section">
-                    <h4>Check</h4>
-                    <p className="settings-note">{selectedConnector.officeValue}</p>
-                    <div className="integration-badges">
-                      <span className="integration-pill">{runtimeLabel(draft.transport)}</span>
-                      <span className="integration-pill">{difficultyLabel(selectedConnector.setupDifficulty)}</span>
-                      <span className="integration-pill">{selectedConnector.recommendedHosts.join(" / ")}</span>
-                    </div>
-                    {selectedConnector.docsUrl && <a className="integration-link" href={selectedConnector.docsUrl} target="_blank" rel="noreferrer"><ExternalLinkIcon /> Setup docs</a>}
-                    {selectedConnector.authUrl && <a className="integration-link" href={selectedConnector.authUrl} target="_blank" rel="noreferrer"><ExternalLinkIcon /> Sign-in help</a>}
-                    {renderDiagnostics(prepare?.diagnostics ?? diagnostics?.diagnostics)}
-                  </div>
-                )}
+            <div className="connector-wizard-progress" role="tablist" aria-label="Connector setup steps">
+              {WIZARD_STEPS.map(({ step, label }) => (
+                <button
+                  key={step}
+                  type="button"
+                  role="tab"
+                  aria-current={wizardStep === step ? "step" : undefined}
+                  className={`connector-wizard-step-chip ${wizardStep === step ? "connector-wizard-step-chip-active" : ""} ${step < wizardStep ? "connector-wizard-step-chip-done" : ""}`}
+                  disabled={step > wizardStep}
+                  onClick={() => {
+                    if (step < wizardStep) setWizardStep(step);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-                {wizardStep === 2 && (
-                  <div className="integration-panel-section">
-                    <h4>Connect</h4>
-                    <div className="field"><span>Name</span><input type="text" value={draft.name} onChange={(event) => setDraft((current) => current ? { ...current, name: event.target.value } : current)} /></div>
-                    <div className="field"><span>Where should this be enabled?</span><div className="segmented-control segmented-control-wide">{(["global", "workspace", "document"] as ConnectorScopeTarget[]).map((target) => (<button key={target} type="button" className={`segmented-item ${draft.scopeTarget === target ? "segmented-active" : ""}`} onClick={() => setDraft((current) => current ? { ...current, scopeTarget: target } : current)}>{scopeLabel(target)}</button>))}</div></div>
-                    <div className="field"><span>Where does it run?</span><div className="segmented-control segmented-control-wide"><button type="button" className={`segmented-item ${draft.transport === "remote_http" ? "segmented-active" : ""}`} onClick={() => setDraft((current) => current ? { ...current, transport: "remote_http" } : current)}>Connects online</button><button type="button" className={`segmented-item ${draft.transport === "local_stdio" ? "segmented-active" : ""}`} onClick={() => setDraft((current) => current ? { ...current, transport: "local_stdio" } : current)}>Runs on this PC</button></div></div>
-                    {selectedConnector.id === "custom" && <div className="field"><span>How should it sign in?</span><div className="segmented-control segmented-control-wide">{(["none", "api_key", "bearer_token", "oauth"] as const).map((method) => (<button key={method} type="button" className={`segmented-item ${draft.authMethod === method ? "segmented-active" : ""}`} onClick={() => setDraft((current) => current ? { ...current, authMethod: method, credentialMode: method === "none" ? "none" : current.credentialMode === "none" ? "manual" : current.credentialMode } : current)}>{authLabel(method)}</button>))}</div></div>}
-                    {draft.authMethod !== "none" && <div className="field"><span>Credentials</span><div className="integration-choice-row"><button type="button" className={`button ${draft.credentialMode === "detected" ? "button-solid" : ""}`} onClick={() => setDraft((current) => current ? { ...current, credentialMode: "detected" } : current)}>Use detected key</button><button type="button" className={`button ${draft.credentialMode === "env" ? "button-solid" : ""}`} onClick={() => setDraft((current) => current ? { ...current, credentialMode: "env" } : current)}>Use env var</button><button type="button" className={`button ${draft.credentialMode === "manual" ? "button-solid" : ""}`} onClick={() => setDraft((current) => current ? { ...current, credentialMode: "manual" } : current)}>Enter my own</button></div></div>}
-                    {draft.credentialMode === "env" && <div className="field"><span>Environment variable name</span><input type="text" value={draft.secretEnvKey} onChange={(event) => setDraft((current) => current ? { ...current, secretEnvKey: event.target.value } : current)} /></div>}
-                    {draft.credentialMode === "manual" && draft.authMethod !== "none" && <div className="field"><span>{draft.authMethod === "api_key" ? "API key" : "Access token"}</span><input type="password" value={draft.secret} onChange={(event) => setDraft((current) => current ? { ...current, secret: event.target.value, preserveStoredSecret: false } : current)} placeholder={draft.preserveStoredSecret ? "Using stored secret unless you replace it" : "Paste credential"} /></div>}
-                    {draft.authMethod === "oauth" && (
-                      <div className="settings-actions">
-                        <button
-                          type="button"
-                          className="button"
-                          onClick={() => void handleStartOAuth()}
-                          disabled={!selectedStatus || working === "oauth"}
-                        >
-                          {working === "oauth" ? "Opening..." : "Open browser sign-in"}
-                        </button>
-                        {!selectedStatus && (
-                          <p className="settings-note">
-                            Save this connector first, then start OAuth sign-in.
-                          </p>
+            <div className="connector-wizard-body">
+              {loadingPrepare || !draft ? (
+                <div className="settings-card">
+                  <p className="settings-note">Checking local prerequisites and saved hints...</p>
+                </div>
+              ) : (
+                <>
+                  {wizardStep === 1 && (
+                    <div className="connector-wizard-section">
+                      <h4>Check</h4>
+                      <p className="settings-note">{selectedConnector.officeValue}</p>
+                      <div className="integration-badges">
+                        <span className="integration-pill">{connectionTypeUserLabel(draft.transport)}</span>
+                        <span className="integration-pill">{difficultyLabel(selectedConnector.setupDifficulty)}</span>
+                        <span className="integration-pill">{selectedConnector.recommendedHosts.join(" / ")}</span>
+                      </div>
+                      <div className="connector-wizard-doc-links">
+                        {selectedConnector.docsUrl && (
+                          <a className="integration-link" href={selectedConnector.docsUrl} target="_blank" rel="noreferrer">
+                            <ExternalLinkIcon /> Setup docs
+                          </a>
                         )}
-                        {selectedPendingOAuth && (
-                          <p className="settings-note">
-                            Waiting for a verified OAuth callback. Manual completion is disabled; sign-in expires at {new Date(selectedPendingOAuth.expiresAt).toLocaleTimeString()}.
-                          </p>
+                        {selectedConnector.authUrl && (
+                          <a className="integration-link" href={selectedConnector.authUrl} target="_blank" rel="noreferrer">
+                            <ExternalLinkIcon /> Sign-in help
+                          </a>
                         )}
                       </div>
-                    )}
-                    {draft.transport === "remote_http" && <div className="field"><span>MCP service URL</span><input type="text" value={draft.url} onChange={(event) => setDraft((current) => current ? { ...current, url: event.target.value } : current)} placeholder="https://..." /></div>}
-                    {draft.transport === "local_stdio" && (<><div className="field"><span>Launch command</span><input type="text" value={draft.command} onChange={(event) => setDraft((current) => current ? { ...current, command: event.target.value } : current)} /></div><div className="field"><span>Arguments</span><textarea rows={4} value={draft.argsText} onChange={(event) => setDraft((current) => current ? { ...current, argsText: event.target.value } : current)} /></div><div className="field"><span>Working folder</span><input type="text" value={draft.cwd} onChange={(event) => setDraft((current) => current ? { ...current, cwd: event.target.value } : current)} /></div></>)}
-                    <button type="button" className="button" onClick={() => setDraft((current) => current ? { ...current, advanced: !current.advanced } : current)}>{draft.advanced ? "Hide advanced" : "Show advanced"}</button>
-                    {draft.advanced && <div className="field"><span>Extra environment entries</span><textarea rows={5} value={draft.envText} onChange={(event) => setDraft((current) => current ? { ...current, envText: event.target.value } : current)} /></div>}
-                  </div>
-                )}
-
-                {wizardStep === 3 && (
-                  <div className="integration-panel-section">
-                    <h4>Verify</h4>
-                    <p className="settings-note">Only verified read-safe tools and resource helpers become available to the model.</p>
-                    <div className="settings-actions">
-                      <button type="button" className="button button-solid" onClick={() => void handleTest()} disabled={working === "testing"}>{working === "testing" ? "Checking..." : "Check connection"}</button>
-                      {selectedStatus && <button type="button" className="button" onClick={() => void handleReverify()} disabled={working === "reverify"}>{working === "reverify" ? "Rechecking..." : "Re-verify saved connector"}</button>}
+                      {renderDiagnostics(prepare?.diagnostics ?? diagnostics?.diagnostics)}
                     </div>
-                    {result?.status.capabilities && (
-                      <div className="integration-verification">
-                        <div className="integration-diagnostic-row integration-diagnostic-ok"><span>Read-safe tools</span><span>{result.status.capabilities.allowedTools.length}</span></div>
-                        <div className="integration-diagnostic-row"><span>Blocked tools</span><span>{result.status.capabilities.blockedTools.length}</span></div>
-                        <div className="integration-diagnostic-row"><span>Resources</span><span>{result.status.capabilities.resourceCount}</span></div>
-                        <div className="integration-diagnostic-row"><span>Prompts</span><span>{result.status.capabilities.allowedPrompts.length}</span></div>
+                  )}
+
+                  {wizardStep === 2 && (
+                    <div className="connector-wizard-section">
+                      <h4>Connect</h4>
+                      {mcpTransportNeedsCompanion(draft.transport) ? (
+                        <div className={`settings-note integration-note ${companionIsOnline(companion) ? "integration-note-info" : "integration-note-warning"}`}>
+                          <strong>Optional companion</strong>{" "}
+                          {companionIsOnline(companion)
+                            ? "Connected. You can verify MCP connectors and expose read-safe tools to the model."
+                            : "Not connected. Save settings anytime; use the Companion tab to start discovery, then run Check connection."}
+                          {draft.transport === "local_stdio" ? " Local stdio MCP always runs on this PC through the companion process." : " Hosted MCP URLs are called from the companion so credentials stay off the Office webview where possible."}
+                        </div>
+                      ) : null}
+                      <div className="field">
+                        <span>Name</span>
+                        <input
+                          type="text"
+                          value={draft.name}
+                          onChange={(event) => setDraft((current) => (current ? { ...current, name: event.target.value } : current))}
+                        />
                       </div>
-                    )}
-                    {logs?.logs?.length ? <div className="integration-log-list">{logs.logs.slice(-4).reverse().map((entry) => <p key={entry.id} className="settings-note"><strong>{entry.kind}</strong> {entry.message}</p>)}</div> : null}
-                  </div>
-                )}
-
-                {wizardStep === 4 && (
-                  <div className="integration-panel-section">
-                    <h4>Finish</h4>
-                    <div className="settings-card"><strong>{draft.name}</strong><p className="settings-note">{selectedStatus ? healthMessage(selectedStatus) : result?.status ? healthMessage(result.status) : "Save the connector when you are ready."}</p></div>
-                    <div className="settings-actions">
-                      <button type="button" className="button button-solid" onClick={() => void handleSave()} disabled={working === "saving"}>{working === "saving" ? "Saving..." : "Save connector"}</button>
-                      {selectedStatus && <button type="button" className={`button ${selectedStatus.favorite ? "button-solid" : ""}`} onClick={() => void onSetFavorite({ connectorId: selectedStatus.id, favorite: !selectedStatus.favorite })}><PinIcon /> {selectedStatus.favorite ? "Pinned" : "Pin connector"}</button>}
+                      <div className="field">
+                        <span>Use this connector in</span>
+                        <p className="settings-note connector-wizard-field-hint">
+                          Settings are saved on this device for Pi-Office. Folder and document choices apply only after the Office file is saved.
+                        </p>
+                        <div className="segmented-control segmented-control-wide">
+                          {(["global", "workspace", "document"] as ConnectorScopeTarget[]).map((target) => {
+                            const blocked = target !== "global" && !scopeContext?.documentSaved;
+                            return (
+                              <button
+                                key={target}
+                                type="button"
+                                title={blocked ? "Save the document to enable this scope." : undefined}
+                                className={`segmented-item ${draft.scopeTarget === target ? "segmented-active" : ""}`}
+                                disabled={blocked}
+                                onClick={() => setDraft((current) => (current ? { ...current, scopeTarget: target } : current))}
+                              >
+                                {scopeLabel(target)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {selectedConnector.id === "custom" ? (
+                        <div className="field">
+                          <span>Connection type</span>
+                          <div className="segmented-control segmented-control-wide">
+                            <button
+                              type="button"
+                              className={`segmented-item ${draft.transport === "local_stdio" ? "segmented-active" : ""}`}
+                              onClick={() => setDraft((current) => (current ? { ...current, transport: "local_stdio" } : current))}
+                            >
+                              Local command (stdio)
+                            </button>
+                            <button
+                              type="button"
+                              className={`segmented-item ${draft.transport === "remote_http" ? "segmented-active" : ""}`}
+                              onClick={() => setDraft((current) => (current ? { ...current, transport: "remote_http" } : current))}
+                            >
+                              Hosted URL (HTTP)
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="field">
+                          <span>Connection</span>
+                          <p className="settings-note">
+                            {connectionTypeUserLabel(draft.transport)} — verified and executed through the optional Pi-Office companion on this device.
+                          </p>
+                        </div>
+                      )}
+                      {selectedConnector.id === "custom" && (
+                        <div className="field">
+                          <span>How should it sign in?</span>
+                          <div className="segmented-control segmented-control-wide">
+                            {(["none", "api_key", "bearer_token", "oauth"] as const).map((method) => (
+                              <button
+                                key={method}
+                                type="button"
+                                className={`segmented-item ${draft.authMethod === method ? "segmented-active" : ""}`}
+                                onClick={() =>
+                                  setDraft((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          authMethod: method,
+                                          credentialMode: method === "none" ? "none" : current.credentialMode === "none" ? "manual" : current.credentialMode,
+                                        }
+                                      : current,
+                                  )
+                                }
+                              >
+                                {authLabel(method)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {draft.authMethod !== "none" && (
+                        <div className="field">
+                          <span>Credentials</span>
+                          <p className="settings-note connector-wizard-field-hint">
+                            Prefer environment variables on the companion machine. Values you paste here are stored in this add-in&apos;s local profile (see Privacy), not the OS keychain.
+                          </p>
+                          <div className="integration-choice-row connector-wizard-credential-row">
+                            <button
+                              type="button"
+                              className={`button ${draft.credentialMode === "detected" ? "button-solid" : ""}`}
+                              onClick={() => setDraft((current) => (current ? { ...current, credentialMode: "detected" } : current))}
+                            >
+                              Use detected key
+                            </button>
+                            <button
+                              type="button"
+                              className={`button ${draft.credentialMode === "env" ? "button-solid" : ""}`}
+                              onClick={() => setDraft((current) => (current ? { ...current, credentialMode: "env" } : current))}
+                            >
+                              Use env var
+                            </button>
+                            <button
+                              type="button"
+                              className={`button ${draft.credentialMode === "manual" ? "button-solid" : ""}`}
+                              onClick={() => setDraft((current) => (current ? { ...current, credentialMode: "manual" } : current))}
+                            >
+                              Enter my own
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {draft.credentialMode === "env" && (
+                        <div className="field">
+                          <span>{draft.transport === "remote_http" ? "Bearer token environment variable" : "Credential environment variable"}</span>
+                          <input
+                            type="text"
+                            value={draft.secretEnvKey}
+                            onChange={(event) => setDraft((current) => (current ? { ...current, secretEnvKey: event.target.value } : current))}
+                            placeholder={draft.transport === "remote_http" ? "MCP_BEARER_TOKEN" : "EXAMPLE_API_KEY"}
+                          />
+                        </div>
+                      )}
+                      {draft.credentialMode === "manual" && draft.authMethod !== "none" && (
+                        <div className="field">
+                          <span>{draft.authMethod === "api_key" ? "API key" : "Access token"}</span>
+                          <input
+                            type="password"
+                            value={draft.secret}
+                            onChange={(event) =>
+                              setDraft((current) => (current ? { ...current, secret: event.target.value, preserveStoredSecret: false } : current))
+                            }
+                            placeholder={draft.preserveStoredSecret ? "Using stored secret unless you replace it" : "Paste credential"}
+                          />
+                        </div>
+                      )}
+                      {draft.authMethod === "oauth" && (
+                        <div className="connector-wizard-oauth-block">
+                          <div className="settings-actions connector-wizard-oauth-actions">
+                            <button type="button" className="button" onClick={() => void handleStartOAuth()} disabled={!selectedStatus || working === "oauth"}>
+                              {working === "oauth" ? "Opening..." : "Open browser sign-in"}
+                            </button>
+                          </div>
+                          {!selectedStatus && (
+                            <p className="settings-note">Save this connector first, then start OAuth sign-in.</p>
+                          )}
+                          {selectedPendingOAuth && (
+                            <p className="settings-note">
+                              Waiting for a verified OAuth callback. Manual completion is disabled; sign-in expires at{" "}
+                              {new Date(selectedPendingOAuth.expiresAt).toLocaleTimeString()}.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {draft.transport === "remote_http" && (
+                        <>
+                          <div className="field">
+                            <span>MCP service URL</span>
+                            <input
+                              type="text"
+                              value={draft.url}
+                              onChange={(event) => setDraft((current) => (current ? { ...current, url: event.target.value } : current))}
+                              placeholder="https://..."
+                            />
+                          </div>
+                          <div className="field">
+                            <span>HTTP headers</span>
+                            <p className="settings-note connector-wizard-field-hint">Static headers sent on every MCP request (companion).</p>
+                            {draft.remoteHttpHeaders.map((row, index) => (
+                              <div key={`hdr-${index}`} className="connector-wizard-kv-row">
+                                <input
+                                  type="text"
+                                  aria-label="Header name"
+                                  placeholder="Name"
+                                  value={row.name}
+                                  onChange={(event) =>
+                                    setDraft((current) => {
+                                      if (!current) return current;
+                                      const next = [...current.remoteHttpHeaders];
+                                      const prev = next[index] ?? { name: "", value: "" };
+                                      next[index] = { name: event.target.value, value: prev.value };
+                                      return { ...current, remoteHttpHeaders: next };
+                                    })
+                                  }
+                                />
+                                <input
+                                  type="text"
+                                  aria-label="Header value"
+                                  placeholder="Value"
+                                  value={row.value}
+                                  onChange={(event) =>
+                                    setDraft((current) => {
+                                      if (!current) return current;
+                                      const next = [...current.remoteHttpHeaders];
+                                      const prev = next[index] ?? { name: "", value: "" };
+                                      next[index] = { name: prev.name, value: event.target.value };
+                                      return { ...current, remoteHttpHeaders: next };
+                                    })
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="icon-button"
+                                  aria-label="Remove header"
+                                  onClick={() =>
+                                    setDraft((current) => {
+                                      if (!current) return current;
+                                      const next = current.remoteHttpHeaders.filter((_, i) => i !== index);
+                                      return {
+                                        ...current,
+                                        remoteHttpHeaders: next.length ? next : [{ name: "", value: "" }],
+                                      };
+                                    })
+                                  }
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              className="button connector-wizard-add-row"
+                              onClick={() =>
+                                setDraft((current) =>
+                                  current ? { ...current, remoteHttpHeaders: [...current.remoteHttpHeaders, { name: "", value: "" }] } : current,
+                                )
+                              }
+                            >
+                              + Add header
+                            </button>
+                          </div>
+                          <div className="field">
+                            <span>Headers from environment variables</span>
+                            <p className="settings-note connector-wizard-field-hint">Header values are read from the companion process environment.</p>
+                            {draft.remoteHttpHeadersFromEnv.map((row, index) => (
+                              <div key={`hdre-${index}`} className="connector-wizard-kv-row">
+                                <input
+                                  type="text"
+                                  aria-label="Header name"
+                                  placeholder="Header name"
+                                  value={row.name}
+                                  onChange={(event) =>
+                                    setDraft((current) => {
+                                      if (!current) return current;
+                                      const next = [...current.remoteHttpHeadersFromEnv];
+                                      const prev = next[index] ?? { name: "", envVarName: "" };
+                                      next[index] = { name: event.target.value, envVarName: prev.envVarName };
+                                      return { ...current, remoteHttpHeadersFromEnv: next };
+                                    })
+                                  }
+                                />
+                                <input
+                                  type="text"
+                                  aria-label="Environment variable name"
+                                  placeholder="Env var name"
+                                  value={row.envVarName}
+                                  onChange={(event) =>
+                                    setDraft((current) => {
+                                      if (!current) return current;
+                                      const next = [...current.remoteHttpHeadersFromEnv];
+                                      const prev = next[index] ?? { name: "", envVarName: "" };
+                                      next[index] = { name: prev.name, envVarName: event.target.value };
+                                      return { ...current, remoteHttpHeadersFromEnv: next };
+                                    })
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="icon-button"
+                                  aria-label="Remove header from env"
+                                  onClick={() =>
+                                    setDraft((current) => {
+                                      if (!current) return current;
+                                      const next = current.remoteHttpHeadersFromEnv.filter((_, i) => i !== index);
+                                      return {
+                                        ...current,
+                                        remoteHttpHeadersFromEnv: next.length ? next : [{ name: "", envVarName: "" }],
+                                      };
+                                    })
+                                  }
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              className="button connector-wizard-add-row"
+                              onClick={() =>
+                                setDraft((current) =>
+                                  current
+                                    ? { ...current, remoteHttpHeadersFromEnv: [...current.remoteHttpHeadersFromEnv, { name: "", envVarName: "" }] }
+                                    : current,
+                                )
+                              }
+                            >
+                              + Add header from env
+                            </button>
+                          </div>
+                        </>
+                      )}
+                      {draft.transport === "local_stdio" && (
+                        <>
+                          <div className="field">
+                            <span>Command to launch</span>
+                            <input
+                              type="text"
+                              value={draft.command}
+                              onChange={(event) => setDraft((current) => (current ? { ...current, command: event.target.value } : current))}
+                              placeholder="e.g. npx or full path to executable"
+                            />
+                          </div>
+                          <div className="field">
+                            <span>Arguments</span>
+                            <textarea
+                              rows={4}
+                              value={draft.argsText}
+                              onChange={(event) => setDraft((current) => (current ? { ...current, argsText: event.target.value } : current))}
+                              placeholder="One argument per line"
+                            />
+                          </div>
+                          <div className="field">
+                            <span>Working directory</span>
+                            <input
+                              type="text"
+                              value={draft.cwd}
+                              onChange={(event) => setDraft((current) => (current ? { ...current, cwd: event.target.value } : current))}
+                              placeholder="Optional folder for the process"
+                            />
+                          </div>
+                          {selectedConnector.id === "custom" ? (
+                            <>
+                              <div className="field">
+                                <span>Environment variables</span>
+                                <textarea
+                                  rows={4}
+                                  value={draft.envText}
+                                  onChange={(event) => setDraft((current) => (current ? { ...current, envText: event.target.value } : current))}
+                                  placeholder={"KEY=value per line"}
+                                />
+                              </div>
+                              <div className="field">
+                                <span>Environment variable passthrough</span>
+                                <p className="settings-note connector-wizard-field-hint">
+                                  Names of variables to copy from the companion host into the MCP process (one per line), in addition to safe inherited defaults.
+                                </p>
+                                <textarea
+                                  rows={3}
+                                  value={draft.stdioEnvPassthroughText}
+                                  onChange={(event) =>
+                                    setDraft((current) => (current ? { ...current, stdioEnvPassthroughText: event.target.value } : current))
+                                  }
+                                  placeholder={"PATH_EXTRA\nCUSTOM_VAR"}
+                                />
+                              </div>
+                            </>
+                          ) : null}
+                        </>
+                      )}
+                      {selectedConnector.id !== "custom" && draft.transport === "local_stdio" ? (
+                        <>
+                          <button
+                            type="button"
+                            className="button"
+                            onClick={() => setDraft((current) => (current ? { ...current, advanced: !current.advanced } : current))}
+                          >
+                            {draft.advanced ? "Hide advanced" : "Show advanced"}
+                          </button>
+                          {draft.advanced && (
+                            <>
+                              <div className="field">
+                                <span>Environment variables</span>
+                                <textarea
+                                  rows={5}
+                                  value={draft.envText}
+                                  onChange={(event) => setDraft((current) => (current ? { ...current, envText: event.target.value } : current))}
+                                />
+                              </div>
+                              <div className="field">
+                                <span>Environment variable passthrough</span>
+                                <p className="settings-note connector-wizard-field-hint">
+                                  Names of variables to copy from the companion host into the MCP process (one per line).
+                                </p>
+                                <textarea
+                                  rows={3}
+                                  value={draft.stdioEnvPassthroughText}
+                                  onChange={(event) =>
+                                    setDraft((current) => (current ? { ...current, stdioEnvPassthroughText: event.target.value } : current))
+                                  }
+                                  placeholder={"PATH_EXTRA\nCUSTOM_VAR"}
+                                />
+                              </div>
+                            </>
+                          )}
+                        </>
+                      ) : null}
                     </div>
-                    {selectedStatus?.scopeStates && <div className="integration-scope-grid">{selectedStatus.scopeStates.map((scope) => (<button key={scope.target} type="button" className={`integration-scope-card ${scope.applies ? "integration-scope-card-active" : ""}`} onClick={() => void onUpdateScope({ connectorId: selectedStatus.id, enabled: !scope.enabled, scopeTarget: scope.target, scopeContext })} disabled={Boolean(scope.reason && scope.target !== "global")}><strong>{scope.label}</strong><span>{scope.enabled ? "Enabled" : "Disabled"}</span><span>{scope.reason ?? (scope.applies ? "Active scope" : "Available")}</span></button>))}</div>}
-                  </div>
-                )}
-              </>
+                  )}
+
+                  {wizardStep === 3 && (
+                    <div className="connector-wizard-section">
+                      <h4>Verify</h4>
+                      <p className="settings-note">
+                        Save persists configuration on this device. Check connection runs a read-safe verification through the companion and activates the connector for chat when it succeeds.
+                      </p>
+                      {draft && mcpTransportNeedsCompanion(draft.transport) && !companionIsOnline(companion) ? (
+                        <div className="settings-note integration-note integration-note-warning">
+                          Companion is offline. Start discovery on the Companion tab, then use Check connection.
+                        </div>
+                      ) : null}
+                      <p className="settings-note">Only verified read-safe tools and resource helpers become available to the model.</p>
+                      {selectedStatus && (
+                        <div className="settings-actions">
+                          <button type="button" className="button" onClick={() => void handleReverify()} disabled={working === "reverify"}>
+                            {working === "reverify" ? "Rechecking..." : "Re-verify saved connector"}
+                          </button>
+                        </div>
+                      )}
+                      {result?.status.capabilities && (
+                        <div className="integration-verification">
+                          <div className="integration-diagnostic-row integration-diagnostic-ok">
+                            <span>Read-safe tools</span>
+                            <span>{result.status.capabilities.allowedTools.length}</span>
+                          </div>
+                          <div className="integration-diagnostic-row">
+                            <span>Blocked tools</span>
+                            <span>{result.status.capabilities.blockedTools.length}</span>
+                          </div>
+                          <div className="integration-diagnostic-row">
+                            <span>Resources</span>
+                            <span>{result.status.capabilities.resourceCount}</span>
+                          </div>
+                          <div className="integration-diagnostic-row">
+                            <span>Prompts</span>
+                            <span>{result.status.capabilities.allowedPrompts.length}</span>
+                          </div>
+                        </div>
+                      )}
+                      {logs?.logs?.length ? (
+                        <div className="integration-log-list">
+                          {logs.logs
+                            .slice(-4)
+                            .reverse()
+                            .map((entry) => (
+                              <p key={entry.id} className="settings-note">
+                                <strong>{entry.kind}</strong> {entry.message}
+                              </p>
+                            ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {wizardStep === 4 && (
+                    <div className="connector-wizard-section">
+                      <h4>Finish</h4>
+                      {!selectedStatus && result?.ok ? (
+                        <p className="settings-note integration-note integration-note-info">
+                          Verification succeeded. Use <strong>Save connector</strong> below to persist settings and enable this connector for chat.
+                        </p>
+                      ) : null}
+                      <div className="settings-card">
+                        <strong>{draft.name}</strong>
+                        <p className="settings-note">
+                          {selectedStatus
+                            ? healthMessage(selectedStatus)
+                            : result?.status
+                              ? healthMessage(result.status)
+                              : "Save the connector when you are ready."}
+                        </p>
+                      </div>
+                      {selectedStatus && (
+                        <div className="settings-actions">
+                          <button
+                            type="button"
+                            className={`button ${selectedStatus.favorite ? "button-solid" : ""}`}
+                            onClick={() => void onSetFavorite({ connectorId: selectedStatus.id, favorite: !selectedStatus.favorite })}
+                          >
+                            <PinIcon /> {selectedStatus.favorite ? "Pinned" : "Pin connector"}
+                          </button>
+                        </div>
+                      )}
+                      {selectedStatus?.scopeStates && (
+                        <div className="integration-scope-grid">
+                          {selectedStatus.scopeStates.map((scope) => (
+                            <button
+                              key={scope.target}
+                              type="button"
+                              className={`integration-scope-card ${scope.applies ? "integration-scope-card-active" : ""}`}
+                              onClick={() =>
+                                void onUpdateScope({
+                                  connectorId: selectedStatus.id,
+                                  enabled: !scope.enabled,
+                                  scopeTarget: scope.target,
+                                  scopeContext,
+                                })
+                              }
+                              disabled={Boolean(scope.reason && scope.target !== "global")}
+                            >
+                              <strong>{scope.label}</strong>
+                              <span>{scope.enabled ? "Enabled" : "Disabled"}</span>
+                              <span>{scope.reason ?? (scope.applies ? "Active scope" : "Available")}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {error && (
+              <div className="message-error connector-wizard-error">
+                <div className="message-body">{error}</div>
+              </div>
             )}
 
-            {error && <div className="message-error"><div className="message-body">{error}</div></div>}
-          </aside>
-        )}
-      </div>
+            <div className="connector-wizard-footer">
+              {wizardStep > 1 ? (
+                <button type="button" className="button" onClick={() => setWizardStep((step) => (step - 1) as WizardStep)}>
+                  Back
+                </button>
+              ) : null}
+              <span className="connector-wizard-footer-grow" />
+              {wizardStep === 3 && draft ? (
+                <div className="connector-wizard-footer-actions">
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => void handleSaveConnector()}
+                    disabled={saveConnectorDisabled}
+                  >
+                    {working === "saving" ? "Saving..." : "Save connector"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-solid"
+                    onClick={() => void handleTest()}
+                    disabled={checkConnectionDisabled}
+                  >
+                    {working === "testing" ? "Checking..." : "Check connection"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="button button-solid"
+                  onClick={handleWizardFooterPrimary}
+                  disabled={wizardFooterPrimaryDisabled || !wizardFooterPrimaryLabel}
+                >
+                  {wizardFooterPrimaryLabel}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="sr-only" aria-live="polite">{liveMessage}</div>
       <input ref={importRef} type="file" accept=".json,application/json" className="sr-only" onChange={(event) => void handleImportFile(event.target.files?.[0] ?? null)} />

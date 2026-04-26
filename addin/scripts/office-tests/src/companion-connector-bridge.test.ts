@@ -4,6 +4,7 @@ import test from "node:test";
 import type { CompanionConnectorDefinition } from "@pi-office/pi-office-pack/protocol";
 import {
   CompanionConnectorBridge,
+  buildRemoteHttpRequestHeaders,
   resolveLocalStdioProcessEnvironment,
 } from "../../../../companion/src/connector-bridge.js";
 
@@ -84,6 +85,48 @@ test("detected env credentials are injected without inheriting unrelated secrets
   assert.equal(resolved.env.GITHUB_TOKEN, "detected-secret");
   assert.equal(resolved.env.AWS_SECRET_ACCESS_KEY, undefined);
   assert.equal(resolved.env.GITHUB_TOKEN === resolved.credential.value, true);
+});
+
+test("stdio env passthrough copies named host variables into the process environment", () => {
+  const resolved = resolveLocalStdioProcessEnvironment(
+    connector({
+      stdioEnvPassthrough: ["CUSTOM_PASSTHROUGH", "EMPTY_MISSING"],
+      env: {
+        CONNECTOR_MODE: "readonly",
+      },
+    }),
+    {
+      PATH: "/usr/bin",
+      CUSTOM_PASSTHROUGH: "passed-through",
+    },
+  );
+
+  assert.equal(resolved.env.CONNECTOR_MODE, "readonly");
+  assert.equal(resolved.env.CUSTOM_PASSTHROUGH, "passed-through");
+  assert.equal(resolved.env.EMPTY_MISSING, undefined);
+});
+
+test("remote HTTP request headers merge env-sourced and static entries; static wins on duplicate names", () => {
+  const headers = buildRemoteHttpRequestHeaders(
+    {
+      remoteHttpHeadersFromEnv: [
+        { name: "X-From-Env", envVarName: "MCP_HDR_A" },
+        { name: "X-Overlap", envVarName: "MCP_HDR_B" },
+      ],
+      remoteHttpHeaders: [
+        { name: "X-Static", value: "s" },
+        { name: "X-Overlap", value: "static-wins" },
+      ],
+    },
+    {
+      MCP_HDR_A: "env-a",
+      MCP_HDR_B: "env-b",
+    },
+  );
+
+  assert.equal(headers["X-From-Env"], "env-a");
+  assert.equal(headers["X-Static"], "s");
+  assert.equal(headers["X-Overlap"], "static-wins");
 });
 
 test("env-var credentials stay auth-required when the named env value is missing", () => {

@@ -505,6 +505,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] `.gitignore` covers repeatable generated artifacts without hiding important source files.
   - Notes/Evidence: Review observed untracked archive/vendor artifacts while inspecting the worktree. Fixed in `2b5f058` by ignoring `.factory/`; the grouped runtime commit retained archive source while generated `archive/companion/node_modules`, `archive/companion/dist`, and taskpane build output remained ignored. 2026-04-26 history cleanup removed active `.factory/services.yaml` test coupling, ignored future `archive/companion/` recreation, and purged tracked `.factory/` plus `archive/companion/` from branch history.
 
+- [x] IMPROVEMENT-006: Connector setup wizard IA, persistence clarity, and MCP credential/honesty UX
+  - Category: Improvement
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-26 user plan; connector wizard confusion on scope vs companion vs transport vs credentials.
+  - Details: Redesign Integrations connector wizard so availability scope, optional companion requirement for MCP verify/execute, transport (stdio vs hosted HTTP), and credential/header/env flows are understandable. Persist new remote HTTP header fields and stdio env passthrough through protocol, browser storage, export/import, and companion bridge. Split save vs verify actions; gate check-connection when companion is disconnected for MCP transports.
+  - Dependencies: BUG-011 companion-routed MCP; docs/privacy-and-storage for storage disclosure.
+  - Subtasks:
+    - [x] Extend `ConnectorSetupRequest` / `CompanionConnectorDefinition` / export bundle for HTTP headers and stdio passthrough.
+    - [x] Apply merged headers in companion `connector-bridge` remote transport.
+    - [x] Update wizard UI, Settings wiring, docs, and regression tests.
+  - Acceptance Criteria:
+    - [x] Users can save connector config without verifying; verify uses companion when required and fails closed with clear copy when companion is offline.
+    - [x] Library vs custom transport labeling matches execution model; folder/document scope is disabled or explained when the file is unsaved.
+    - [x] Remote static/env headers and stdio passthrough round-trip through storage and export/import without leaking secrets in logs.
+  - Notes/Evidence: `protocol.ts`, `browser-connectors.ts`, `connector-bridge.ts`, `IntegrationsSection.tsx` (scope copy, companion strip, connection-type labels, HTTP header rows, stdio passthrough, save vs check footer), `SettingsPage.tsx` passes `companion`, docs updates, `companion-connector-bridge.test.ts` coverage for passthrough and `buildRemoteHttpRequestHeaders`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`.
+
 - [ ] IMPROVEMENT-002: Clarify release packaging and runtime assumptions after the independent taskpane transition
   - Category: Improvement
   - Status: open

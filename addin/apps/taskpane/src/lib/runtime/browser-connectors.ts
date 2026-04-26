@@ -28,6 +28,8 @@ import type {
   ConnectorOAuthCallbackResponse,
   ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
+  ConnectorRemoteHttpHeader,
+  ConnectorRemoteHttpHeaderFromEnv,
   ConnectorRuntimeCheck,
   ConnectorScopeContext,
   ConnectorScopeState,
@@ -75,6 +77,9 @@ interface StoredConnectorRecord {
   args?: string[] | undefined;
   cwd?: string | undefined;
   env?: Record<string, string> | undefined;
+  stdioEnvPassthrough?: string[] | undefined;
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
   defaultEnabled: boolean;
   favorite: boolean;
   createdAt: string;
@@ -163,6 +168,38 @@ function normalizeEnv(value: unknown): Record<string, string> | undefined {
     if (trimmed) result[key] = trimmed;
   }
   return Object.keys(result).length ? result : undefined;
+}
+
+function normalizeRemoteHttpHeaders(value: unknown): ConnectorRemoteHttpHeader[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ConnectorRemoteHttpHeader[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as { name?: string; value?: string };
+    const name = trimString(rec.name);
+    const headerValue = trimString(rec.value);
+    if (name && headerValue) out.push({ name, value: headerValue });
+  }
+  return out.length ? out : undefined;
+}
+
+function normalizeRemoteHttpHeadersFromEnv(value: unknown): ConnectorRemoteHttpHeaderFromEnv[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ConnectorRemoteHttpHeaderFromEnv[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as { name?: string; envVarName?: string };
+    const name = trimString(rec.name);
+    const envVarName = trimString(rec.envVarName);
+    if (name && envVarName) out.push({ name, envVarName });
+  }
+  return out.length ? out : undefined;
+}
+
+function normalizeStdioEnvPassthrough(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const keys = value.map((entry) => trimString(entry)).filter((entry): entry is string => Boolean(entry));
+  return keys.length ? keys : undefined;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -430,6 +467,9 @@ export class BrowserConnectorRuntime {
       args: record.args,
       cwd: record.cwd,
       env: record.env,
+      stdioEnvPassthrough: record.stdioEnvPassthrough,
+      remoteHttpHeaders: record.remoteHttpHeaders,
+      remoteHttpHeadersFromEnv: record.remoteHttpHeadersFromEnv,
       defaultEnabled: record.defaultEnabled,
     }));
 
@@ -509,6 +549,9 @@ export class BrowserConnectorRuntime {
         args: normalizeArgs(item.args),
         cwd: trimString(item.cwd),
         env: normalizeEnv(item.env),
+        stdioEnvPassthrough: normalizeStdioEnvPassthrough(item.stdioEnvPassthrough),
+        remoteHttpHeaders: normalizeRemoteHttpHeaders(item.remoteHttpHeaders),
+        remoteHttpHeadersFromEnv: normalizeRemoteHttpHeadersFromEnv(item.remoteHttpHeadersFromEnv),
         defaultEnabled: item.defaultEnabled !== false,
         favorite: false,
         createdAt: timestamp,
@@ -924,6 +967,9 @@ export class BrowserConnectorRuntime {
       args: record.args,
       cwd: record.cwd,
       env: record.env,
+      stdioEnvPassthrough: record.stdioEnvPassthrough,
+      remoteHttpHeaders: record.remoteHttpHeaders,
+      remoteHttpHeadersFromEnv: record.remoteHttpHeadersFromEnv,
       secret: record.secret,
       secretEnvKey: record.secretEnvKey,
       useDetectedEnvKey: record.useDetectedEnvKey,
@@ -1133,6 +1179,9 @@ export class BrowserConnectorRuntime {
       args: record.args,
       cwd: record.cwd,
       env: record.env,
+      stdioEnvPassthrough: record.stdioEnvPassthrough,
+      remoteHttpHeaders: record.remoteHttpHeaders,
+      remoteHttpHeadersFromEnv: record.remoteHttpHeadersFromEnv,
       preserveStoredSecret: Boolean(record.secret),
     };
   }
@@ -1173,7 +1222,7 @@ export class BrowserConnectorRuntime {
         key: "git",
         label: "Remote connector execution",
         ok: false,
-        detail: "Remote HTTP connectors are browser setup-only until the optional companion verifies read-safe MCP tools.",
+        detail: "Remote HTTP MCP connectors are verified and executed through the optional companion.",
       },
     ];
   }
@@ -1246,6 +1295,18 @@ export class BrowserConnectorRuntime {
       args: normalizeArgs(request.args),
       cwd: trimString(request.cwd),
       env: normalizeEnv(request.env),
+      stdioEnvPassthrough:
+        request.stdioEnvPassthrough !== undefined
+          ? normalizeStdioEnvPassthrough(request.stdioEnvPassthrough)
+          : existing?.stdioEnvPassthrough,
+      remoteHttpHeaders:
+        request.remoteHttpHeaders !== undefined
+          ? normalizeRemoteHttpHeaders(request.remoteHttpHeaders)
+          : existing?.remoteHttpHeaders,
+      remoteHttpHeadersFromEnv:
+        request.remoteHttpHeadersFromEnv !== undefined
+          ? normalizeRemoteHttpHeadersFromEnv(request.remoteHttpHeadersFromEnv)
+          : existing?.remoteHttpHeadersFromEnv,
       defaultEnabled: request.enabled !== false,
       favorite: request.favorite === true,
       createdAt: existing?.createdAt ?? nowIso(),

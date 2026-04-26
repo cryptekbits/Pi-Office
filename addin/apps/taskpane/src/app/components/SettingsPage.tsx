@@ -300,6 +300,7 @@ export function SettingsPage({
           {activeTab === "integrations" && (
             <IntegrationsSection
               host={officeState?.host}
+              companion={companion}
               connectors={connectors}
               statuses={connectorStatuses}
               diagnostics={connectorDiagnostics}
