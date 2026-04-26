@@ -31,7 +31,6 @@ import {
   LinkIcon,
   MagicIcon,
   PinIcon,
-  ScopeIcon,
   ShieldIcon,
   UploadIcon,
 } from "../../lib/icons";
@@ -825,16 +824,10 @@ export function IntegrationsSection({
       <div className="integrations-hero">
         <div>
           <div className="integrations-kicker">Read-only sources</div>
-          <h3>Connect the information behind your Office work</h3>
-          <p className="settings-note integrations-hero-copy">
-            Connector settings are stored on this device for Pi-Office. MCP connectors are verified and executed through the optional companion;
-            the taskpane saves configuration and secrets in local storage (see Privacy). Only read-safe tools reach the model after verification.
-          </p>
+          <h3>Connect trusted sources</h3>
         </div>
-        <div className="integrations-hero-badges">
-          <span className="integration-pill integration-pill-strong"><ShieldIcon /> Hard read-only</span>
-          <span className="integration-pill"><ScopeIcon /> Scope aware</span>
-          <span className="integration-pill"><DiagnosticsIcon /> Verified</span>
+        <div className="integrations-hero-badges" aria-label="Connector safety">
+          <span className="integration-pill integration-pill-strong"><ShieldIcon /> Read-only</span>
         </div>
       </div>
 
@@ -879,39 +872,43 @@ export function IntegrationsSection({
       <div className="integrations-layout">
         <div className="integrations-main">
           {view === "library" && (
-            <div className="integration-card-grid">
+            <div className="integration-library-list">
               {sortedConnectors.map((connector) => {
                 const status = statuses.find((entry) => entry.connectorId === connector.id);
                 return (
                   <button
                     key={connector.id}
                     type="button"
-                    className={`integration-card ${selectedKey === connector.id ? "integration-card-active" : ""}`}
+                    className={`integration-library-row ${selectedKey === connector.id ? "integration-library-row-active" : ""}`}
                     onClick={() => {
                       setSelectedKey(connector.id);
                       setWizardStep(1);
                     }}
                   >
-                    <div className="integration-card-top">
-                      <ConnectorBrandIcon iconKey={connector.iconKey} label={connector.name} />
-                      <div className="integration-card-heading">
-                        <strong>{connector.name}</strong>
-                        <span>{connector.vendor}</span>
+                    <ConnectorBrandIcon iconKey={connector.iconKey} label={connector.name} />
+                    <div className="integration-library-content">
+                      <div className="integration-library-mainline">
+                        <div className="integration-library-heading">
+                          <strong>{connector.name}</strong>
+                          <span>{connector.vendor}</span>
+                        </div>
+                        <span className={`integration-state integration-state-${connector.maturity}`}>{badgeLabel(connector)}</span>
                       </div>
-                      <span className={`integration-state integration-state-${connector.maturity}`}>{badgeLabel(connector)}</span>
-                    </div>
-                    <p className="integration-card-copy">{connector.officeValue}</p>
-                    <div className="integration-badges">
-                      <span className="integration-pill">{connectionTypeUserLabel(connector.transport)}</span>
-                      <span className="integration-pill">{authLabel(connector.authMethod)}</span>
-                      <span className="integration-pill">{difficultyLabel(connector.setupDifficulty)}</span>
-                    </div>
-                    {status && (
-                      <div className="integration-status-row">
-                        <span className={`integration-status-dot integration-status-dot-${status.healthState}`} />
-                        <span>{healthLabel(status)}</span>
+                      <p className="integration-library-description">{connector.officeValue}</p>
+                      <div className="integration-library-meta">
+                        <div className="integration-badges">
+                          <span className="integration-pill">{connectionTypeUserLabel(connector.transport)}</span>
+                          <span className="integration-pill">{authLabel(connector.authMethod)}</span>
+                          <span className="integration-pill">{difficultyLabel(connector.setupDifficulty)}</span>
+                        </div>
+                        {status && (
+                          <div className="integration-status-row">
+                            <span className={`integration-status-dot integration-status-dot-${status.healthState}`} />
+                            <span>{healthLabel(status)}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </button>
                 );
               })}
@@ -987,14 +984,16 @@ export function IntegrationsSection({
                   ))}
                 </div>
               </div>
-              <div className="settings-card integration-diagnostics-card">
-                <strong>Audit logging</strong>
-                <p className="settings-note">Redacted local audit entries record connector usage without prompt text or result content.</p>
-                <div className="settings-actions">
+              <div className="settings-card integration-diagnostics-card integration-audit-card">
+                <div className="integration-audit-copy">
+                  <strong>Audit logging</strong>
+                  <p className="settings-note">Redacted local audit entries record connector usage without prompt text or result content.</p>
+                </div>
+                <div className="settings-actions integration-diagnostics-actions">
                   <button type="button" className={`button ${auditPreference?.enabled ? "button-solid" : ""}`} onClick={() => void onSetAuditPreference({ enabled: !(auditPreference?.enabled ?? false) })}>
                     {auditPreference?.enabled ? "Disable audit log" : "Enable audit log"}
                   </button>
-                  <button type="button" className="button" onClick={() => void handleExport()} disabled={working === "export"}><DownloadIcon /> Export</button>
+                  <button type="button" className="button" onClick={() => void handleExport()} disabled={working === "export"}><DownloadIcon /> Export audit log</button>
                 </div>
               </div>
               {importPreview && (

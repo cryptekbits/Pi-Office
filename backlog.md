@@ -542,6 +542,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Remote static/env headers and stdio passthrough round-trip through storage and export/import without leaking secrets in logs.
   - Notes/Evidence: `protocol.ts`, `browser-connectors.ts`, `connector-bridge.ts`, `IntegrationsSection.tsx` (scope copy, companion strip, connection-type labels, HTTP header rows, stdio passthrough, save vs check footer), `SettingsPage.tsx` passes `companion`, docs updates, `companion-connector-bridge.test.ts` coverage for passthrough and `buildRemoteHttpRequestHeaders`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`.
 
+- [x] IMPROVEMENT-007: Polish connector library and diagnostics UI
+  - Category: Improvement
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 browser diff comments on Settings -> Integrations; user reported card overlap, off-center search, card-heavy connector browsing, and oversized Diagnostics buttons.
+  - Details: The Integrations Library used equal-height connector cards that caused long names and maturity pills to compete for horizontal space, including `Supermemory` overlapping the `CUSTOM` pill. The Library search was right-aligned under the segmented tabs, and Diagnostics inherited generic button styling that let SVG icons expand the Import/Export controls into oversized circular buttons. The fix should keep connector behavior intact while making the Library a scan-friendly list and Diagnostics a quiet operational panel.
+  - Dependencies: IMPROVEMENT-006 for the current connector wizard IA and diagnostics surface.
+  - Subtasks:
+    - [x] Replace the Library card grid with vertical connector rows that keep icon, name/vendor, status chip, description, and metadata in predictable lanes.
+    - [x] Center the Library search field and widen it enough for connector-discovery queries.
+    - [x] Make generic buttons icon-safe and restyle Diagnostics import/export/audit actions as compact controls.
+    - [x] Preserve existing connector selection, setup wizard launch, import/export, and audit-toggle behavior.
+  - Acceptance Criteria:
+    - [x] Library connectors render as list rows rather than cards.
+    - [x] Search is horizontally centered.
+    - [x] `Supermemory` no longer overlaps the `CUSTOM` status chip.
+    - [x] Diagnostics Import, audit toggle, and Export audit log buttons render as compact aligned buttons.
+    - [x] Responsive CSS stacks row metadata and audit actions without horizontal overlap on narrow viewports.
+  - Notes/Evidence: Implemented in `addin/apps/taskpane/src/app/components/IntegrationsSection.tsx` and `addin/apps/taskpane/src/app/styles.css` by adding `integration-library-*` row classes, centering `.integrations-search`, constraining `.button svg`, and adding compact diagnostics/audit layouts. Browser verification at `https://localhost:3443/` confirmed Library rows, centered search, non-overlapping `Supermemory`/`CUSTOM`, and compact Diagnostics buttons. Validation: `npm run typecheck:addin`; `npm run test:office` passed with 144 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`.
+
 - [ ] IMPROVEMENT-002: Clarify release packaging and runtime assumptions after the independent taskpane transition
   - Category: Improvement
   - Status: open
