@@ -9,6 +9,8 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
+  ConnectorOAuthCallbackResponse,
+  ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
   ConnectorScopeUpdateRequest,
@@ -19,7 +21,8 @@ import type {
   ConnectorSetupResponse,
   ConnectorStatus,
   ConnectorTestResponse,
-  OfficeMode,
+  CompanionState,
+  OfficeDocumentState,
   OfficeStateUpdate,
   ProviderDescriptor,
   SessionStatsResponse,
@@ -38,19 +41,30 @@ import {
   type ToolCategory,
   type ToolPermissionOverride,
 } from "@pi-office/pi-office-pack/protocol";
-import { fetchJson } from "../../lib/api";
+import { fetchJson, type RuntimeRequestFailureDiagnostic } from "../../lib/api";
 import { HOST_LABELS } from "@pi-office/pi-office-pack/defaults";
-import { BackArrowIcon, UserIcon, ProviderIcon, ModelIcon, ToolIcon, PrefsIcon, IntegrationIcon } from "../../lib/icons";
+import {
+  BackArrowIcon,
+  UserIcon,
+  ProviderIcon,
+  ModelIcon,
+  ToolIcon,
+  PrefsIcon,
+  IntegrationIcon,
+  DiagnosticsIcon,
+} from "../../lib/icons";
 import { formatTokenCount } from "../../lib/helpers";
 import { IntegrationsSection } from "./IntegrationsSection";
 
-type SettingsTab = "profile" | "providers" | "models" | "integrations" | "tools" | "preferences";
+type SettingsTab = "profile" | "companion" | "providers" | "models" | "integrations" | "tools" | "preferences" | "diagnostics";
 
 const TABS: { key: SettingsTab; label: string; Icon: () => React.JSX.Element }[] = [
   { key: "profile", label: "Profile", Icon: UserIcon },
+  { key: "companion", label: "Companion", Icon: IntegrationIcon },
   { key: "providers", label: "AI Providers", Icon: ProviderIcon },
   { key: "models", label: "Models", Icon: ModelIcon },
   { key: "integrations", label: "Integrations", Icon: IntegrationIcon },
+  { key: "diagnostics", label: "Diagnostics", Icon: DiagnosticsIcon },
   { key: "tools", label: "Tools", Icon: ToolIcon },
   { key: "preferences", label: "Preferences", Icon: PrefsIcon },
 ];
@@ -59,34 +73,34 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   office_get_context: "Read document content, selection, and metadata from the active Office document.",
   office_apply_edit: "Apply text edits, formatting changes, and insertions to the active document.",
   office_navigate: "Navigate to specific locations within the document (sections, pages, ranges).",
-  office_capture_snapshot: "Capture a visual screenshot of the current document view.",
-  office_capture_viewport: "Capture the visible viewport area of the document window.",
+  office_capture_snapshot: "Capture selection and document context metadata from the current document state.",
+  office_capture_viewport: "Capture Word viewport metadata from Office.js context (not a pixel-perfect OS/window screenshot).",
   office_read_section: "Read a paginated section of the document by paragraph index.",
-  office_execute_js: "Execute arbitrary Office.js code in the document context.",
+  office_execute_js: "Manual-only escape hatch for direct Office.js snippets when structured tools are insufficient.",
   office_propose_edits: "Propose batch edits for user review before applying.",
-  read: "Read file contents from the workspace.",
-  grep: "Search file contents with regex patterns.",
-  find: "Find files by name or glob pattern.",
-  ls: "List directory contents.",
-  edit: "Edit file contents in the workspace.",
-  write: "Write new file contents to the workspace.",
-  bash: "Execute shell commands in the workspace.",
+  read: "Read file contents from the saved document folder through the optional companion.",
+  grep: "Search file contents from the saved document folder through the optional companion.",
+  find: "Find files by name inside the saved document folder through the optional companion.",
+  ls: "List directory contents from the saved document folder through the optional companion.",
+  mcp: "Execute a verified read-only local MCP tool through the optional companion.",
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
   read: "Read",
   "write-doc": "Write (doc)",
+  "escape-hatch": "Manual only",
   "read-external": "Read (workspace)",
   "write-external": "Write (workspace)",
   connector: "Connector",
   interaction: "Interaction",
 };
 
-const WORKSPACE_TOOL_NAMES = ["read", "grep", "find", "ls", "edit", "write", "bash"] as const;
+const COMPANION_FILE_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
 
 interface SettingsPageProps {
   officeState: OfficeStateUpdate | undefined;
-  mode: OfficeMode;
+  documentState: OfficeDocumentState;
+  companion: CompanionState;
   providers: ProviderDescriptor[];
   authStatus: AuthStatusResponse | undefined;
   connectors: ConnectorCatalogItem[];
@@ -94,6 +108,7 @@ interface SettingsPageProps {
   connectorDiagnostics: ConnectorDiagnosticsResponse | undefined;
   connectorAuditPreference: ConnectorAuditPreference | undefined;
   connectorScopeContext: ConnectorScopeContext | undefined;
+  runtimeDiagnostics: RuntimeRequestFailureDiagnostic[];
   sessionStats: SessionStatsResponse | undefined;
   preferences: UserPreferences;
   enabledModels: Set<string>;
@@ -109,7 +124,14 @@ interface SettingsPageProps {
   onConnectConnector: (request: ConnectorSetupRequest) => Promise<ConnectorSetupResponse>;
   onTestConnector: (request: ConnectorSetupRequest) => Promise<ConnectorTestResponse>;
   onReverifyConnector: (connectorId: string, scopeContext?: ConnectorScopeContext) => Promise<ConnectorTestResponse>;
-  onStartConnectorOAuth: (connectorId: string) => Promise<void>;
+  onStartConnectorOAuth: (connectorId: string) => Promise<ConnectorOAuthStartResponse>;
+  onCompleteConnectorOAuth: (request: {
+    connectorId: string;
+    state: string;
+    approved?: boolean;
+    error?: string;
+    expiresInSeconds?: number;
+  }) => Promise<ConnectorOAuthCallbackResponse>;
   onRemoveConnector: (storedConnectorId: string) => Promise<void>;
   onSetConnectorFavorite: (request: ConnectorFavoriteRequest) => Promise<void>;
   onUpdateConnectorScope: (request: ConnectorScopeUpdateRequest) => Promise<void>;
@@ -118,11 +140,15 @@ interface SettingsPageProps {
   onPreviewConnectorImport: (bundle: ConnectorExportBundle) => Promise<ConnectorImportPreviewResponse>;
   onApplyConnectorImport: (bundle: ConnectorExportBundle, resolutions?: Record<string, "skip" | "replace">) => Promise<ConnectorImportApplyResponse>;
   onSetConnectorAuditPreference: (preference: ConnectorAuditPreference) => Promise<ConnectorAuditPreference>;
+  onRetryCompanion: () => Promise<void> | void;
+  onSaveCompanionEndpoint: (endpoint: string) => Promise<void> | void;
+  onClearRuntimeDiagnostics: () => void;
 }
 
 export function SettingsPage({
   officeState,
-  mode,
+  documentState,
+  companion,
   providers,
   authStatus,
   connectors,
@@ -130,6 +156,7 @@ export function SettingsPage({
   connectorDiagnostics,
   connectorAuditPreference,
   connectorScopeContext,
+  runtimeDiagnostics,
   sessionStats,
   preferences,
   enabledModels,
@@ -146,6 +173,7 @@ export function SettingsPage({
   onTestConnector,
   onReverifyConnector,
   onStartConnectorOAuth,
+  onCompleteConnectorOAuth,
   onRemoveConnector,
   onSetConnectorFavorite,
   onUpdateConnectorScope,
@@ -154,6 +182,9 @@ export function SettingsPage({
   onPreviewConnectorImport,
   onApplyConnectorImport,
   onSetConnectorAuditPreference,
+  onRetryCompanion,
+  onSaveCompanionEndpoint,
+  onClearRuntimeDiagnostics,
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const pageRef = useRef<HTMLDivElement | null>(null);
@@ -222,7 +253,14 @@ export function SettingsPage({
 
         <div className="settings-content">
           {activeTab === "profile" && (
-            <ProfileSection officeState={officeState} mode={mode} sessionStats={sessionStats} />
+            <ProfileSection officeState={officeState} documentState={documentState} companion={companion} sessionStats={sessionStats} />
+          )}
+          {activeTab === "companion" && (
+            <CompanionSection
+              companion={companion}
+              onRetryCompanion={onRetryCompanion}
+              onSaveCompanionEndpoint={onSaveCompanionEndpoint}
+            />
           )}
           {activeTab === "providers" && (
             <ProvidersSection
@@ -256,6 +294,7 @@ export function SettingsPage({
               onTestConnector={onTestConnector}
               onReverifyConnector={onReverifyConnector}
               onStartOAuth={onStartConnectorOAuth}
+              onCompleteOAuth={onCompleteConnectorOAuth}
               onRemoveConnector={onRemoveConnector}
               onSetFavorite={onSetConnectorFavorite}
               onUpdateScope={onUpdateConnectorScope}
@@ -266,9 +305,16 @@ export function SettingsPage({
               onSetAuditPreference={onSetConnectorAuditPreference}
             />
           )}
+          {activeTab === "diagnostics" && (
+            <DiagnosticsSection
+              diagnostics={runtimeDiagnostics}
+              onClear={onClearRuntimeDiagnostics}
+            />
+          )}
           {activeTab === "tools" && (
             <ToolsSection
-              mode={mode}
+              documentState={documentState}
+              companion={companion}
               preferences={preferences}
               onUpdatePreferences={onUpdatePreferences}
             />
@@ -282,13 +328,172 @@ export function SettingsPage({
   );
 }
 
+const DIAGNOSTIC_SOURCE_LABELS: Record<RuntimeRequestFailureDiagnostic["source"], string> = {
+  route: "Route",
+  auth: "Auth",
+  connector: "Connector",
+};
+
+function formatDiagnosticTimestamp(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour12: false });
+}
+
+function DiagnosticsSection({
+  diagnostics,
+  onClear,
+}: {
+  diagnostics: RuntimeRequestFailureDiagnostic[];
+  onClear: () => void;
+}) {
+  return (
+    <section className="settings-section">
+      <div className="settings-section-header">
+        <h3>Runtime diagnostics</h3>
+        {!!diagnostics.length && (
+          <button type="button" className="settings-inline-action" onClick={onClear}>
+            Clear
+          </button>
+        )}
+      </div>
+      <p className="settings-note">
+        Captures recent route/auth/connector request failures from the in-process runtime.
+      </p>
+      {!diagnostics.length ? (
+        <p className="settings-note">No runtime failures recorded in this session.</p>
+      ) : (
+        <div className="settings-card-grid diagnostics-card-grid">
+          {diagnostics.map((diagnostic) => (
+            <article key={diagnostic.id} className="settings-card diagnostics-card">
+              <h4>
+                {diagnostic.method} {diagnostic.path}
+              </h4>
+              <p>{diagnostic.message}</p>
+              <p className="settings-meta">
+                {DIAGNOSTIC_SOURCE_LABELS[diagnostic.source]} • {formatDiagnosticTimestamp(diagnostic.timestamp)}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CompanionSection({
+  companion,
+  onRetryCompanion,
+  onSaveCompanionEndpoint,
+}: {
+  companion: CompanionState;
+  onRetryCompanion: () => Promise<void> | void;
+  onSaveCompanionEndpoint: (endpoint: string) => Promise<void> | void;
+}) {
+  const [manualEndpoint, setManualEndpoint] = useState("");
+
+  useEffect(() => {
+    setManualEndpoint(companion.manualEndpoint ?? companion.endpoint ?? companion.lastSuccessfulEndpoint ?? "");
+  }, [companion.endpoint, companion.lastSuccessfulEndpoint, companion.manualEndpoint]);
+
+  const statusLabel =
+    companion.status === "connected"
+      ? "Connected"
+      : companion.status === "discovering"
+        ? "Discovering"
+        : companion.status === "error"
+          ? "Error"
+          : "Unavailable";
+
+  return (
+    <section className="settings-section">
+      <div className="settings-section-header">
+        <h3>Optional Companion</h3>
+        <button type="button" className="button" onClick={() => void onRetryCompanion()}>
+          Retry discovery
+        </button>
+      </div>
+      <p className="settings-note">
+        Pi-Office works without the companion. The companion only adds read-only local file access and read-only local MCP execution.
+      </p>
+
+      <div className="settings-card-grid">
+        <div className="settings-card">
+          <span className="label">Status</span>
+          <p>{statusLabel}</p>
+        </div>
+        <div className="settings-card">
+          <span className="label">Endpoint</span>
+          <p>{companion.endpoint ?? companion.lastSuccessfulEndpoint ?? "Not discovered yet"}</p>
+        </div>
+        <div className="settings-card">
+          <span className="label">Capabilities</span>
+          <p>
+            Files: {companion.capabilities.fileRead ? "Read-only ready" : "Unavailable"}
+            <br />
+            Local MCP: {companion.capabilities.localMcp ? "Read-only ready" : "Unavailable"}
+          </p>
+        </div>
+      </div>
+
+      {companion.lastError && (
+        <div className="settings-card">
+          <span className="label">Last error</span>
+          <p>{companion.lastError}</p>
+        </div>
+      )}
+
+      <div className="field">
+        <span>Manual endpoint override</span>
+        <input
+          type="text"
+          value={manualEndpoint}
+          onChange={(event) => setManualEndpoint(event.target.value)}
+          placeholder="https://localhost:3444"
+        />
+      </div>
+      <div className="settings-actions">
+        <button type="button" className="button button-solid" onClick={() => void onSaveCompanionEndpoint(manualEndpoint)}>
+          Save endpoint
+        </button>
+        <button type="button" className="button" onClick={() => void onSaveCompanionEndpoint("")}>
+          Clear override
+        </button>
+      </div>
+
+      <h3>Setup</h3>
+      <div className="settings-card-grid">
+        <div className="settings-card">
+          <span className="label">1. Install</span>
+          <p>Install the companion package when the desktop bundle, zip, or npm package is published.</p>
+          <p className="settings-note">
+            <a href="#" onClick={(event) => event.preventDefault()}>Download ZIP (coming soon)</a>
+            {" · "}
+            <a href="#" onClick={(event) => event.preventDefault()}>Download binaries (coming soon)</a>
+            {" · "}
+            <a href="#" onClick={(event) => event.preventDefault()}>npm package (coming soon)</a>
+          </p>
+        </div>
+        <div className="settings-card">
+          <span className="label">2. Start</span>
+          <p>Run the companion on your machine and keep it listening on `https://localhost:3444` or your chosen loopback endpoint.</p>
+        </div>
+        <div className="settings-card">
+          <span className="label">3. Use</span>
+          <p>When discovery succeeds, saved documents gain read-only file tools and local stdio MCP execution. Without it, the add-in still works normally.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ProfileSection({
   officeState,
-  mode,
+  documentState,
+  companion,
   sessionStats,
 }: {
   officeState: OfficeStateUpdate | undefined;
-  mode: OfficeMode;
+  documentState: OfficeDocumentState;
+  companion: CompanionState;
   sessionStats: SessionStatsResponse | undefined;
 }) {
   return (
@@ -304,13 +509,23 @@ function ProfileSection({
           <p>{officeState?.document.title ?? "Unknown"}</p>
         </div>
         <div className="settings-card">
-          <span className="label">Mode</span>
-          <p>{mode === "workspace" ? "Workspace" : "Document-only"}</p>
+          <span className="label">Document State</span>
+          <p>{documentState === "saved" ? "Saved" : "Unsaved"}</p>
+        </div>
+        <div className="settings-card">
+          <span className="label">Companion</span>
+          <p>{companion.status === "connected" ? "Connected" : companion.status === "discovering" ? "Discovering" : companion.status === "error" ? "Error" : "Unavailable"}</p>
         </div>
         {officeState?.document.workspaceDir && (
           <div className="settings-card">
-            <span className="label">Workspace</span>
+            <span className="label">Document Folder</span>
             <p>{officeState.document.workspaceDir}</p>
+          </div>
+        )}
+        {companion.endpoint && (
+          <div className="settings-card">
+            <span className="label">Companion Endpoint</span>
+            <p>{companion.endpoint}</p>
           </div>
         )}
       </div>
@@ -389,7 +604,7 @@ function ProvidersSection({
           />
         ))}
         {providers.length === 0 && (
-          <p className="settings-note">No providers discovered. Ensure the companion server is running.</p>
+          <p className="settings-note">No providers discovered yet. Pi-Office uses provider credentials directly from the taskpane, so no companion is required for this section.</p>
         )}
       </div>
     </div>
@@ -567,14 +782,24 @@ function ModelsSection({
 }
 
 function ToolsSection({
-  mode,
+  documentState,
+  companion,
   preferences,
   onUpdatePreferences,
 }: {
-  mode: OfficeMode;
+  documentState: OfficeDocumentState;
+  companion: CompanionState;
   preferences: UserPreferences;
   onUpdatePreferences: (patch: Partial<UserPreferences>) => void;
 }) {
+  const showCompanionFileTools =
+    documentState === "saved" &&
+    companion.status === "connected" &&
+    companion.capabilities.fileRead;
+  const showCompanionMcp =
+    companion.status === "connected" &&
+    (companion.connectorToolNames?.length ?? 0) > 0;
+
   const handleOverrideChange = useCallback(
     (toolName: string, level: AutonomyLevel | "default" | "disabled") => {
       const current = preferences.toolPermissionOverrides;
@@ -640,14 +865,20 @@ function ToolsSection({
         ))}
       </div>
 
-      {mode === "workspace" && (
+      <h3>Optional Companion Tools</h3>
+      {!showCompanionFileTools && !showCompanionMcp && (
+        <p className="settings-note">
+          {documentState !== "saved"
+            ? "Save the document first to expose document-folder context. Local file tools stay disabled until the optional companion also connects."
+            : companion.status === "connected" && companion.capabilities.localMcp
+              ? "The companion is connected, but no read-only local MCP tools are verified for this session yet."
+              : "The add-in is running without companion-backed local tools. Read-only local files and local MCP execution become available only when the optional companion connects."}
+        </p>
+      )}
+      {showCompanionFileTools && (
         <>
-          <h3>Workspace Tools</h3>
-          <p className="settings-note">
-            Coding tools are available in workspace mode when the document is saved.
-          </p>
           <div className="tool-list">
-            {WORKSPACE_TOOL_NAMES.map((toolName) => (
+            {COMPANION_FILE_TOOL_NAMES.map((toolName) => (
               <ToolCardWithOverride
                 key={toolName}
                 toolName={toolName}
@@ -658,6 +889,15 @@ function ToolsSection({
           </div>
         </>
       )}
+      {showCompanionMcp && (
+        <div className="tool-list">
+          <ToolCardWithOverride
+            toolName="mcp"
+            overrideLevel={getOverrideLevel("mcp")}
+            onOverrideChange={handleOverrideChange}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -666,7 +906,7 @@ function getDefaultAutoApproveLevel(category: ToolCategory): AutonomyLevel {
   for (const level of AUTONOMY_LEVELS) {
     if (AUTONOMY_LEVEL_AUTO_APPROVE[level].has(category)) return level;
   }
-  return "extreme";
+  return "off";
 }
 
 function ToolCardWithOverride({
@@ -680,6 +920,7 @@ function ToolCardWithOverride({
 }) {
   const category = (TOOL_CATEGORY_MAP[toolName] ?? "connector") as ToolCategory;
   const defaultLevel = getDefaultAutoApproveLevel(category);
+  const manualOnly = category === "escape-hatch";
   const isDisabled = overrideLevel === "disabled";
   const activeLevel = isDisabled ? defaultLevel : overrideLevel === "default" ? defaultLevel : overrideLevel;
   const activeIndex = AUTONOMY_LEVELS.indexOf(activeLevel);
@@ -696,6 +937,11 @@ function ToolCardWithOverride({
       <p className="tool-card-desc">
         {TOOL_DESCRIPTIONS[toolName] ?? "No description available."}
       </p>
+      {manualOnly && (
+        <div className="tool-card-note">
+          This tool is never auto-approved. Each call must be explicitly reviewed.
+        </div>
+      )}
       <div className="tool-card-override">
         <span className="tool-card-override-label">Auto-approve at:</span>
         <div className="tool-level-bar">
@@ -784,6 +1030,12 @@ function PreferencesSection({
           description="Use a denser message layout to fit more conversation on screen."
           value={preferences.compactMessages}
           onChange={(v) => onUpdate({ compactMessages: v })}
+        />
+        <PrefToggle
+          label="Next-prompt suggestions"
+          description="Show concise prompt chips after useful Pi responses."
+          value={preferences.nextPromptSuggestionsEnabled}
+          onChange={(v) => onUpdate({ nextPromptSuggestionsEnabled: v })}
         />
         <PrefToggle
           label="Persistent rewind snapshots (Beta)"

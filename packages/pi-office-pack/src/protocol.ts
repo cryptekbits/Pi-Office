@@ -4,6 +4,36 @@ export type OfficeHost = (typeof OFFICE_HOSTS)[number];
 export const PROMPT_MODES = ["prompt", "steer", "followUp"] as const;
 export type PromptMode = (typeof PROMPT_MODES)[number];
 
+export const OFFICE_DOCUMENT_STATES = ["unsaved", "saved"] as const;
+export type OfficeDocumentState = (typeof OFFICE_DOCUMENT_STATES)[number];
+
+export const COMPANION_STATUSES = ["discovering", "connected", "unavailable", "error"] as const;
+export type CompanionStatus = (typeof COMPANION_STATUSES)[number];
+
+export const CONNECTOR_EXECUTION_ENVIRONMENTS = ["browser", "companion"] as const;
+export type ConnectorExecutionEnvironment = (typeof CONNECTOR_EXECUTION_ENVIRONMENTS)[number];
+
+export interface CompanionCapabilities {
+  fileRead: boolean;
+  localMcp: boolean;
+  endpoint?: string | undefined;
+}
+
+export interface CompanionState {
+  status: CompanionStatus;
+  endpoint?: string | undefined;
+  identity?: string | undefined;
+  lastError?: string | undefined;
+  manualEndpoint?: string | undefined;
+  lastSuccessfulEndpoint?: string | undefined;
+  sessionId?: string | undefined;
+  connectorToolNames?: string[] | undefined;
+  capabilities: CompanionCapabilities;
+}
+
+/**
+ * @deprecated Use OfficeDocumentState plus CompanionState instead.
+ */
 export type OfficeMode = "document-only" | "workspace";
 
 export interface PromptImagePayload {
@@ -170,19 +200,69 @@ export interface OfficeSessionOpenRequest {
   title: string;
   selectionSummary?: OfficeSelectionSummary | undefined;
   forceNew?: boolean | undefined;
+  windowId?: string | undefined;
 }
 
 export interface OfficeSessionOpenResponse {
   sessionId: string;
-  mode: OfficeMode;
+  documentState: OfficeDocumentState;
+  companion: CompanionState;
   origin: string;
   eventsPath: string;
+}
+
+export interface OfficeSessionStateResponse {
+  ok: true;
+  documentState: OfficeDocumentState;
+  companion: CompanionState;
+}
+
+export interface CompanionSessionOpenRequest {
+  browserSessionId: string;
+  windowId?: string | undefined;
+  host: OfficeHost;
+  documentId: string;
+  documentPath?: string | undefined;
+  documentUrl?: string | undefined;
+  saved: boolean;
+  title: string;
+  connectors: CompanionConnectorDefinition[];
+}
+
+export interface CompanionSessionOpenResponse {
+  ok: true;
+  sessionId: string;
+  companion: CompanionState;
+  connectors: ConnectorStatus[];
 }
 
 export interface PromptRequest {
   text: string;
   mode?: PromptMode | undefined;
   images?: PromptImagePayload[] | undefined;
+}
+
+export type PromptSuggestionRole = "user" | "assistant";
+
+export interface PromptSuggestionMessage {
+  role: PromptSuggestionRole;
+  text: string;
+}
+
+export interface PromptSuggestion {
+  id: string;
+  text: string;
+}
+
+export interface PromptSuggestionRequest {
+  generationId: string;
+  latestAssistantText: string;
+  recentMessages: PromptSuggestionMessage[];
+}
+
+export interface PromptSuggestionResponse {
+  generationId: string;
+  suggestions: PromptSuggestion[];
 }
 
 export interface DeriveSubjectRequest {
@@ -340,6 +420,30 @@ export interface ConnectorCatalogItem {
   catalogRevision?: string | undefined;
 }
 
+export interface CompanionConnectorDefinition {
+  id: string;
+  connectorId: string;
+  name: string;
+  source: "library" | "custom";
+  category: ConnectorCategory;
+  maturity: ConnectorMaturity;
+  setupKind: ConnectorSetupKind;
+  authMethod: ConnectorAuthMethod;
+  transport: ConnectorTransport;
+  credentialSource: ConnectorCredentialSource;
+  url?: string | undefined;
+  command?: string | undefined;
+  args?: string[] | undefined;
+  cwd?: string | undefined;
+  env?: Record<string, string> | undefined;
+  secret?: string | undefined;
+  secretEnvKey?: string | undefined;
+  useDetectedEnvKey?: string | undefined;
+  readOnly: boolean;
+  readPolicy: ConnectorReadPolicy;
+  catalogRevision?: string | undefined;
+}
+
 export interface ConnectorCapabilitySummary {
   tools: string[];
   allowedTools: string[];
@@ -456,6 +560,8 @@ export interface ConnectorStatus {
   conflicts?: ConnectorConflict[] | undefined;
   logSummary?: ConnectorLogSummary | undefined;
   capabilities?: ConnectorCapabilitySummary | undefined;
+  executionEnvironment?: ConnectorExecutionEnvironment | undefined;
+  executionAvailable?: boolean | undefined;
 }
 
 export interface ConnectorRuntimeCheck {
@@ -503,6 +609,8 @@ export interface ConnectorPrepareResponse {
   diagnostics: ConnectorDiagnostic[];
   conflicts?: ConnectorConflict[] | undefined;
   auditPreference?: ConnectorAuditPreference | undefined;
+  executionEnvironment?: ConnectorExecutionEnvironment | undefined;
+  executionAvailable?: boolean | undefined;
 }
 
 export interface ConnectorSetupRequest {
@@ -671,7 +779,14 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export const AUTONOMY_LEVELS = ["off", "low", "medium", "high", "extreme"] as const;
 export type AutonomyLevel = (typeof AUTONOMY_LEVELS)[number];
 
-export type ToolCategory = "read" | "write-doc" | "write-external" | "read-external" | "connector" | "interaction";
+export type ToolCategory =
+  | "read"
+  | "write-doc"
+  | "escape-hatch"
+  | "write-external"
+  | "read-external"
+  | "connector"
+  | "interaction";
 
 export interface ToolPermissionOverride {
   toolName: string;
@@ -689,6 +804,7 @@ export interface ToolPermissionRequest {
   toolName: string;
   toolCategory: ToolCategory;
   params: Record<string, unknown>;
+  expiresAt?: string | undefined;
 }
 
 export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
@@ -731,9 +847,10 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   insert_icon: "write-doc",
   office_propose_edits: "write-doc",
   office_navigate: "write-doc",
-  office_execute_js: "write-doc",
+  office_execute_js: "escape-hatch",
   generate_image: "write-doc",
   ask_user: "interaction",
+  mcp: "connector",
   read: "read-external",
   grep: "read-external",
   find: "read-external",
@@ -802,6 +919,7 @@ export interface UserPreferences {
   defaultImageModel: string;
   imageReasoningEffort: ImageReasoningEffort;
   experimentalRewindSnapshots: boolean;
+  nextPromptSuggestionsEnabled: boolean;
   autonomyLevel: AutonomyLevel;
   toolPermissionOverrides: ToolPermissionOverride[];
 }
@@ -816,6 +934,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   defaultImageModel: "",
   imageReasoningEffort: "high",
   experimentalRewindSnapshots: false,
+  nextPromptSuggestionsEnabled: true,
   autonomyLevel: "medium",
   toolPermissionOverrides: [],
 };
@@ -874,9 +993,9 @@ export interface SessionStatsResponse {
 
 export interface CompanionHealthResponse {
   ok: true;
-  origin: string;
-  mode: "development" | "production";
-  port: number;
+  endpoint: string;
+  identity: string;
+  capabilities: CompanionCapabilities;
 }
 
 export interface OfficeContextPayload {
@@ -1034,6 +1153,7 @@ export type BridgeServerMessage =
   | { type: "ask_user_request"; request: AskUserRequest }
   | { type: "edit_proposal_request"; proposal: OfficeEditProposal }
   | { type: "tool_permission_request"; request: ToolPermissionRequest }
+  | { type: "tool_permission_expired"; requestId: string; toolName: string }
   | { type: "connection_state"; state: "ready" | "reconnecting" | "offline" }
   | { type: "available_checkpoints"; checkpoints: CheckpointMetadata[] }
   | { type: "error"; message: string };

@@ -1515,7 +1515,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
     pi.on("session_start", async (_event, ctx) => {
       const state = options.getState();
       const label = HOST_LABELS[options.getHost()];
-      const suffix = state?.document.saved ? "workspace mode" : "document-only mode";
+      const suffix = state?.document.saved ? "saved document" : "unsaved document";
       ctx.ui.setStatus("office-host", `${label} · ${suffix}`);
     });
   };

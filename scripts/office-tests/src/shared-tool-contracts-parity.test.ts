@@ -165,12 +165,6 @@ async function waitForServerMessage(
   });
 }
 
-function extractConstStringArray(source: string, constName: string): string[] {
-  const match = source.match(new RegExp(`const\\s+${constName}\\s*=\\s*\\[(?<items>[\\s\\S]*?)\\]\\s*as const;`));
-  assert.ok(match?.groups?.items, `${constName} declaration not found.`);
-  return Array.from(match.groups.items.matchAll(/"([^"]+)"/g)).map((entry) => entry[1]!);
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -189,8 +183,8 @@ test("final inventory stays synchronized across protocol exports and tool-catego
   for (const officeTool of OFFICE_TOOL_NAMES) {
     const category = TOOL_CATEGORY_MAP[officeTool];
     assert.ok(
-      category === "read" || category === "write-doc",
-      `${officeTool} should map to read/write-doc but mapped to ${String(category)}.`,
+      category === "read" || category === "write-doc" || category === "escape-hatch",
+      `${officeTool} should map to read/write-doc/escape-hatch but mapped to ${String(category)}.`,
     );
   }
 
@@ -256,11 +250,7 @@ test("extension registration and runtime-published tools stay synchronized with 
   assert.deepEqual(sorted(runtimeTools), expected);
 });
 
-test("REGISTERED_AGENT_TOOL_NAMES constant and bridge dispatch cases stay in sync with supported tools", async () => {
-  const runtimeSource = readFileSync(join(process.cwd(), "apps/taskpane/src/lib/runtime/inprocess-kernel.ts"), "utf8");
-  const registeredAgentToolNames = extractConstStringArray(runtimeSource, "REGISTERED_AGENT_TOOL_NAMES");
-  assert.deepEqual(sorted(registeredAgentToolNames), sorted(FINAL_AGENT_TOOL_INVENTORY));
-
+test("taskpane bridge dispatch cases stay in sync with supported Office tools", async () => {
   const bridgeSource = readFileSync(join(process.cwd(), "apps/taskpane/src/lib/office-bridge.ts"), "utf8");
   const dispatchedToolNames = Array.from(
     bridgeSource.matchAll(/request\.toolName === "([^"]+)"/g),

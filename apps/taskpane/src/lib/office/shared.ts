@@ -98,6 +98,18 @@ export function getUnsavedDocumentId(host: OfficeHost): string {
   return created;
 }
 
+export function getTaskpaneWindowId(): string {
+  const key = "pi-office-window-id";
+  const existing = sessionStorage.getItem(key);
+  if (existing) {
+    return existing;
+  }
+
+  const created = crypto.randomUUID();
+  sessionStorage.setItem(key, created);
+  return created;
+}
+
 export function supportsRequirementSet(name: string, version: string): boolean {
   try {
     return Office.context.requirements.isSetSupported(name, version);
@@ -1376,6 +1388,7 @@ export function buildOpenRequest(state: OfficeStateUpdate, forceNew?: boolean): 
     title: state.document.title,
     selectionSummary: state.selection,
     forceNew,
+    windowId: getTaskpaneWindowId(),
   };
 }
 

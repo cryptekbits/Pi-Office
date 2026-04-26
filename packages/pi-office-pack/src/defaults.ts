@@ -1,4 +1,4 @@
-import type { OfficeHost, OfficeMode, OfficeStateUpdate, UserPreferences, ToolCategory } from "./protocol.js";
+import type { OfficeDocumentState, OfficeHost, OfficeStateUpdate, UserPreferences, ToolCategory } from "./protocol.js";
 import {
   AUTONOMY_LEVEL_AUTO_APPROVE,
   AUTONOMY_LEVEL_LABELS,
@@ -8,7 +8,7 @@ import {
   type AutonomyLevel,
 } from "./protocol.js";
 
-export const DEFAULT_COMPANION_PORT = 3443;
+export const DEFAULT_COMPANION_PORT = 3444;
 export const DEFAULT_COMPANION_HOST = "localhost";
 export const SHORTCUT_ACTION_ID = "ShowTaskpane";
 export const SHORTCUT_DEFAULT_KEY = "Ctrl+Alt+P";
@@ -61,11 +61,20 @@ DRAW.IO XML RULES (critical for correct rendering):
 - Use rounded=1 and whiteSpace=wrap on most shapes for cleaner appearance.
 - Every mxCell must have a unique id. Use descriptive ids when possible.
 When the user asks for an image, illustration, photo, graphic, or visual content (not a diagram or chart), use the generate_image tool. If image generation is disabled, the tool will inform you and you should tell the user to enable it in Settings > Preferences > Image Generation. Consider the document type when choosing aspect ratio: use 16:9 for PowerPoint slides, 4:3 or 1:1 for Word documents. For slide backgrounds or hero images, request higher resolution. Do not use generate_image for diagrams or charts -- use Mermaid or Draw.io for those.
-When the document is unsaved, do not assume local file access is available. Once the document is saved, workspace tools may become available through Pi and the document folder becomes the working directory.
-When you use filesystem tools, keep them focused on the saved document's workspace and treat AGENTS.md and SKILL.md files as live guidance.
+When the document is unsaved, do not assume local file access is available.
+When the document is saved, treat the document path and folder as context only unless read-only filesystem tools are explicitly available in this session.
+Read-only filesystem tools are only available when the optional local companion is connected. Without the companion, continue normally and explain that local files or local MCP connectors are unavailable.
+When read-only filesystem tools are available, keep them focused on the saved document's folder and treat AGENTS.md and SKILL.md files there as live guidance.
 `;
 
-export function getOfficeMode(saved: boolean): OfficeMode {
+export function getOfficeDocumentState(saved: boolean): OfficeDocumentState {
+  return saved ? "saved" : "unsaved";
+}
+
+/**
+ * @deprecated Use getOfficeDocumentState instead.
+ */
+export function getOfficeMode(saved: boolean): "workspace" | "document-only" {
   return saved ? "workspace" : "document-only";
 }
 
@@ -110,7 +119,7 @@ export function summarizeOfficeState(state: OfficeStateUpdate | undefined): stri
   return [
     `Host: ${HOST_LABELS[state.host]}`,
     `Document: ${state.document.title}`,
-    `Mode: ${getOfficeMode(state.document.saved)}`,
+    `Document state: ${getOfficeDocumentState(state.document.saved)}`,
     pathLine,
     `Selection: ${state.selection.label}`,
     previewLine,
@@ -126,10 +135,11 @@ export function composeOfficeAwarePrompt(input: string, state: OfficeStateUpdate
   return `Office session state:\n${summarizeOfficeState(state)}\n\nUser request:\n${input.trim()}`;
 }
 
-const WORKSPACE_TOOL_NAMES = ["read", "grep", "find", "ls", "edit", "write", "bash"] as const;
+const EXTERNAL_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
 const CATEGORY_LABELS: Record<string, string> = {
   read: "read",
   "write-doc": "doc-write",
+  "escape-hatch": "manual-escape-hatch",
   "read-external": "workspace-read",
   "write-external": "workspace-write",
   connector: "connector",
@@ -138,7 +148,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export function composeAutonomyPrompt(
   preferences: UserPreferences,
-  isWorkspace: boolean,
+  includeExternalTools: boolean,
   availableToolNames?: readonly string[],
 ): string {
   const level = preferences.autonomyLevel;
@@ -149,7 +159,7 @@ export function composeAutonomyPrompt(
       ? [...new Set(availableToolNames.map((name) => String(name)))]
       : [
           ...OFFICE_TOOL_NAMES,
-          ...(isWorkspace ? WORKSPACE_TOOL_NAMES : []),
+          ...(includeExternalTools ? EXTERNAL_TOOL_NAMES : []),
         ];
 
   const autoApproved: string[] = [];
@@ -184,6 +194,7 @@ export function composeAutonomyPrompt(
     `Rules:`,
     `- Use auto-approved tools freely to accomplish tasks.`,
     `- For tools requiring approval: proceed with the call — the user will be prompted to approve or deny. Do NOT ask permission in chat before calling them.`,
+    `- Manual escape-hatch tools such as office_execute_js always require an explicit user approval and may time out as denied if the user does not respond.`,
     `- If a tool call is denied by the user, adapt your approach using the remaining available tools. If no alternative exists, explain what you cannot do and why.`,
     `- NEVER ask the user to change the autonomy level. If a needed tool is unavailable or denied, simply explain the limitation.`,
     `- Disabled tools do not exist in this session. Do not reference or attempt to call them.`,

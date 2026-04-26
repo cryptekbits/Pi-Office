@@ -179,12 +179,58 @@ test("connector refresh stays runtime/UI scoped through reverify route with save
   );
 });
 
+test("remote HTTP connectors are marked setup-only until browser execution exists", async () => {
+  const runtime = await loadKernelModule();
+  const setup = await runtime.dispatchKernelRequest("/v1/connectors/setup/connect", {
+    method: "POST",
+    body: JSON.stringify({
+      connectorId: "custom",
+      name: "Remote HTTP MCP",
+      enabled: true,
+      favorite: false,
+      scopeTarget: "global",
+      setupKind: "remote_oauth",
+      authMethod: "none",
+      transport: "remote_http",
+      credentialSource: "none",
+      url: "https://example.test/mcp",
+    }),
+  }) as {
+    ok: boolean;
+    status: {
+      id: string;
+      executionEnvironment?: string;
+      executionAvailable?: boolean;
+    };
+  };
+
+  assert.equal(setup.ok, true);
+  assert.equal(setup.status.executionEnvironment, "browser");
+  assert.equal(setup.status.executionAvailable, false);
+
+  const statuses = await runtime.dispatchKernelRequest("/v1/connectors/status", {
+    method: "POST",
+    body: JSON.stringify({}),
+  }) as {
+    connectors: Array<{
+      id: string;
+      executionEnvironment?: string;
+      executionAvailable?: boolean;
+    }>;
+  };
+
+  const saved = statuses.connectors.find((connector) => connector.id === setup.status.id);
+  assert.ok(saved, "saved remote connector should be returned by status route");
+  assert.equal(saved.executionEnvironment, "browser");
+  assert.equal(saved.executionAvailable, false);
+});
+
 test("skill closure path uses packaged skill injection plus explicit unsaved-document gating", () => {
   const skillPaths = getOfficeSkillPaths();
   assert.equal(skillPaths.some((entry) => entry.endsWith("office-host.SKILL.md")), true);
   assert.equal(skillPaths.some((entry) => entry.endsWith("workspace-handoff.SKILL.md")), true);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /When the document is unsaved, do not assume local file access is available/);
-  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /Once the document is saved, workspace tools may become available/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /Read-only filesystem tools are only available when the optional local companion is connected/);
 });
 
 test("web-grounded context closure stays on hard-read-only research connectors", () => {

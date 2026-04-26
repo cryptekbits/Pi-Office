@@ -4,6 +4,7 @@ import type { ToolCategory, ToolPermissionRequest } from "@pi-office/pi-office-p
 const CATEGORY_LABELS: Record<ToolCategory, string> = {
   read: "Read (document)",
   "write-doc": "Write (document)",
+  "escape-hatch": "Manual escape hatch",
   "read-external": "Read (workspace)",
   "write-external": "Write (workspace)",
   connector: "Connector",

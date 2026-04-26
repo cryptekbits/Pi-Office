@@ -18,6 +18,8 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
+  ConnectorOAuthCallbackResponse,
+  ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
   ConnectorScopeUpdateRequest,
@@ -26,10 +28,15 @@ import type {
   ConnectorStatus,
   ConnectorStatusResponse,
   ConnectorTestResponse,
-  OfficeMode,
+  CompanionState,
+  OfficeDocumentState,
   OfficeSessionOpenResponse,
+  OfficeSessionStateResponse,
   OfficeStateUpdate,
+  DocumentCheckpointPayload,
   PromptImagePayload,
+  PromptSuggestion,
+  PromptSuggestionResponse,
   ThinkingCapabilities,
   ThinkingLevel,
   AskUserRequest,
@@ -37,8 +44,19 @@ import type {
   ProviderDescriptor,
   SessionStatsResponse,
 } from "@pi-office/pi-office-pack/protocol";
-import { HOST_LABELS } from "@pi-office/pi-office-pack/defaults";
-import { deleteJson, fetchJson, postJson } from "../lib/api";
+import {
+  shouldClearPromptSuggestionsForUiChange,
+  shouldShowPromptSuggestions,
+  type PromptSuggestionUiState,
+} from "@pi-office/pi-office-pack/prompt-suggestions";
+import {
+  deleteJson,
+  fetchJson,
+  postJson,
+  RUNTIME_DIAGNOSTIC_EVENT,
+  type RuntimeRequestFailureDiagnostic,
+} from "../lib/api";
+import { createLocalBridgeSocket, type LocalBridgeSocket } from "../lib/runtime/inprocess-kernel";
 import {
   buildConnectorScopeContext,
   buildOpenRequest,
@@ -76,6 +94,7 @@ import { ContextBar } from "./components/ContextBar";
 import { ChatView } from "./components/ChatView";
 import { Composer } from "./components/Composer";
 import { QueueStrip } from "./components/QueueStrip";
+import { PromptSuggestionStrip } from "./components/PromptSuggestionStrip";
 import { SettingsPage } from "./components/SettingsPage";
 import { HistoryDropdown } from "./components/HistoryDropdown";
 import { AskUserPopup } from "./components/AskUserPopup";
@@ -164,18 +183,32 @@ function updateToolCallStatus(
   return [...current, { toolCallId: toolCallId ?? crypto.randomUUID(), ...patch }];
 }
 
+function createDefaultCompanionState(): CompanionState {
+  return {
+    status: "unavailable",
+    capabilities: {
+      fileRead: false,
+      localMcp: false,
+    },
+  };
+}
+
 export function App() {
   const [officeState, setOfficeState] = useState<OfficeStateUpdate>();
   const [officeTheme, setOfficeTheme] = useState<OfficeThemeSnapshot>();
-  const [mode, setMode] = useState<OfficeMode>("document-only");
+  const [documentState, setDocumentState] = useState<OfficeDocumentState>("unsaved");
+  const [companion, setCompanion] = useState<CompanionState>(() => createDefaultCompanionState());
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse>();
   const [connectors, setConnectors] = useState<ConnectorCatalogItem[]>([]);
   const [connectorStatuses, setConnectorStatuses] = useState<ConnectorStatus[]>([]);
   const [connectorDiagnostics, setConnectorDiagnostics] = useState<ConnectorDiagnosticsResponse>();
+  const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<RuntimeRequestFailureDiagnostic[]>([]);
   const [connectorAuditPreference, setConnectorAuditPreference] = useState<ConnectorAuditPreference>();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [draft, setDraft] = useState("");
+  const [promptSuggestions, setPromptSuggestions] = useState<PromptSuggestion[]>([]);
+  const [composerFocusSignal, setComposerFocusSignal] = useState(0);
   const [sessionId, setSessionId] = useState<string>();
   const [connectionState, setConnectionState] = useState("connecting");
   const [selectedModelKey, setSelectedModelKey] = useState("");
@@ -205,7 +238,7 @@ export function App() {
   const { saveChat, loadChat, deleteChat, listChats, updateSubject } = useChatHistory();
 
   const sessionIdRef = useRef<string | undefined>(undefined);
-  const bridgeRef = useRef<WebSocket | null>(null);
+  const bridgeRef = useRef<LocalBridgeSocket | null>(null);
   const assistantEntryIdRef = useRef<string | undefined>(undefined);
   const toolCountRef = useRef(0);
   const pendingUserEchoesRef = useRef<string[]>([]);
@@ -220,31 +253,35 @@ export function App() {
   const officeStateRef = useRef<OfficeStateUpdate | undefined>(undefined);
   const pendingAskUserSummaryRef = useRef<ChatEntry | null>(null);
   const thinkingSegmentOpenRef = useRef(false);
+  const promptSuggestionGenerationRef = useRef(0);
+  const promptSuggestionUiStateRef = useRef<PromptSuggestionUiState | undefined>(undefined);
+  const preferencesRef = useRef(preferences);
+  const draftRef = useRef(draft);
 
   officeStateRef.current = officeState;
+  preferencesRef.current = preferences;
+  draftRef.current = draft;
 
-  const readyProviders = useMemo(
-    () => providers.filter((p) => p.configured && p.models.some((m) => m.configured)),
+  const allModels: ConfiguredModelEntry[] = useMemo(
+    () =>
+      providers.flatMap((provider) =>
+        provider.models.map((model) => ({
+          provider: { provider: provider.provider, label: provider.label },
+          model,
+          key: `${model.provider}::${model.modelId}`,
+        })),
+      ),
     [providers],
   );
 
-  const allConfiguredModels: ConfiguredModelEntry[] = useMemo(
-    () =>
-      readyProviders.flatMap((provider) =>
-        provider.models
-          .filter((m) => m.configured)
-          .map((model) => ({
-            provider: { provider: provider.provider, label: provider.label },
-            model,
-            key: `${model.provider}::${model.modelId}`,
-          })),
-      ),
-    [readyProviders],
+  const executableModels: ConfiguredModelEntry[] = useMemo(
+    () => allModels.filter((entry) => entry.model.configured),
+    [allModels],
   );
 
   const configuredModels: ConfiguredModelEntry[] = useMemo(
-    () => allConfiguredModels.filter((e) => isModelEnabled(e.model.provider, e.model.modelId)),
-    [allConfiguredModels, isModelEnabled],
+    () => executableModels.filter((e) => isModelEnabled(e.model.provider, e.model.modelId)),
+    [executableModels, isModelEnabled],
   );
 
   const themeStyle = useMemo(
@@ -288,6 +325,27 @@ export function App() {
       officeState?.selection.details?.join("\u0000"),
     ],
   );
+  const visiblePromptSuggestions = useMemo(
+    () =>
+      shouldShowPromptSuggestions(promptSuggestions, {
+        nextPromptSuggestionsEnabled: preferences.nextPromptSuggestionsEnabled,
+        isBusy,
+        draft,
+      })
+        ? promptSuggestions
+        : [],
+    [draft, isBusy, preferences.nextPromptSuggestionsEnabled, promptSuggestions],
+  );
+  const promptSuggestionUiState = useMemo<PromptSuggestionUiState>(
+    () => ({
+      nextPromptSuggestionsEnabled: preferences.nextPromptSuggestionsEnabled,
+      isBusy,
+      draft,
+      sessionId,
+      selectionFingerprint,
+    }),
+    [draft, isBusy, preferences.nextPromptSuggestionsEnabled, selectionFingerprint, sessionId],
+  );
 
   const pushSystemMessage = useCallback((text: string) => {
     setMessages((c) => [...c, createEntry("system", text)]);
@@ -295,6 +353,68 @@ export function App() {
 
   const pushErrorMessage = useCallback((text: string) => {
     setMessages((c) => [...c, createEntry("error", text)]);
+  }, []);
+
+  const appendRuntimeDiagnostic = useCallback((diagnostic: RuntimeRequestFailureDiagnostic) => {
+    setRuntimeDiagnostics((current) => [diagnostic, ...current].slice(0, 80));
+  }, []);
+
+  const clearRuntimeDiagnostics = useCallback(() => {
+    setRuntimeDiagnostics([]);
+  }, []);
+
+  const clearPromptSuggestions = useCallback(() => {
+    promptSuggestionGenerationRef.current += 1;
+    setPromptSuggestions([]);
+  }, []);
+
+  const handleSetDraft = useCallback((value: string) => {
+    setDraft(value);
+  }, []);
+
+  const requestPromptSuggestions = useCallback(async (latestAssistantText: string) => {
+    const sid = sessionIdRef.current;
+    const latestText = latestAssistantText.trim();
+    if (!sid || !preferencesRef.current.nextPromptSuggestionsEnabled || draftRef.current.trim() || latestText.length < 12) {
+      return;
+    }
+
+    const generationNumber = promptSuggestionGenerationRef.current + 1;
+    promptSuggestionGenerationRef.current = generationNumber;
+    const generationId = `${Date.now()}-${generationNumber}`;
+
+    try {
+      const currentMessages = await new Promise<ChatEntry[]>((resolve) => {
+        setMessages((c) => { resolve(c); return c; });
+      });
+      const recentMessages = currentMessages
+        .filter((message) => message.role === "user" || message.role === "assistant")
+        .slice(-8)
+        .map((message) => ({ role: message.role as "user" | "assistant", text: message.text }));
+
+      const response = await postJson<PromptSuggestionResponse>(
+        `/v1/sessions/${sid}/prompt-suggestions`,
+        {
+          generationId,
+          latestAssistantText: latestText,
+          recentMessages,
+        },
+      );
+
+      if (
+        promptSuggestionGenerationRef.current !== generationNumber ||
+        response.generationId !== generationId ||
+        !preferencesRef.current.nextPromptSuggestionsEnabled ||
+        draftRef.current.trim()
+      ) {
+        return;
+      }
+      setPromptSuggestions(response.suggestions);
+    } catch {
+      if (promptSuggestionGenerationRef.current === generationNumber) {
+        setPromptSuggestions([]);
+      }
+    }
   }, []);
 
   const refreshProviderState = useCallback(async () => {
@@ -306,10 +426,21 @@ export function App() {
     setAuthStatus(nextAuth);
   }, []);
 
-  const refreshConnectorState = useCallback(async (scopeContext?: ConnectorScopeContext) => {
+  const applySessionState = useCallback((state: {
+    documentState: OfficeDocumentState;
+    companion: CompanionState;
+  }) => {
+    setDocumentState(state.documentState);
+    setCompanion(state.companion);
+  }, []);
+
+  const refreshConnectorState = useCallback(async (scopeContext?: ConnectorScopeContext, targetSessionId?: string) => {
     const [catalog, nextStatus, nextDiagnostics, nextAudit] = await Promise.all([
       fetchJson<ConnectorCatalogResponse>("/v1/connectors/catalog"),
-      postJson<ConnectorStatusResponse>("/v1/connectors/status", { scopeContext }),
+      postJson<ConnectorStatusResponse>("/v1/connectors/status", {
+        scopeContext,
+        sessionId: targetSessionId ?? sessionIdRef.current,
+      }),
       fetchJson<ConnectorDiagnosticsResponse>("/v1/connectors/diagnostics"),
       fetchJson<ConnectorAuditPreferenceResponse>("/v1/connectors/audit"),
     ]);
@@ -318,6 +449,27 @@ export function App() {
     setConnectorDiagnostics(nextDiagnostics);
     setConnectorAuditPreference(nextAudit.preference);
   }, []);
+
+  const refreshCompanionState = useCallback(async (discover = false) => {
+    const next = discover
+      ? await postJson<CompanionState>("/v1/companion/discover", {})
+      : await fetchJson<CompanionState>("/v1/companion/state");
+    setCompanion(next);
+    return next;
+  }, []);
+
+  const syncCurrentSessionState = useCallback(async (stateOverride?: OfficeStateUpdate) => {
+    const sid = sessionIdRef.current;
+    const currentState = stateOverride ?? officeStateRef.current;
+    if (!sid || !currentState) {
+      return undefined;
+    }
+
+    const next = await postJson<OfficeSessionStateResponse>(`/v1/sessions/${sid}/office-state`, currentState);
+    applySessionState(next);
+    await refreshConnectorState(buildConnectorScopeContext(currentState), sid);
+    return next;
+  }, [applySessionState, refreshConnectorState]);
 
   const refreshSessionStats = useCallback(async (targetId?: string) => {
     const sid = targetId ?? sessionIdRef.current;
@@ -463,6 +615,7 @@ export function App() {
       const sid = sessionIdRef.current;
       if (!sid) throw new Error("Pi session is not connected yet.");
 
+      clearPromptSuggestions();
       const userMessageId = crypto.randomUUID();
 
       if (modeName === "prompt") {
@@ -487,7 +640,7 @@ export function App() {
         lastSentVisualFingerprintRef.current = imageFingerprint;
       }
     },
-    [captureCheckpointBeforePrompt],
+    [captureCheckpointBeforePrompt, clearPromptSuggestions],
   );
 
   const handleRewind = useCallback(
@@ -512,6 +665,7 @@ export function App() {
       }
 
       setMessages((c) => c.slice(0, messageIndex));
+      clearPromptSuggestions();
       bridgeRef.current?.send(JSON.stringify({
         type: "rewind_session",
         targetMessageCount: cp.messageCount,
@@ -524,7 +678,7 @@ export function App() {
       const prompt = cp.userPrompt.length > 50 ? cp.userPrompt.slice(0, 47) + "..." : cp.userPrompt;
       pushSystemMessage(`Rewound ${label} to before: "${prompt}"`);
     },
-    [messages, officeState, pushErrorMessage, pushSystemMessage],
+    [clearPromptSuggestions, messages, officeState, pushErrorMessage, pushSystemMessage],
   );
 
   const sendDraftPrompt = useCallback(async () => {
@@ -671,6 +825,19 @@ export function App() {
       if (!event || typeof event !== "object") return;
       const r = event as Record<string, unknown>;
       const type = String(r.type ?? "");
+      if (type === "checkpoint_data") {
+        const checkpoint = r.checkpoint as DocumentCheckpointPayload | undefined;
+        if (!checkpoint?.id || !checkpoint.host) return;
+        addCheckpoint({
+          ...checkpoint,
+          hasDocumentData: Boolean(
+            checkpoint.ooxml ||
+            checkpoint.sheets?.length ||
+            checkpoint.presentationBase64,
+          ),
+        });
+        return;
+      }
       if (type === "turn_start") { setIsBusy(true); return; }
 
       if (type === "turn_end" || type === "agent_end") {
@@ -703,7 +870,7 @@ export function App() {
         if (stopReason === "error" || stopReason.startsWith("err")) {
           const raw = turnMsg?.error ?? turnMsg?.errorMessage ?? "";
           const detail = parseApiError(raw);
-          pushErrorMessage(detail || "The model returned an error. Check companion logs for details.");
+          pushErrorMessage(detail || "The model returned an error. Check runtime logs for details.");
         }
         return;
       }
@@ -868,7 +1035,7 @@ export function App() {
           const isError = stopReason === "error" || stopReason.startsWith("err");
 
           // Intermediate message (model will call tools next) — keep accumulating into same entry
-          if (stopReason === "tool_use") {
+          if (stopReason === "tool_use" || stopReason === "toolUse") {
             // Close the current thinking segment so the next one starts fresh
             thinkingSegmentOpenRef.current = false;
             updateAssistantEntry((entry) => {
@@ -897,6 +1064,9 @@ export function App() {
           assistantEntryIdRef.current = undefined;
           if (!tid) {
             if (finalText) setMessages((c) => [...c, createEntry("assistant", finalText)]);
+            if (finalText.trim() && !isError) {
+              void requestPromptSuggestions(finalText);
+            }
             return;
           }
 
@@ -953,6 +1123,9 @@ export function App() {
             pushSystemMessage("The model returned an empty response.");
           }
           void refreshSessionStats();
+          if (finalText.trim() && !isError) {
+            void requestPromptSuggestions(finalText);
+          }
 
           // Derive chat subject after the 2nd assistant response
           assistantEndCountRef.current += 1;
@@ -987,6 +1160,7 @@ export function App() {
       preferences.showThinkingTraces,
       pushErrorMessage,
       pushSystemMessage,
+      requestPromptSuggestions,
       refreshSessionStats,
       updateAssistantEntry,
     ],
@@ -996,6 +1170,21 @@ export function App() {
     async (payload: BridgeServerMessage) => {
       if (payload.type === "connection_state") { setConnectionState(payload.state); return; }
       if (payload.type === "error") { pushErrorMessage(payload.message); return; }
+      if (payload.type === "available_checkpoints") {
+        if (!preferences.experimentalRewindSnapshots || !officeState?.document.id) return;
+        const missingCheckpoints = payload.checkpoints
+          .filter((checkpoint) => !hasCheckpoint(checkpoint.id))
+          .sort((left, right) => right.timestamp - left.timestamp)
+          .slice(0, 12);
+        for (const checkpoint of missingCheckpoints) {
+          bridgeRef.current?.send(JSON.stringify({
+            type: "load_checkpoint",
+            documentId: officeState.document.id,
+            checkpointId: checkpoint.id,
+          }));
+        }
+        return;
+      }
       if (payload.type === "office_tool_call") {
         try {
           const result = await executeOfficeTool(payload.request);
@@ -1013,6 +1202,11 @@ export function App() {
         setToolPermissionRequest(payload.request);
         return;
       }
+      if (payload.type === "tool_permission_expired") {
+        setToolPermissionRequest((current) => current?.requestId === payload.requestId ? null : current);
+        pushErrorMessage(`Permission request for ${payload.toolName} expired without approval.`);
+        return;
+      }
       if (payload.type === "edit_proposal_request") {
         setEditProposal(payload.proposal);
         return;
@@ -1022,7 +1216,7 @@ export function App() {
         return;
       }
     },
-    [handleSessionEvent, pushErrorMessage],
+    [handleSessionEvent, officeState?.document.id, preferences.experimentalRewindSnapshots, pushErrorMessage],
   );
 
   // Keep a stable ref so the WebSocket listener always calls the latest handler.
@@ -1030,16 +1224,15 @@ export function App() {
 
   const openBridge = useCallback(
     (response: OfficeSessionOpenResponse) => {
-      const socketOrigin = response.origin.replace(/^https:/i, "wss:");
-      const socket = new WebSocket(`${socketOrigin}${response.eventsPath}`);
+      const socket = createLocalBridgeSocket(response.sessionId);
       bridgeRef.current = socket;
 
       socket.addEventListener("open", () => {
         socket.send(JSON.stringify({ type: "client_ready" }));
       });
-      socket.addEventListener("message", (msg) => {
+      socket.addEventListener("message", (msg: Event) => {
         try {
-          const payload = JSON.parse(String(msg.data)) as BridgeServerMessage;
+          const payload = JSON.parse(String((msg as MessageEvent).data)) as BridgeServerMessage;
           void bridgeHandlerRef.current?.(payload);
         } catch (error) {
           console.error("[bridge] message error:", error);
@@ -1059,6 +1252,7 @@ export function App() {
     const currentState = stateOverride ?? officeStateRef.current;
     if (!currentState) throw new Error("Office state not available");
 
+    clearPromptSuggestions();
     disconnectBridgeRef.current?.();
     disconnectBridgeRef.current = undefined;
 
@@ -1066,16 +1260,31 @@ export function App() {
     const session = await postJson<OfficeSessionOpenResponse>("/v1/sessions/open", buildOpenRequest(currentState, forceNew));
     setSessionId(session.sessionId);
     sessionIdRef.current = session.sessionId;
-    setMode(session.mode);
+    applySessionState(session);
     disconnectBridgeRef.current = openBridge(session);
 
-    const next = await postJson<{ ok: true; mode: OfficeMode }>(
+    const next = await postJson<OfficeSessionStateResponse>(
       `/v1/sessions/${session.sessionId}/office-state`, currentState,
     );
-    setMode(next.mode);
+    applySessionState(next);
+    void refreshConnectorState(buildConnectorScopeContext(currentState), session.sessionId);
     void refreshSessionStats(session.sessionId);
     void refreshThinkingCapabilities(session.sessionId);
-  }, [openBridge, refreshSessionStats, refreshThinkingCapabilities]);
+  }, [applySessionState, clearPromptSuggestions, openBridge, refreshConnectorState, refreshSessionStats, refreshThinkingCapabilities]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onRuntimeDiagnostic = (event: Event) => {
+      const detail = (event as CustomEvent<RuntimeRequestFailureDiagnostic>).detail;
+      if (!detail || typeof detail !== "object") return;
+      appendRuntimeDiagnostic(detail);
+    };
+
+    window.addEventListener(RUNTIME_DIAGNOSTIC_EVENT, onRuntimeDiagnostic as EventListener);
+    return () => {
+      window.removeEventListener(RUNTIME_DIAGNOSTIC_EVENT, onRuntimeDiagnostic as EventListener);
+    };
+  }, [appendRuntimeDiagnostic]);
 
   // Bootstrap
   useEffect(() => {
@@ -1085,7 +1294,7 @@ export function App() {
     const boot = async () => {
       try {
         setConnectionState("connecting");
-        await Promise.all([refreshProviderState(), refreshConnectorState(undefined)]);
+        await Promise.all([refreshProviderState(), refreshConnectorState(undefined), refreshCompanionState()]);
         if (!active) return;
 
         const host = await waitForOfficeReady();
@@ -1105,11 +1314,9 @@ export function App() {
             const s = await collectOfficeState(host);
             if (!active) return;
             setOfficeState(s);
-            const r = await postJson<{ ok: true; mode: OfficeMode }>(
-              `/v1/sessions/${sessionIdRef.current}/office-state`, s,
-            );
+            const r = await postJson<OfficeSessionStateResponse>(`/v1/sessions/${sessionIdRef.current}/office-state`, s);
             if (!active) return;
-            setMode(r.mode);
+            applySessionState(r);
           } catch (error) {
             if (active) pushErrorMessage(`Office state refresh failed: ${error instanceof Error ? error.message : String(error)}`);
           }
@@ -1133,7 +1340,7 @@ export function App() {
       assistantEntryIdRef.current = undefined;
       setSessionStats(undefined);
     };
-  }, [openSession, pushErrorMessage, refreshConnectorState, refreshProviderState]);
+  }, [applySessionState, openSession, pushErrorMessage, refreshCompanionState, refreshConnectorState, refreshProviderState]);
 
   useEffect(() => {
     if (lastSelectionFingerprintRef.current && lastSelectionFingerprintRef.current !== selectionFingerprint) {
@@ -1143,9 +1350,16 @@ export function App() {
   }, [selectionFingerprint]);
 
   useEffect(() => {
+    if (shouldClearPromptSuggestionsForUiChange(promptSuggestionUiStateRef.current, promptSuggestionUiState)) {
+      clearPromptSuggestions();
+    }
+    promptSuggestionUiStateRef.current = promptSuggestionUiState;
+  }, [clearPromptSuggestions, promptSuggestionUiState]);
+
+  useEffect(() => {
     if (!connectorScopeContext) return;
-    void refreshConnectorState(connectorScopeContext);
-  }, [connectorScopeContext, refreshConnectorState]);
+    void refreshConnectorState(connectorScopeContext, sessionId);
+  }, [connectorScopeContext, refreshConnectorState, sessionId]);
 
   // Persist chat subject + messages to history when subject changes
   useEffect(() => {
@@ -1290,12 +1504,34 @@ export function App() {
 
   const handleStartConnectorOAuth = useCallback(async (connectorId: string) => {
     try {
-      await postJson<{ ok: true; url?: string }>("/v1/connectors/oauth/start", { connectorId });
-      pushSystemMessage("Connector sign-in opened in your browser.");
+      const response = await postJson<ConnectorOAuthStartResponse>("/v1/connectors/oauth/start", { connectorId });
+      pushSystemMessage("Connector sign-in opened in your browser. Complete sign-in in the setup panel.");
       await refreshConnectorState(connectorScopeContext);
+      return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Connector sign-in failed: ${message}`);
+      throw error;
+    }
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
+
+  const handleCompleteConnectorOAuth = useCallback(async (request: {
+    connectorId: string;
+    state: string;
+    approved?: boolean;
+    error?: string;
+    expiresInSeconds?: number;
+  }) => {
+    try {
+      const response = await postJson<ConnectorOAuthCallbackResponse>("/v1/connectors/oauth/callback", request);
+      await refreshConnectorState(connectorScopeContext);
+      pushSystemMessage(response.status.healthState === "ready"
+        ? `Connector sign-in completed: ${response.status.name}.`
+        : `Connector sign-in updated for ${response.status.name}.`);
+      return response;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      pushErrorMessage(`Connector sign-in completion failed: ${message}`);
       throw error;
     }
   }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
@@ -1388,6 +1624,33 @@ export function App() {
     }
   }, [pushErrorMessage]);
 
+  const handleRetryCompanion = useCallback(async () => {
+    try {
+      await refreshCompanionState(true);
+      await syncCurrentSessionState();
+      pushSystemMessage("Companion discovery refreshed.");
+    } catch (error) {
+      pushErrorMessage(`Companion retry failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [pushErrorMessage, pushSystemMessage, refreshCompanionState, syncCurrentSessionState]);
+
+  const handleSaveCompanionEndpoint = useCallback(async (endpoint: string) => {
+    try {
+      const next = await postJson<CompanionState>("/v1/companion/manual-endpoint", {
+        endpoint: endpoint.trim() || undefined,
+      });
+      setCompanion(next);
+      await syncCurrentSessionState();
+      pushSystemMessage(
+        endpoint.trim()
+          ? "Saved companion endpoint override and refreshed discovery."
+          : "Cleared companion endpoint override and refreshed discovery.",
+      );
+    } catch (error) {
+      pushErrorMessage(`Companion endpoint update failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [pushErrorMessage, pushSystemMessage, syncCurrentSessionState]);
+
   const handleSelectModel = useCallback((key: string) => {
     if (!key && modelPinnedRef.current) {
       pushSystemMessage("This session keeps its current model until you reopen the document.");
@@ -1401,13 +1664,20 @@ export function App() {
     setDraft(entry.text);
   }, []);
 
+  const handlePromptSuggestionSelect = useCallback((suggestion: PromptSuggestion) => {
+    setDraft(suggestion.text);
+    clearPromptSuggestions();
+    setComposerFocusSignal((current) => current + 1);
+  }, [clearPromptSuggestions]);
+
   // Settings page replaces the entire chat view
   if (settingsOpen) {
     return (
       <div className="shell" data-host={officeState?.host ?? "word"} style={themeStyle}>
         <SettingsPage
           officeState={officeState}
-          mode={mode}
+          documentState={documentState}
+          companion={companion}
           providers={providers}
           authStatus={authStatus}
           connectors={connectors}
@@ -1415,6 +1685,7 @@ export function App() {
           connectorDiagnostics={connectorDiagnostics}
           connectorAuditPreference={connectorAuditPreference}
           connectorScopeContext={connectorScopeContext}
+          runtimeDiagnostics={runtimeDiagnostics}
           sessionStats={sessionStats}
           preferences={preferences}
           enabledModels={enabledModels}
@@ -1431,6 +1702,7 @@ export function App() {
           onTestConnector={handleTestConnector}
           onReverifyConnector={handleReverifyConnector}
           onStartConnectorOAuth={handleStartConnectorOAuth}
+          onCompleteConnectorOAuth={handleCompleteConnectorOAuth}
           onRemoveConnector={handleRemoveConnector}
           onSetConnectorFavorite={handleSetConnectorFavorite}
           onUpdateConnectorScope={handleUpdateConnectorScope}
@@ -1439,6 +1711,9 @@ export function App() {
           onPreviewConnectorImport={handlePreviewConnectorImport}
           onApplyConnectorImport={handleApplyConnectorImport}
           onSetConnectorAuditPreference={handleSetConnectorAuditPreference}
+          onRetryCompanion={handleRetryCompanion}
+          onSaveCompanionEndpoint={handleSaveCompanionEndpoint}
+          onClearRuntimeDiagnostics={clearRuntimeDiagnostics}
         />
       </div>
     );
@@ -1519,7 +1794,8 @@ export function App() {
 
       <ContextBar
         officeState={officeState}
-        mode={mode}
+        documentState={documentState}
+        companion={companion}
         shouldAttachDraftVisuals={shouldAttachDraftVisuals}
       />
 
@@ -1530,7 +1806,7 @@ export function App() {
         showThinkingTraces={preferences.showThinkingTraces}
         officeTheme={officeTheme}
         officeState={officeState}
-        onQuickPrompt={setDraft}
+        onQuickPrompt={handleSetDraft}
         onRewind={handleRewind}
         hasCheckpoint={hasCheckpoint}
         scrollDeps={[isBusy, localQueue, messages, remoteQueue]}
@@ -1543,14 +1819,22 @@ export function App() {
         onQueueSelection={handleQueueSelection}
       />
 
+      <PromptSuggestionStrip
+        suggestions={visiblePromptSuggestions}
+        onSelect={handlePromptSuggestionSelect}
+      />
+
       <Composer
         draft={draft}
-        setDraft={setDraft}
+        setDraft={handleSetDraft}
+        focusSignal={composerFocusSignal}
         userMessages={userMessages}
         sessionId={sessionId}
         isBusy={isBusy}
         activeToolName={activeToolName}
         officeState={officeState}
+        documentState={documentState}
+        companion={companion}
         shouldAttachDraftVisuals={shouldAttachDraftVisuals}
         selectedLocalQueueId={selectedLocalQueueId}
         configuredModels={configuredModels}

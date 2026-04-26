@@ -9,6 +9,8 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
+  ConnectorOAuthCallbackResponse,
+  ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
   ConnectorScopeTarget,
@@ -60,6 +62,12 @@ interface ConnectorDraftState {
   advanced: boolean;
 }
 
+interface PendingOAuthState {
+  state: string;
+  expiresAt: string;
+  url?: string | undefined;
+}
+
 interface IntegrationsSectionProps {
   host: OfficeHost | undefined;
   connectors: ConnectorCatalogItem[];
@@ -71,7 +79,14 @@ interface IntegrationsSectionProps {
   onConnectConnector: (request: ConnectorSetupRequest) => Promise<ConnectorSetupResponse>;
   onTestConnector: (request: ConnectorSetupRequest) => Promise<ConnectorTestResponse>;
   onReverifyConnector: (connectorId: string, scopeContext?: ConnectorScopeContext) => Promise<ConnectorTestResponse>;
-  onStartOAuth: (connectorId: string) => Promise<void>;
+  onStartOAuth: (connectorId: string) => Promise<ConnectorOAuthStartResponse>;
+  onCompleteOAuth: (request: {
+    connectorId: string;
+    state: string;
+    approved?: boolean;
+    error?: string;
+    expiresInSeconds?: number;
+  }) => Promise<ConnectorOAuthCallbackResponse>;
   onRemoveConnector: (storedConnectorId: string) => Promise<void>;
   onSetFavorite: (request: ConnectorFavoriteRequest) => Promise<void>;
   onUpdateScope: (request: ConnectorScopeUpdateRequest) => Promise<void>;
@@ -369,6 +384,7 @@ export function IntegrationsSection({
   onTestConnector,
   onReverifyConnector,
   onStartOAuth,
+  onCompleteOAuth,
   onRemoveConnector,
   onSetFavorite,
   onUpdateScope,
@@ -386,9 +402,10 @@ export function IntegrationsSection({
   const [draft, setDraft] = useState<ConnectorDraftState>();
   const [loadingPrepare, setLoadingPrepare] = useState(false);
   const [working, setWorking] = useState<"testing" | "saving" | "oauth" | "removing" | "reverify" | "export" | "import" | undefined>();
-  const [result, setResult] = useState<ConnectorTestResponse | ConnectorSetupResponse>();
+  const [result, setResult] = useState<ConnectorTestResponse | ConnectorSetupResponse | ConnectorOAuthCallbackResponse>();
   const [logs, setLogs] = useState<ConnectorLogResponse>();
   const [importPreview, setImportPreview] = useState<ConnectorImportPreviewResponse>();
+  const [pendingOAuth, setPendingOAuth] = useState<Record<string, PendingOAuthState>>({});
   const [error, setError] = useState<string>();
   const [liveMessage, setLiveMessage] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -546,6 +563,67 @@ export function IntegrationsSection({
     }
   }
 
+  async function handleStartOAuth(targetId?: string) {
+    const connectorId = targetId ?? selectedStatus?.id;
+    if (!connectorId) {
+      setError("Save this connector first, then start browser sign-in.");
+      return;
+    }
+    setWorking("oauth");
+    setError(undefined);
+    try {
+      const started = await onStartOAuth(connectorId);
+      setPendingOAuth((current) => ({
+        ...current,
+        [connectorId]: {
+          state: started.state,
+          expiresAt: started.expiresAt,
+          url: started.url,
+        },
+      }));
+      setLiveMessage("OAuth sign-in started. Complete sign-in after authenticating in the browser.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setWorking(undefined);
+    }
+  }
+
+  async function handleCompleteOAuth(targetId?: string) {
+    const connectorId = targetId ?? selectedStatus?.id;
+    if (!connectorId) {
+      setError("No connector is selected for OAuth completion.");
+      return;
+    }
+    const pending = pendingOAuth[connectorId];
+    if (!pending) {
+      setError("No OAuth sign-in is pending. Start sign-in first.");
+      return;
+    }
+    setWorking("oauth");
+    setError(undefined);
+    try {
+      const response = await onCompleteOAuth({
+        connectorId,
+        state: pending.state,
+        approved: true,
+      });
+      setResult(response);
+      setPendingOAuth((current) => {
+        const next = { ...current };
+        delete next[connectorId];
+        return next;
+      });
+      setLiveMessage(response.status.healthState === "ready"
+        ? "Connector sign-in completed."
+        : "Connector sign-in updated; reverify if needed.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setWorking(undefined);
+    }
+  }
+
   async function handleRemove(statusId: string) {
     setWorking("removing");
     setError(undefined);
@@ -557,6 +635,11 @@ export function IntegrationsSection({
         setDraft(undefined);
         setLogs(undefined);
       }
+      setPendingOAuth((current) => {
+        const next = { ...current };
+        delete next[statusId];
+        return next;
+      });
       setLiveMessage("Connector removed.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -604,6 +687,28 @@ export function IntegrationsSection({
     }
   }
 
+  useEffect(() => {
+    setPendingOAuth((current) => {
+      let changed = false;
+      const statusMap = new Map(statuses.map((status) => [status.id, status]));
+      const next: Record<string, PendingOAuthState> = {};
+      for (const [connectorId, pending] of Object.entries(current)) {
+        const status = statusMap.get(connectorId);
+        if (!status || status.healthState === "ready") {
+          changed = true;
+          continue;
+        }
+        if (Date.parse(pending.expiresAt) <= Date.now()) {
+          changed = true;
+          continue;
+        }
+        next[connectorId] = pending;
+      }
+      return changed ? next : current;
+    });
+  }, [statuses]);
+
+  const selectedPendingOAuth = selectedStatus ? pendingOAuth[selectedStatus.id] : undefined;
   const panelOpen = Boolean(selectedKey && selectedConnector);
 
   return (
@@ -613,7 +718,7 @@ export function IntegrationsSection({
           <div className="integrations-kicker">Read-only sources</div>
           <h3>Connect the information behind your Office work</h3>
           <p className="settings-note integrations-hero-copy">
-            Users see plain language like “Connects online” or “Runs on this PC”. The companion handles secure secrets,
+            Users see plain language like “Connects online” or “Runs on this PC”. The runtime handles secure local state,
             scope-aware enablement, verification snapshots, and hard read-only filtering.
           </p>
         </div>
@@ -728,6 +833,16 @@ export function IntegrationsSection({
                   </div>
                   <div className="settings-actions">
                     <button type="button" className="button" onClick={() => { setView(status.source === "custom" ? "custom" : "library"); setSelectedKey(status.source === "custom" ? status.id : status.connectorId); setWizardStep(1); }}>Open setup</button>
+                    {status.authMethod === "oauth" && (
+                      <div className="integration-oauth-actions">
+                        <button type="button" className="button" onClick={() => void handleStartOAuth(status.id)} disabled={working === "oauth"}>
+                          {working === "oauth" ? "Opening..." : (status.healthState === "auth_expired" || status.healthState === "auth_required" ? "Sign in" : "Re-auth")}
+                        </button>
+                        {pendingOAuth[status.id] && (
+                          <span className="settings-note">Waiting for a verified OAuth callback.</span>
+                        )}
+                      </div>
+                    )}
                     <button type="button" className="button" onClick={() => void handleReverify(status.id)}>Re-verify</button>
                     <button type="button" className="button" onClick={() => void handleRemove(status.id)} disabled={working === "removing"}>Remove</button>
                   </div>
@@ -855,7 +970,28 @@ export function IntegrationsSection({
                     {draft.authMethod !== "none" && <div className="field"><span>Credentials</span><div className="integration-choice-row"><button type="button" className={`button ${draft.credentialMode === "detected" ? "button-solid" : ""}`} onClick={() => setDraft((current) => current ? { ...current, credentialMode: "detected" } : current)}>Use detected key</button><button type="button" className={`button ${draft.credentialMode === "env" ? "button-solid" : ""}`} onClick={() => setDraft((current) => current ? { ...current, credentialMode: "env" } : current)}>Use env var</button><button type="button" className={`button ${draft.credentialMode === "manual" ? "button-solid" : ""}`} onClick={() => setDraft((current) => current ? { ...current, credentialMode: "manual" } : current)}>Enter my own</button></div></div>}
                     {draft.credentialMode === "env" && <div className="field"><span>Environment variable name</span><input type="text" value={draft.secretEnvKey} onChange={(event) => setDraft((current) => current ? { ...current, secretEnvKey: event.target.value } : current)} /></div>}
                     {draft.credentialMode === "manual" && draft.authMethod !== "none" && <div className="field"><span>{draft.authMethod === "api_key" ? "API key" : "Access token"}</span><input type="password" value={draft.secret} onChange={(event) => setDraft((current) => current ? { ...current, secret: event.target.value, preserveStoredSecret: false } : current)} placeholder={draft.preserveStoredSecret ? "Using stored secret unless you replace it" : "Paste credential"} /></div>}
-                    {draft.authMethod === "oauth" && <div className="settings-actions"><button type="button" className="button" onClick={() => void onStartOAuth(selectedConnector.id)}>Open browser sign-in</button></div>}
+                    {draft.authMethod === "oauth" && (
+                      <div className="settings-actions">
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => void handleStartOAuth()}
+                          disabled={!selectedStatus || working === "oauth"}
+                        >
+                          {working === "oauth" ? "Opening..." : "Open browser sign-in"}
+                        </button>
+                        {!selectedStatus && (
+                          <p className="settings-note">
+                            Save this connector first, then start OAuth sign-in.
+                          </p>
+                        )}
+                        {selectedPendingOAuth && (
+                          <p className="settings-note">
+                            Waiting for a verified OAuth callback. Manual completion is disabled; sign-in expires at {new Date(selectedPendingOAuth.expiresAt).toLocaleTimeString()}.
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {draft.transport === "remote_http" && <div className="field"><span>MCP service URL</span><input type="text" value={draft.url} onChange={(event) => setDraft((current) => current ? { ...current, url: event.target.value } : current)} placeholder="https://..." /></div>}
                     {draft.transport === "local_stdio" && (<><div className="field"><span>Launch command</span><input type="text" value={draft.command} onChange={(event) => setDraft((current) => current ? { ...current, command: event.target.value } : current)} /></div><div className="field"><span>Arguments</span><textarea rows={4} value={draft.argsText} onChange={(event) => setDraft((current) => current ? { ...current, argsText: event.target.value } : current)} /></div><div className="field"><span>Working folder</span><input type="text" value={draft.cwd} onChange={(event) => setDraft((current) => current ? { ...current, cwd: event.target.value } : current)} /></div></>)}
                     <button type="button" className="button" onClick={() => setDraft((current) => current ? { ...current, advanced: !current.advanced } : current)}>{draft.advanced ? "Hide advanced" : "Show advanced"}</button>

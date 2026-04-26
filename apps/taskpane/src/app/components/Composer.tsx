@@ -1,5 +1,13 @@
-import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
-import type { AutonomyLevel, ContextBreakdownEntry, OfficeStateUpdate, SessionStatsResponse, ThinkingLevel } from "@pi-office/pi-office-pack/protocol";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import type {
+  AutonomyLevel,
+  CompanionState,
+  ContextBreakdownEntry,
+  OfficeDocumentState,
+  OfficeStateUpdate,
+  SessionStatsResponse,
+  ThinkingLevel,
+} from "@pi-office/pi-office-pack/protocol";
 import { ArrowUpIcon, StopIcon } from "../../lib/icons";
 import { clampNumber, formatTokenCount, getContextRingColor } from "../../lib/helpers";
 import { useInputHistory } from "../../hooks/useInputHistory";
@@ -9,11 +17,14 @@ import { AutonomyToggle } from "./AutonomyToggle";
 interface ComposerProps {
   draft: string;
   setDraft: (value: string) => void;
+  focusSignal: number;
   userMessages: string[];
   sessionId: string | undefined;
   isBusy: boolean;
   activeToolName: string | undefined;
   officeState: OfficeStateUpdate | undefined;
+  documentState: OfficeDocumentState;
+  companion: CompanionState;
   shouldAttachDraftVisuals: boolean;
   selectedLocalQueueId: string | undefined;
   configuredModels: ConfiguredModelEntry[];
@@ -34,11 +45,14 @@ interface ComposerProps {
 export function Composer({
   draft,
   setDraft,
+  focusSignal,
   userMessages,
   sessionId,
   isBusy,
   activeToolName,
   officeState,
+  documentState,
+  companion,
   shouldAttachDraftVisuals,
   selectedLocalQueueId,
   configuredModels,
@@ -55,6 +69,7 @@ export function Composer({
   autonomyLevel,
   onSetAutonomyLevel,
 }: ComposerProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const canSend = Boolean(draft.trim() && sessionId);
 
   const contextPercent = sessionStats?.contextUsage?.percent ?? null;
@@ -80,10 +95,14 @@ export function Composer({
     if (isBusy && draft.trim()) return "Press Enter to queue this as the next follow-up.";
     if (activeToolName) return `Running ${activeToolName}.`;
     if (shouldAttachDraftVisuals) return "Relevant visual context will be attached automatically.";
-    return officeState?.document.saved
-      ? "Workspace-aware mode is active for this document."
-      : "Save the file to unlock folder-aware workspace access.";
-  }, [activeToolName, draft, isBusy, officeState?.document.saved, selectedLocalQueueId, shouldAttachDraftVisuals]);
+    if (documentState !== "saved") {
+      return "Save the file to unlock document-folder context.";
+    }
+    if (companion.status === "connected" && companion.capabilities.fileRead) {
+      return "Read-only local file access is available for this saved document.";
+    }
+    return "Document path context is available, but local files stay unavailable without the optional companion.";
+  }, [activeToolName, companion.capabilities.fileRead, companion.status, documentState, draft, isBusy, selectedLocalQueueId, shouldAttachDraftVisuals]);
 
   const { handleHistoryNav, resetHistory } = useInputHistory(userMessages, setDraft);
 
@@ -92,8 +111,25 @@ export function Composer({
     onSend();
   }, [isBusy, onAbort, onSend]);
 
+  const focusTextarea = useCallback(() => {
+    window.focus();
+    textareaRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    if (focusSignal <= 0) return;
+    focusTextarea();
+  }, [focusSignal, focusTextarea]);
+
+  const handlePointerFocus = useCallback((event: MouseEvent<HTMLTextAreaElement>) => {
+    event.stopPropagation();
+    if (document.activeElement === event.currentTarget) return;
+    queueMicrotask(focusTextarea);
+  }, [focusTextarea]);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      event.stopPropagation();
       if (handleHistoryNav(event)) return;
 
       if (event.key !== "Enter" || event.shiftKey) return;
@@ -113,8 +149,13 @@ export function Composer({
     <section className="composer">
       <div className="composer-box">
         <textarea
+          ref={textareaRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onMouseDown={handlePointerFocus}
+          onClick={handlePointerFocus}
+          onFocus={focusTextarea}
+          onKeyUp={(event) => event.stopPropagation()}
           onKeyDown={handleKeyDown}
           placeholder="Ask Pi to work on the current document..."
           disabled={!sessionId}

@@ -6,6 +6,11 @@ import test from "node:test";
 import { executeOfficeJs } from "../../../apps/taskpane/src/lib/office/document-tools.js";
 import { OFFICE_APPEND_SYSTEM_PROMPT } from "../../../packages/pi-office-pack/src/defaults.js";
 import { createOfficeExtension } from "../../../packages/pi-office-pack/src/extension.js";
+import {
+  AUTONOMY_LEVELS,
+  AUTONOMY_LEVEL_AUTO_APPROVE,
+  TOOL_CATEGORY_MAP,
+} from "../../../packages/pi-office-pack/src/protocol.js";
 
 const SAFETY_CONTRACT_REGEXES = [
   /\bbest[- ]effort restricted subset\b/i,
@@ -70,4 +75,16 @@ test("execute-js prompt and tool descriptions use the best-effort restricted sub
   const officeHostSkillPath = join(process.cwd(), "packages", "pi-office-pack", "skills", "office-host.SKILL.md");
   const officeHostSkillText = readFileSync(officeHostSkillPath, "utf8");
   assertSafetyContractText(officeHostSkillText);
+});
+
+test("office_execute_js is categorized as a manual-only escape hatch", () => {
+  assert.equal(TOOL_CATEGORY_MAP.office_execute_js, "escape-hatch");
+
+  for (const level of AUTONOMY_LEVELS) {
+    assert.equal(
+      AUTONOMY_LEVEL_AUTO_APPROVE[level].has("escape-hatch"),
+      false,
+      `${level} autonomy must not auto-approve office_execute_js.`,
+    );
+  }
 });

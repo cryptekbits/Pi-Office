@@ -16,7 +16,7 @@ import {
   OFFICE_APPEND_SYSTEM_PROMPT,
   composeAutonomyPrompt,
   composeOfficeAwarePrompt,
-  getOfficeMode,
+  getOfficeDocumentState,
 } from "@pi-office/pi-office-pack/defaults";
 import {
   AUTONOMY_LEVEL_AUTO_APPROVE,
@@ -31,6 +31,9 @@ import {
   type BridgeClientMessage,
   type BridgeServerMessage,
   type CheckpointMetadata,
+  type CompanionConnectorDefinition,
+  type CompanionState,
+  type ConnectorDiagnostic,
   type ConnectorAuditPreference,
   type ConnectorAuditPreferenceResponse,
   type ConnectorCatalogResponse,
@@ -50,8 +53,10 @@ import {
   type ConnectorScopeUpdateRequest,
   type ConnectorSetupRequest,
   type ConnectorSetupResponse,
+  type ConnectorStatus,
   type ConnectorStatusResponse,
   type ConnectorTestResponse,
+  type OfficeDocumentState,
   type ContextBreakdownEntry,
   type DeriveSubjectRequest,
   type DeriveSubjectResponse,
@@ -62,14 +67,17 @@ import {
   type OfficeEditProposal,
   type OfficeEditProposalDecision,
   type OfficeHost,
-  type OfficeMode,
   type OfficeSessionOpenRequest,
   type OfficeSessionOpenResponse,
+  type OfficeSessionStateResponse,
   type OfficeStateUpdate,
   type OfficeToolName,
   type OfficeToolResult,
   type PromptImagePayload,
   type PromptMode,
+  type PromptSuggestionMessage,
+  type PromptSuggestionRequest,
+  type PromptSuggestionResponse,
   type ProviderCatalogResponse,
   type ProviderDescriptor,
   type ProviderModelDescriptor,
@@ -82,8 +90,10 @@ import {
   type ToolPermissionRequest,
   type UserPreferences,
 } from "@pi-office/pi-office-pack/protocol";
+import { parsePromptSuggestions } from "@pi-office/pi-office-pack/prompt-suggestions";
 import { executeOfficeTool } from "../office-tools";
 import { BrowserConnectorRuntime } from "./browser-connectors";
+import { CompanionClient, type CompanionSessionBinding } from "./companion-client";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -117,51 +127,6 @@ const CHECKPOINT_STORAGE_KEY_PREFIX = "pi-office-checkpoints:";
 const MAX_CHECKPOINT_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_CHECKPOINTS_PER_DOC = 50;
 const BROWSER_UNSUPPORTED_PROVIDERS = new Set<string>(["amazon-bedrock"]);
-const REGISTERED_AGENT_TOOL_NAMES = [
-  "office_get_context",
-  "office_apply_edit",
-  "edit_doc_text",
-  "edit_doc_list",
-  "get_cell_ranges",
-  "set_cell_range",
-  "clear_cell_range",
-  "resize_range",
-  "copy_to",
-  "modify_sheet_structure",
-  "modify_object",
-  "get_all_objects",
-  "search_data",
-  "get_range_as_csv",
-  "read_range_image",
-  "extract_chart_xml",
-  "office_navigate",
-  "office_capture_snapshot",
-  "office_capture_viewport",
-  "office_read_section",
-  "verify_doc",
-  "verify_doc_visual",
-  "get_presentation_structure",
-  "get_slide",
-  "list_slide_shapes",
-  "modify_presentation_structure",
-  "duplicate_slide",
-  "insert_slide_element",
-  "remove_slide_element",
-  "edit_slide_text",
-  "edit_slide_xml",
-  "edit_slide_master",
-  "edit_slide_chart",
-  "copy_image_between_slides",
-  "search_icons",
-  "insert_icon",
-  "verify_slides",
-  "verify_slide_visual",
-  "office_execute_js",
-  "office_propose_edits",
-  "ask_user",
-  "generate_image",
-] as const;
-
 interface EncryptedAuthEnvelope {
   version: number;
   algorithm: "AES-GCM";
@@ -230,6 +195,60 @@ function parseRequestBody(init?: RequestInit): unknown {
   return undefined;
 }
 
+function disconnectedCompanionState(lastKnown?: Partial<CompanionState>): CompanionState {
+  return {
+    status: lastKnown?.status === "error" ? "error" : "unavailable",
+    endpoint: lastKnown?.endpoint,
+    identity: lastKnown?.identity,
+    lastError: lastKnown?.lastError,
+    manualEndpoint: lastKnown?.manualEndpoint,
+    lastSuccessfulEndpoint: lastKnown?.lastSuccessfulEndpoint,
+    sessionId: undefined,
+    connectorToolNames: [],
+    capabilities: {
+      fileRead: false,
+      localMcp: false,
+      endpoint: lastKnown?.capabilities?.endpoint,
+    },
+  };
+}
+
+function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: boolean): string {
+  const lines = [
+    `Companion status: ${companion.status}`,
+  ];
+
+  if (companion.endpoint) {
+    lines.push(`Companion endpoint: ${companion.endpoint}`);
+  }
+
+  if (documentSaved) {
+    lines.push(
+      companion.status === "connected" && companion.capabilities.fileRead
+        ? "Read-only local file tools are available for the saved document folder."
+        : "Read-only local file tools are unavailable for this session.",
+    );
+  } else {
+    lines.push("Local file tools stay unavailable until the document is saved.");
+  }
+
+  if (companion.status === "connected" && companion.connectorToolNames?.length) {
+    lines.push(
+      "Verified companion MCP tools: " + companion.connectorToolNames.join(", "),
+    );
+  } else if (companion.status === "connected" && companion.capabilities.localMcp) {
+    lines.push("Local MCP execution is available through the companion when configured read-only connectors are ready.");
+  } else {
+    lines.push("Local MCP execution is unavailable in this session.");
+  }
+
+  if (companion.lastError) {
+    lines.push(`Companion note: ${companion.lastError}`);
+  }
+
+  return lines.join("\n");
+}
+
 function normalizeOpenState(request: OfficeSessionOpenRequest): OfficeStateUpdate {
   return {
     host: request.host,
@@ -244,6 +263,32 @@ function normalizeOpenState(request: OfficeSessionOpenRequest): OfficeStateUpdat
     selection: request.selectionSummary ?? { label: "Selection unavailable" },
     capabilities: [],
     timestamp: nowIso(),
+  };
+}
+
+function buildBrowserSessionKey(host: OfficeHost, documentId: string, windowId?: string): string {
+  return `${host}:${documentId}:${windowId ?? "default"}`;
+}
+
+function errorCompanionState(current: CompanionState, error: unknown): CompanionState {
+  const lastError = error instanceof Error ? error.message : String(error);
+  return {
+    ...disconnectedCompanionState({
+      ...current,
+      status: "error",
+      lastError,
+    }),
+    status: "error",
+    endpoint: current.endpoint,
+    identity: current.identity,
+    lastError,
+    manualEndpoint: current.manualEndpoint,
+    lastSuccessfulEndpoint: current.lastSuccessfulEndpoint,
+    capabilities: {
+      fileRead: false,
+      localMcp: false,
+      endpoint: current.capabilities.endpoint ?? current.endpoint,
+    },
   };
 }
 
@@ -267,6 +312,58 @@ function describeAttachedImages(images: PromptImagePayload[] | undefined): strin
       return `- ${label}${dimensions}`;
     }),
   ].join("\n");
+}
+
+function clipForSuggestionPrompt(text: string, maxLength: number): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
+}
+
+function extractAgentMessageText(message: AgentMessage): string {
+  if (!message || typeof message !== "object") return "";
+  const role = (message as { role?: unknown }).role;
+  if (role !== "user" && role !== "assistant") return "";
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((part): part is { type: "text"; text: string } =>
+      Boolean(part && typeof part === "object" && (part as { type?: unknown }).type === "text"),
+    )
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+}
+
+function normalizeSuggestionMessages(
+  requestMessages: PromptSuggestionRequest["recentMessages"] | undefined,
+  fallbackMessages: AgentMessage[],
+): PromptSuggestionMessage[] {
+  const source = requestMessages?.length
+    ? requestMessages
+    : fallbackMessages
+        .map((message) => {
+          const role = (message as { role?: unknown }).role;
+          if (role !== "user" && role !== "assistant") return undefined;
+          const text = extractAgentMessageText(message);
+          return text ? { role, text } : undefined;
+        })
+        .filter((entry): entry is PromptSuggestionMessage => Boolean(entry));
+
+  return source
+    .filter((entry) => (entry.role === "user" || entry.role === "assistant") && Boolean(entry.text.trim()))
+    .slice(-8)
+    .map((entry) => ({
+      role: entry.role,
+      text: clipForSuggestionPrompt(entry.text, 900),
+    }));
+}
+
+function formatSuggestionMessages(messages: PromptSuggestionMessage[]): string {
+  if (!messages.length) return "No recent visible chat was provided.";
+  return messages
+    .map((message, index) => `${index + 1}. ${message.role}: ${message.text}`)
+    .join("\n");
 }
 
 function normalizeToolParams(params: unknown): Record<string, unknown> {
@@ -333,6 +430,27 @@ function toToolContent(value: unknown): Array<{ type: "text"; text: string } | {
     }
   }
   return content;
+}
+
+function normalizeExternalToolResult(
+  value: unknown,
+): {
+  content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+  details: unknown;
+} {
+  if (value && typeof value === "object" && Array.isArray((value as { content?: unknown }).content)) {
+    return {
+      content: (value as {
+        content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+      }).content,
+      details: (value as { details?: unknown }).details ?? value,
+    };
+  }
+
+  return {
+    content: toToolContent(value),
+    details: value,
+  };
 }
 
 function toSize(size: string | undefined, aspectRatio: string | undefined): string | undefined {
@@ -717,7 +835,10 @@ class BrowserModelRegistry {
 class BrowserOfficeSession {
   readonly sessionId = crypto.randomUUID();
   readonly documentKey: string;
+  readonly windowId: string | undefined;
   private officeState: OfficeStateUpdate;
+  private companionState: CompanionState = disconnectedCompanionState();
+  private companionConnectors: ConnectorStatusResponse["connectors"] = [];
   private bridgeSockets = new Set<LocalBridgeSocket>();
   private readonly pendingAskUser = new Map<string, PendingAskUser>();
   private readonly pendingPermissions = new Map<string, PendingToolPermission>();
@@ -731,9 +852,12 @@ class BrowserOfficeSession {
     private readonly modelRegistry: BrowserModelRegistry,
     private readonly checkpointStore: BrowserCheckpointStore,
     private readonly getPreferences: () => UserPreferences,
+    private readonly executeCompanionFileTool: (sessionId: string, toolName: "read" | "grep" | "find" | "ls", params: Record<string, unknown>) => Promise<unknown>,
+    private readonly executeCompanionMcpTool: (sessionId: string, toolName: string, params: Record<string, unknown>) => Promise<unknown>,
     request: OfficeSessionOpenRequest,
   ) {
-    this.documentKey = `${request.host}:${request.documentId}`;
+    this.windowId = request.windowId;
+    this.documentKey = buildBrowserSessionKey(request.host, request.documentId, request.windowId);
     this.officeState = normalizeOpenState(request);
 
     this.agent = new Agent({
@@ -750,8 +874,9 @@ class BrowserOfficeSession {
       },
     });
 
-    this.agent.setTools(this.buildTools());
-    this.agent.setSystemPrompt(this.buildSystemPrompt());
+    const tools = this.buildTools();
+    this.agent.setTools(tools);
+    this.agent.setSystemPrompt(this.buildSystemPrompt(tools.map((tool) => tool.name)));
 
     const preferredModel = this.modelRegistry.getPreferredModel();
     if (preferredModel) {
@@ -766,8 +891,31 @@ class BrowserOfficeSession {
     });
   }
 
-  get mode(): OfficeMode {
-    return getOfficeMode(this.officeState.document.saved);
+  get documentState(): OfficeDocumentState {
+    return getOfficeDocumentState(this.officeState.document.saved);
+  }
+
+  get companion(): CompanionState {
+    return { ...this.companionState };
+  }
+
+  setCompanion(binding: CompanionSessionBinding | undefined): void {
+    this.setCompanionState(
+      binding?.companion ? { ...binding.companion } : disconnectedCompanionState(this.companionState),
+      binding?.connectors,
+    );
+  }
+
+  setCompanionState(companion: CompanionState, connectors?: ConnectorStatusResponse["connectors"]): void {
+    this.companionState = { ...companion };
+    this.companionConnectors = connectors ? [...connectors] : [];
+    const tools = this.buildTools();
+    this.agent.setTools(tools);
+    this.agent.setSystemPrompt(this.buildSystemPrompt(tools.map((tool) => tool.name)));
+  }
+
+  getCompanionConnectors(): ConnectorStatus[] {
+    return [...this.companionConnectors];
   }
 
   attachBridge(socket: LocalBridgeSocket): void {
@@ -784,7 +932,8 @@ class BrowserOfficeSession {
   toOpenResponse(): OfficeSessionOpenResponse {
     return {
       sessionId: this.sessionId,
-      mode: this.mode,
+      documentState: this.documentState,
+      companion: this.companion,
       origin: window.location.origin,
       eventsPath: `/v1/sessions/${this.sessionId}/events`,
     };
@@ -792,7 +941,9 @@ class BrowserOfficeSession {
 
   async updateOfficeState(next: OfficeStateUpdate): Promise<void> {
     this.officeState = next;
-    this.agent.setSystemPrompt(this.buildSystemPrompt());
+    const tools = this.buildTools();
+    this.agent.setTools(tools);
+    this.agent.setSystemPrompt(this.buildSystemPrompt(tools.map((tool) => tool.name)));
   }
 
   async prompt(text: string, mode: PromptMode = "prompt", images?: PromptImagePayload[]): Promise<void> {
@@ -1046,6 +1197,43 @@ class BrowserOfficeSession {
     return text.text.trim();
   }
 
+  async suggestPrompts(request: PromptSuggestionRequest): Promise<PromptSuggestionResponse> {
+    const generationId = String(request?.generationId ?? "");
+    const emptyResponse: PromptSuggestionResponse = { generationId, suggestions: [] };
+    const latestAssistantText = String(request?.latestAssistantText ?? "").trim();
+    if (latestAssistantText.length < 12) return emptyResponse;
+
+    try {
+      const model = this.agent.state.model;
+      const auth = this.modelRegistry.getApiKeyAndHeaders(model);
+      if (!auth.ok) return emptyResponse;
+
+      const context = this.buildPromptSuggestionContext(
+        latestAssistantText,
+        normalizeSuggestionMessages(request.recentMessages, this.agent.state.messages),
+      );
+      const result = await completeSimple(model, context, {
+        ...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
+        ...(auth.headers ? { headers: auth.headers } : {}),
+        maxTokens: 320,
+        temperature: 0.2,
+        reasoning: "minimal" as PiThinkingLevel,
+      });
+      const rawText = result.content
+        .filter((part): part is { type: "text"; text: string } => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+        .trim();
+
+      return {
+        generationId,
+        suggestions: parsePromptSuggestions(rawText, { documentState: this.documentState }),
+      };
+    } catch {
+      return emptyResponse;
+    }
+  }
+
   handleClientMessage(message: BridgeClientMessage): void {
     if (message.type === "client_ready") {
       this.send({ type: "connection_state", state: "ready" });
@@ -1110,15 +1298,75 @@ class BrowserOfficeSession {
     this.bridgeSockets.clear();
   }
 
-  private buildSystemPrompt(): string {
+  private canUseCompanionFileTools(): boolean {
+    return this.officeState.document.saved && this.companionState.status === "connected" && this.companionState.capabilities.fileRead;
+  }
+
+  private getCompanionConnectorToolNames(): string[] {
+    return [...(this.companionState.connectorToolNames ?? [])];
+  }
+
+  private hasCompanionConnectorTools(): boolean {
+    return this.getCompanionConnectorToolNames().length > 0;
+  }
+
+  private buildSystemPrompt(availableToolNames: readonly string[]): string {
     return `${OFFICE_APPEND_SYSTEM_PROMPT}\n\n${composeAutonomyPrompt(
       this.getPreferences(),
-      this.officeState.document.saved,
-      REGISTERED_AGENT_TOOL_NAMES,
+      this.canUseCompanionFileTools(),
+      availableToolNames,
     )}\n\n${composeOfficeAwarePrompt(
       "Prefer Office tools as the source of truth for the active document.",
       this.officeState,
-    )}`;
+    )}\n\n${summarizeCompanionForPrompt(this.companionState, this.officeState.document.saved)}`;
+  }
+
+  private buildPromptSuggestionContext(
+    latestAssistantText: string,
+    recentMessages: PromptSuggestionMessage[],
+  ): PiContext {
+    const documentMode = this.documentState === "saved" ? "saved-document mode" : "unsaved-document mode";
+    const selectionPreview =
+      this.officeState.selection.structuredPreview?.trim() ||
+      this.officeState.selection.textPreview?.trim() ||
+      "none";
+    const systemPrompt = [
+      "You generate next-prompt suggestions for Pi-Office after a successful assistant response.",
+      "Return strict JSON only, with this shape: {\"suggestions\":[{\"text\":\"...\"}]}",
+      "Return 0 to 3 suggestions. Use 0 when the response is complete or any suggestion would be filler.",
+      "Each suggestion must be a concise user prompt the user can review before sending.",
+      "Prefer actionable Office-aware prompts: inspect selection, apply a native edit, summarize, continue a concrete section, compare alternatives, or verify document state.",
+      "Do not call tools, request tools, mutate Office content, or scan local files.",
+      this.documentState === "unsaved"
+        ? "The document is unsaved; never suggest local filesystem, folder, repo, AGENTS.md, or SKILL.md actions."
+        : "The document is saved; local file actions are still not useful unless the visible chat specifically makes them relevant.",
+    ].join("\n");
+    const userContent = [
+      "Office context:",
+      `Host: ${HOST_LABELS[this.officeState.host]}`,
+      `Document title: ${this.officeState.document.title}`,
+      `Document state: ${this.documentState}`,
+      `Current document mode: ${documentMode}`,
+      `Selection label: ${this.officeState.selection.label}`,
+      `Selection preview: ${clipForSuggestionPrompt(selectionPreview, 900)}`,
+      "",
+      "Recent visible chat:",
+      formatSuggestionMessages(recentMessages),
+      "",
+      "Latest assistant response:",
+      clipForSuggestionPrompt(latestAssistantText, 1800),
+    ].join("\n");
+
+    return {
+      systemPrompt,
+      messages: [
+        {
+          role: "user",
+          content: userContent,
+          timestamp: Date.now(),
+        },
+      ],
+    };
   }
 
   private handlePersistCheckpoint(documentId: string, checkpoint: DocumentCheckpointPayload): void {
@@ -2149,6 +2397,61 @@ class BrowserOfficeSession {
       },
     ];
 
+    if (this.canUseCompanionFileTools()) {
+      for (const toolName of ["read", "grep", "find", "ls"] as const) {
+        tools.push({
+          name: toolName,
+          label: toolName === "ls" ? "List Local Files" : `Local ${toolName[0]!.toUpperCase()}${toolName.slice(1)}`,
+          description:
+            toolName === "read"
+              ? "Read file contents from the saved document folder through the optional local companion."
+              : toolName === "grep"
+                ? "Search file contents in the saved document folder through the optional local companion."
+                : toolName === "find"
+                  ? "Find files by name inside the saved document folder through the optional local companion."
+                  : "List directory contents inside the saved document folder through the optional local companion.",
+          parameters: Type.Any(),
+          execute: async (_toolCallId, params) => normalizeExternalToolResult(
+            await this.executeCompanionFileTool(this.sessionId, toolName, normalizeToolParams(params)),
+          ),
+        });
+      }
+    }
+
+    if (this.hasCompanionConnectorTools()) {
+      tools.push({
+        name: "mcp",
+        label: "Local MCP Connector",
+        description:
+          "Execute a verified read-only local MCP tool through the optional companion. Use one of the exact tool names listed in the companion inventory.",
+        parameters: Type.Object({
+          toolName: Type.String({
+            description: "Exact verified companion connector tool name to execute.",
+          }),
+          arguments: Type.Optional(
+            Type.Any({
+              description: "JSON arguments to pass to the selected companion connector tool.",
+            }),
+          ),
+        }),
+        execute: async (_toolCallId, params) => {
+          const typed = normalizeToolParams(params);
+          const toolName = String(typed.toolName ?? "").trim();
+          if (!toolName) {
+            throw new Error("toolName is required.");
+          }
+
+          return normalizeExternalToolResult(
+            await this.executeCompanionMcpTool(
+              this.sessionId,
+              toolName,
+              normalizeToolParams(typed.arguments),
+            ),
+          );
+        },
+      });
+    }
+
     return tools;
   }
 
@@ -2210,17 +2513,20 @@ class BrowserOfficeSession {
   ): Promise<ToolPermissionDecision> {
     const category = (TOOL_CATEGORY_MAP[toolName] ?? "connector") as ToolCategory;
     const requestId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 120_000).toISOString();
     const request: ToolPermissionRequest = {
       requestId,
       toolName,
       toolCategory: category,
       params,
+      expiresAt,
     };
 
     return new Promise<ToolPermissionDecision>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingPermissions.delete(requestId);
-        resolve({ toolName, allowed: true, scope: "once" });
+        this.send({ type: "tool_permission_expired", requestId, toolName });
+        resolve({ toolName, allowed: false, scope: "once" });
       }, 120_000);
 
       this.pendingPermissions.set(requestId, { resolve, reject, timeout });
@@ -2258,6 +2564,7 @@ class InProcessKernel {
   private readonly modelRegistry = new BrowserModelRegistry(this.authStore);
   private readonly checkpointStore = new BrowserCheckpointStore();
   private readonly connectorRuntime = new BrowserConnectorRuntime();
+  private readonly companionClient = new CompanionClient();
   private readonly sessionsById = new Map<string, BrowserOfficeSession>();
   private readonly sessionsByDocument = new Map<string, BrowserOfficeSession>();
   private userPreferences: UserPreferences = { ...DEFAULT_USER_PREFERENCES };
@@ -2273,6 +2580,138 @@ class InProcessKernel {
       throw new Error("Unknown session.");
     }
     return new LocalBridgeSocket(session);
+  }
+
+  private async getCompanionState(): Promise<CompanionState> {
+    await this.companionClient.ensureInitialized();
+    return this.companionClient.getState();
+  }
+
+  private getSessionCompanionConnectors(sessionId: string | undefined): ConnectorStatus[] | undefined {
+    if (!sessionId) {
+      return undefined;
+    }
+    return this.sessionsById.get(sessionId)?.getCompanionConnectors();
+  }
+
+  private addCompanionDiagnostics(
+    diagnostics: ConnectorDiagnostic[],
+    transport: ConnectorSetupRequest["transport"],
+    companion: CompanionState,
+  ): ConnectorDiagnostic[] {
+    if (transport !== "local_stdio") {
+      return [
+        ...diagnostics,
+        {
+          level: "info",
+          code: "remote_http_setup_only",
+          title: "Remote connector setup-only",
+          message:
+            "Remote HTTP connectors can be configured in the taskpane, but agent execution is disabled until the browser remote-MCP execution path is implemented.",
+        },
+      ];
+    }
+
+    if (companion.status === "connected") {
+      return [
+        ...diagnostics,
+        {
+          level: "info",
+          code: "local_stdio_companion_connected",
+          title: "Optional companion connected",
+          message: "Read-only local connector execution is available through the optional companion.",
+        },
+      ];
+    }
+
+    return [
+      ...diagnostics,
+      {
+        level: "warning",
+        code: "local_stdio_companion_unavailable",
+        title: "Optional companion unavailable",
+        message:
+          "Local stdio connectors need the optional companion to verify and execute. Remote HTTP connectors are setup-only until browser remote-MCP execution is implemented.",
+      },
+    ];
+  }
+
+  private applyCompanionExecutionMetadata(
+    status: ConnectorStatusResponse["connectors"][number],
+    overlay?: ConnectorStatus | undefined,
+  ): ConnectorStatus {
+    const companion = this.companionClient.getState();
+    const isLocalConnector = status.transport === "local_stdio";
+    return {
+      ...status,
+      ...(overlay ?? {}),
+      executionEnvironment: isLocalConnector
+        ? "companion"
+        : "browser",
+      executionAvailable: overlay?.executionAvailable
+        ?? (isLocalConnector
+          ? companion.status === "connected"
+          : false),
+    };
+  }
+
+  private mergeConnectorStatuses(
+    statuses: ConnectorStatusResponse["connectors"],
+    overlayStatuses: ConnectorStatus[] | undefined,
+  ): ConnectorStatusResponse {
+    const overlayById = new Map((overlayStatuses ?? []).map((status) => [status.id, status]));
+    return {
+      connectors: statuses.map((status) => this.applyCompanionExecutionMetadata(status, overlayById.get(status.id))),
+    };
+  }
+
+  private async prepareCompanionBinding(
+    session: BrowserOfficeSession,
+    officeState: OfficeStateUpdate,
+    windowId?: string,
+  ): Promise<CompanionSessionBinding | undefined> {
+    const connectors = this.connectorRuntime.buildCompanionSessionConnectors({
+      host: officeState.host,
+      documentId: officeState.document.id,
+      documentTitle: officeState.document.title,
+      documentSaved: officeState.document.saved,
+      documentUrl: officeState.document.documentUrl,
+      workspaceId: officeState.document.workspaceDir,
+    });
+    return this.companionClient.openSession(session.sessionId, officeState, connectors, windowId);
+  }
+
+  private async syncSessionCompanion(
+    session: BrowserOfficeSession,
+    officeState: OfficeStateUpdate,
+  ): Promise<CompanionState> {
+    try {
+      const binding = await this.prepareCompanionBinding(session, officeState, session.windowId);
+      if (binding) {
+        session.setCompanion(binding);
+        return session.companion;
+      }
+
+      const companion = await this.getCompanionState();
+      session.setCompanionState(disconnectedCompanionState(companion));
+      return session.companion;
+    } catch (error) {
+      const companion = errorCompanionState(this.companionClient.getState(), error);
+      session.setCompanionState(companion);
+      return session.companion;
+    }
+  }
+
+  private async probeLocalConnector(request: ConnectorSetupRequest): Promise<{
+    ok: boolean;
+    status: ConnectorStatus;
+    diagnostics: ConnectorDiagnostic[];
+  } | undefined> {
+    const definition = this.connectorRuntime.buildCompanionConnectorDefinitionFromSetup(request);
+    if (!definition) {
+      return undefined;
+    }
+    return this.companionClient.probeConnector(definition);
   }
 
   async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -2304,15 +2743,56 @@ class InProcessKernel {
       return { ok: true } as T;
     }
 
+    if (method === "GET" && path === "/v1/companion/state") {
+      return (await this.getCompanionState()) as T;
+    }
+    if (method === "POST" && path === "/v1/companion/discover") {
+      return (await this.companionClient.discover()) as T;
+    }
+    if (method === "POST" && path === "/v1/companion/manual-endpoint") {
+      const request = body as { endpoint?: string } | undefined;
+      return (await this.companionClient.setManualEndpoint(
+        typeof request?.endpoint === "string" ? request.endpoint : undefined,
+      )) as T;
+    }
+
     if (method === "GET" && path === "/v1/connectors/catalog") {
       return this.connectorRuntime.getCatalogResponse() as T;
     }
     if (method === "POST" && path === "/v1/connectors/status") {
-      const request = body as { scopeContext?: ConnectorScopeContext } | undefined;
-      return this.connectorRuntime.getStatusResponse(request?.scopeContext) as T;
+      const request = body as { scopeContext?: ConnectorScopeContext; sessionId?: string } | undefined;
+      const companion = await this.getCompanionState();
+      const overlayStatuses = companion.status === "connected"
+        ? this.getSessionCompanionConnectors(request?.sessionId)
+        : undefined;
+      return this.mergeConnectorStatuses(
+        this.connectorRuntime.getStatusResponse(request?.scopeContext).connectors,
+        overlayStatuses,
+      ) as T;
     }
     if (method === "GET" && path === "/v1/connectors/diagnostics") {
-      return this.connectorRuntime.getDiagnostics() as T;
+      const companion = await this.getCompanionState();
+      const diagnostics = this.connectorRuntime.getDiagnostics();
+      return {
+        ...diagnostics,
+        diagnostics: [
+          ...diagnostics.diagnostics,
+          companion.status === "connected"
+            ? {
+                level: "info",
+                code: "optional_companion_connected",
+                title: "Optional companion connected",
+                message: `Read-only local file tools and local stdio MCP connectors are available through ${companion.endpoint}.`,
+              }
+            : {
+                level: companion.status === "error" ? "warning" : "info",
+                code: "optional_companion_unavailable",
+                title: "Optional companion not connected",
+                message:
+                  "Local stdio connectors need the optional companion to verify and execute. Remote HTTP connectors are setup-only until browser remote-MCP execution is implemented.",
+              },
+        ],
+      } as T;
     }
     if (method === "GET" && path === "/v1/connectors/audit") {
       return this.connectorRuntime.getAuditPreferenceResponse() as T;
@@ -2336,13 +2816,72 @@ class InProcessKernel {
       if (!connectorId) {
         throw new Error("connectorId is required.");
       }
-      return this.connectorRuntime.prepareConnector(connectorId, request?.scopeContext) as T;
+      const companion = await this.getCompanionState();
+      const response = this.connectorRuntime.prepareConnector(connectorId, request?.scopeContext);
+      return {
+        ...response,
+        diagnostics: this.addCompanionDiagnostics(response.diagnostics, response.connector.transport, companion),
+        executionEnvironment: response.connector.transport === "local_stdio" ? "companion" : "browser",
+        executionAvailable: response.connector.transport === "local_stdio" ? companion.status === "connected" : false,
+      } as T;
     }
     if (method === "POST" && path === "/v1/connectors/setup/connect") {
-      return (await this.connectorRuntime.connectConnector(body as ConnectorSetupRequest)) as T;
+      const request = body as ConnectorSetupRequest;
+      const companion = await this.getCompanionState();
+      const response = await this.connectorRuntime.connectConnector(request);
+      let probeDiagnostics: ConnectorDiagnostic[] = [];
+      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeLocalConnector"]>>;
+      try {
+        probe = await this.probeLocalConnector({ ...request, existingId: response.status.id });
+      } catch (error) {
+        probeDiagnostics = [
+          {
+            level: "warning",
+            code: "companion_probe_failed",
+            title: "Companion verification failed",
+            message: error instanceof Error ? error.message : String(error),
+            connectorId: response.status.connectorId,
+          },
+        ];
+      }
+      return {
+        ...response,
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        diagnostics: this.addCompanionDiagnostics(
+          [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
+          response.status.transport,
+          companion,
+        ),
+      } as T;
     }
     if (method === "POST" && path === "/v1/connectors/setup/test") {
-      return this.connectorRuntime.testConnector(body as ConnectorSetupRequest) as T;
+      const request = body as ConnectorSetupRequest;
+      const companion = await this.getCompanionState();
+      const response = this.connectorRuntime.testConnector(request);
+      let probeDiagnostics: ConnectorDiagnostic[] = [];
+      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeLocalConnector"]>>;
+      try {
+        probe = await this.probeLocalConnector(request);
+      } catch (error) {
+        probeDiagnostics = [
+          {
+            level: "warning",
+            code: "companion_probe_failed",
+            title: "Companion verification failed",
+            message: error instanceof Error ? error.message : String(error),
+            connectorId: response.status.connectorId,
+          },
+        ];
+      }
+      return {
+        ...response,
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        diagnostics: this.addCompanionDiagnostics(
+          [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
+          response.status.transport,
+          companion,
+        ),
+      } as T;
     }
     if (method === "POST" && path === "/v1/connectors/reverify") {
       const request = body as { connectorId?: string; scopeContext?: ConnectorScopeContext } | undefined;
@@ -2350,7 +2889,37 @@ class InProcessKernel {
       if (!connectorId) {
         throw new Error("connectorId is required.");
       }
-      return (await this.connectorRuntime.reverifyConnector(connectorId, request?.scopeContext)) as T;
+      const companion = await this.getCompanionState();
+      const response = await this.connectorRuntime.reverifyConnector(connectorId, request?.scopeContext);
+      let probeDiagnostics: ConnectorDiagnostic[] = [];
+      let probe: {
+        ok: boolean;
+        status: ConnectorStatus;
+        diagnostics: ConnectorDiagnostic[];
+      } | undefined;
+      const definition = this.connectorRuntime.buildCompanionConnectorDefinition(connectorId);
+      try {
+        probe = definition ? await this.companionClient.probeConnector(definition) : undefined;
+      } catch (error) {
+        probeDiagnostics = [
+          {
+            level: "warning",
+            code: "companion_probe_failed",
+            title: "Companion verification failed",
+            message: error instanceof Error ? error.message : String(error),
+            connectorId: response.status.connectorId,
+          },
+        ];
+      }
+      return {
+        ...response,
+        status: this.applyCompanionExecutionMetadata(response.status, probe?.status),
+        diagnostics: this.addCompanionDiagnostics(
+          [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
+          response.status.transport,
+          companion,
+        ),
+      } as T;
     }
     if (method === "POST" && path === "/v1/connectors/oauth/start") {
       const request = body as { connectorId?: string } | undefined;
@@ -2387,8 +2956,9 @@ class InProcessKernel {
         throw new Error("host and documentId are required.");
       }
 
-      const documentKey = `${request.host}:${request.documentId}`;
+      const documentKey = buildBrowserSessionKey(request.host, request.documentId, request.windowId);
       let session = this.sessionsByDocument.get(documentKey);
+      const normalizedState = normalizeOpenState(request);
 
       if (request.forceNew && session) {
         this.sessionsByDocument.delete(documentKey);
@@ -2403,20 +2973,32 @@ class InProcessKernel {
           this.modelRegistry,
           this.checkpointStore,
           () => this.userPreferences,
+          (sessionId, toolName, params) => this.companionClient.executeFileTool(sessionId, toolName, params),
+          (sessionId, toolName, params) => this.companionClient.executeMcpTool(sessionId, toolName, params),
           request,
         );
         this.sessionsByDocument.set(documentKey, session);
         this.sessionsById.set(session.sessionId, session);
+      } else {
+        await session.updateOfficeState(normalizedState);
       }
 
+      await this.syncSessionCompanion(session, normalizedState);
       return session.toOpenResponse() as T;
     }
 
     const officeStateMatch = method === "POST" ? path.match(/^\/v1\/sessions\/([^/]+)\/office-state$/) : null;
     if (officeStateMatch) {
       const session = this.getSession(officeStateMatch[1] ?? "");
-      await session.updateOfficeState(body as OfficeStateUpdate);
-      return { ok: true, mode: session.mode } as T;
+      const officeState = body as OfficeStateUpdate;
+      await session.updateOfficeState(officeState);
+      await this.syncSessionCompanion(session, officeState);
+      const response: OfficeSessionStateResponse = {
+        ok: true,
+        documentState: session.documentState,
+        companion: session.companion,
+      };
+      return response as T;
     }
 
     const promptMatch = method === "POST" ? path.match(/^\/v1\/sessions\/([^/]+)\/(prompt|steer|follow-up)$/) : null;
@@ -2449,6 +3031,13 @@ class InProcessKernel {
     if (statsMatch) {
       const session = this.getSession(statsMatch[1] ?? "");
       return session.getStats() as T;
+    }
+
+    const promptSuggestionsMatch = method === "POST" ? path.match(/^\/v1\/sessions\/([^/]+)\/prompt-suggestions$/) : null;
+    if (promptSuggestionsMatch) {
+      const session = this.getSession(promptSuggestionsMatch[1] ?? "");
+      const payload = body as PromptSuggestionRequest;
+      return (await session.suggestPrompts(payload)) as T;
     }
 
     const thinkingMatch = method === "GET" ? path.match(/^\/v1\/sessions\/([^/]+)\/thinking$/) : null;

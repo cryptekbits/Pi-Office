@@ -1,15 +1,23 @@
 import { useState } from "react";
-import type { OfficeStateUpdate, OfficeMode } from "@pi-office/pi-office-pack/protocol";
+import type { CompanionState, OfficeDocumentState, OfficeStateUpdate } from "@pi-office/pi-office-pack/protocol";
 import { HOST_LABELS } from "@pi-office/pi-office-pack/defaults";
 import { ChevronDownIcon, ChevronRightIcon } from "../../lib/icons";
 
 interface ContextBarProps {
   officeState: OfficeStateUpdate | undefined;
-  mode: OfficeMode;
+  documentState: OfficeDocumentState;
+  companion: CompanionState;
   shouldAttachDraftVisuals: boolean;
 }
 
-export function ContextBar({ officeState, mode, shouldAttachDraftVisuals }: ContextBarProps) {
+function companionTagLabel(companion: CompanionState): string {
+  if (companion.status === "connected") return "Companion connected";
+  if (companion.status === "discovering") return "Discovering companion";
+  if (companion.status === "error") return "Companion error";
+  return "No companion";
+}
+
+export function ContextBar({ officeState, documentState, companion, shouldAttachDraftVisuals }: ContextBarProps) {
   const [expanded, setExpanded] = useState(false);
 
   const docTitle = officeState?.document.title ?? "Waiting for Office...";
@@ -55,8 +63,9 @@ export function ContextBar({ officeState, mode, shouldAttachDraftVisuals }: Cont
               {officeState ? HOST_LABELS[officeState.host] : "Office"}
             </span>
             <span className="detail-tag">
-              {mode === "workspace" ? "Workspace mode" : "Document-only mode"}
+              {documentState === "saved" ? "Saved document" : "Unsaved document"}
             </span>
+            <span className="detail-tag">{companionTagLabel(companion)}</span>
             {(officeState?.selection.imageCount ?? 0) > 0 && (
               <span className="detail-tag">
                 {officeState?.selection.imageCount} visual item(s)

@@ -21,6 +21,10 @@
     "./extension": {
       "types": "./dist/extension.d.ts",
       "import": "./dist/extension.js"
+    },
+    "./prompt-suggestions": {
+      "types": "./dist/prompt-suggestions.d.ts",
+      "import": "./dist/prompt-suggestions.js"
     }
   },
   "files": [

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "@pi-office/pi-office-pack/protocol";
+import { syncKernelPreferences } from "../lib/runtime/inprocess-kernel";
 
 const STORAGE_KEY = "pi-office-preferences";
 const ENABLED_MODELS_KEY = "pi-office-enabled-models";
@@ -11,20 +12,14 @@ const ENABLED_PROVIDERS_KEY = "pi-office-enabled-providers";
  */
 export const DEFAULT_ENABLED_MODELS: Record<string, string[]> = {
   openai: [
-    "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
-    "gpt-5.3-codex", "gpt-5.3-codex-spark",
-    "gpt-5.2", "gpt-4o", "gpt-4.1",
+    "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex",
   ],
   anthropic: [
-    "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5",
+    "claude-sonnet-4-6", "claude-opus-4-6",
   ],
-  "kimi-coding": ["k2p5"],
-  minimax: ["MiniMax-M2.5", "MiniMax-M2.7"],
-  "minimax-cn": ["MiniMax-M2.5", "MiniMax-M2.7"],
   google: [
     "gemini-3.1-pro-preview", "gemini-3-flash-preview",
   ],
-  zai: ["glm-5", "glm-4.7"],
 };
 
 function buildDefaultEnabledSet(): Set<string> {
@@ -119,11 +114,11 @@ function savePreferences(prefs: UserPreferences): void {
 }
 
 function syncPreferencesToCompanion(prefs: UserPreferences): void {
-  fetch("/v1/preferences", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(prefs),
-  }).catch(() => {});
+  try {
+    syncKernelPreferences(prefs);
+  } catch {
+    // non-critical in browser sandbox
+  }
 }
 
 export function usePreferences() {

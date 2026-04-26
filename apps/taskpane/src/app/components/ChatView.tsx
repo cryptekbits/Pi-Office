@@ -163,18 +163,43 @@ export function ChatView({
   scrollDeps,
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollRef = useRef(true);
   const [rewindTargetId, setRewindTargetId] = useState<string | null>(null);
 
+  const isNearBottom = (element: HTMLDivElement) =>
+    element.scrollHeight - element.scrollTop - element.clientHeight <= 60;
+
+  const focusTaskpane = () => {
+    window.focus();
+  };
+
+  const handleScroll = () => {
+    const element = scrollRef.current;
+    if (!element) return;
+    autoScrollRef.current = isNearBottom(element);
+  };
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
+    const element = scrollRef.current;
+    if (!element || !autoScrollRef.current) return;
+    element.scrollTo({
+      top: element.scrollHeight,
       behavior: "smooth",
     });
   }, scrollDeps);
 
   return (
     <main className="chat-stage">
-      <div ref={scrollRef} className="chat-scroll">
+      <div
+        ref={scrollRef}
+        className="chat-scroll"
+        tabIndex={0}
+        onMouseDown={focusTaskpane}
+        onMouseEnter={focusTaskpane}
+        onScroll={handleScroll}
+        onWheelCapture={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
         {!hasConversation && (
           <section className="empty-state">
             <p className="empty-copy">

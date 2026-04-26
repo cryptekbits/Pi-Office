@@ -9,19 +9,11 @@ const repoRoot = resolve(sourceDir, "../../..");
 export interface CompanionConfig {
   host: string;
   port: number;
-  origin: string;
-  mode: "development" | "production";
+  endpoint: string;
+  identity: string;
   repoRoot: string;
+  certDir: string;
   dataDir: string;
-  agentDir: string;
-  scratchDir: string;
-  connectorsStatePath: string;
-  connectorsMcpConfigPath: string;
-  connectorsRuntimeDir: string;
-  connectorsSecretsDir: string;
-  connectorsVaultPath: string;
-  taskpaneRoot: string;
-  taskpaneDist: string;
   tls: {
     pfx: Buffer;
     passphrase: string;
@@ -31,27 +23,19 @@ export interface CompanionConfig {
 export function loadConfig(): CompanionConfig {
   const host = process.env.PI_OFFICE_HOST ?? DEFAULT_COMPANION_HOST;
   const port = Number(process.env.PI_OFFICE_PORT ?? DEFAULT_COMPANION_PORT);
-  const mode = process.env.NODE_ENV === "production" ? "production" : "development";
   const certDir = join(repoRoot, "certs");
   const pfxPath = join(certDir, "localhost.pfx");
   const passphrasePath = join(certDir, "passphrase.txt");
+  const endpoint = `https://${host}:${port}`;
 
   return {
     host,
     port,
-    origin: `https://${host}:${port}`,
-    mode,
+    endpoint,
+    identity: `pi-office-companion@${host}:${port}`,
     repoRoot,
-    dataDir: join(repoRoot, ".pi-office"),
-    agentDir: join(repoRoot, ".pi-office", "agent"),
-    scratchDir: join(repoRoot, ".pi-office", "scratch"),
-    connectorsStatePath: join(repoRoot, ".pi-office", "connectors.json"),
-    connectorsMcpConfigPath: join(repoRoot, ".pi-office", "agent", "mcp.json"),
-    connectorsRuntimeDir: join(repoRoot, ".pi-office", "agent", "connectors"),
-    connectorsSecretsDir: join(repoRoot, ".pi-office", "secrets"),
-    connectorsVaultPath: join(repoRoot, ".pi-office", "secrets", "connector-vault.json"),
-    taskpaneRoot: join(repoRoot, "apps", "taskpane"),
-    taskpaneDist: join(repoRoot, "apps", "taskpane", "dist"),
+    certDir,
+    dataDir: join(repoRoot, ".pi-office", "companion"),
     tls: {
       pfx: readFileSync(pfxPath),
       passphrase: readFileSync(passphrasePath, "utf8"),
