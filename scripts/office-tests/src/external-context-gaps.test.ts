@@ -432,7 +432,7 @@ test("web-grounded context closure stays on hard-read-only research connectors",
   }
 });
 
-test("raw shell tools stay unavailable until a companion sandbox is implemented", async () => {
+test("raw shell tools stay unavailable unless the companion sandbox reports available", async () => {
   const runtime = await loadKernelModule();
   const openResponse = await runtime.dispatchKernelRequest("/v1/sessions/open", {
     method: "POST",
@@ -455,7 +455,11 @@ test("raw shell tools stay unavailable until a companion sandbox is implemented"
   socket.close();
 
   const companionServer = readFileSync(join(process.cwd(), "apps", "companion", "src", "server.ts"), "utf8");
-  assert.doesNotMatch(companionServer, /\/v1\/sessions\/:sessionId\/(?:shell|bash|command|exec)/);
-  assert.doesNotMatch(companionServer, /executeShell|executeBash|BashOperations/);
+  const shellSandbox = readFileSync(join(process.cwd(), "apps", "companion", "src", "shell-sandbox.ts"), "utf8");
+  assert.match(companionServer, /\/v1\/sessions\/:sessionId\/shell\/execute/);
+  assert.match(companionServer, /CompanionShellSandbox/);
   assert.match(companionServer, /\/v1\/sessions\/:sessionId\/files\/:toolName/);
+  assert.match(shellSandbox, /createCompanionBashOperations/);
+  assert.doesNotMatch(shellSandbox, /createLocalBashOperations/);
+  assert.doesNotMatch(shellSandbox, /\bspawn\(/);
 });

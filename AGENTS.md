@@ -56,7 +56,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - `SECURITY-002` is closed: timeout, disconnect, and session cleanup paths now have automated fail-closed permission coverage across write-doc, connector, read-external, and write-external tool categories.
 - `SECURITY-003` is closed: `office_execute_js` is an escape-hatch tool that cannot be auto-approved and any approval is normalized to a one-time decision, even if a client sends a broader scope.
 - `SECURITY-005` is closed with an expanded `docs/provenance.md`, new `CONTRIBUTING.md` originality guidance, and a neutralized CSS comment; third-party connector logo licensing remains open as `SECURITY-007`.
-- `SECURITY-006` is in progress: `docs/companion-shell-sandbox.md` specifies the shell policy and regression tests prove raw `bash`/`edit`/`write` tools and companion shell routes are unavailable by default; the actual sandbox backend and destructive probes remain open.
+- `SECURITY-006` is closed: the companion now has shared shell capability protocol, fail-closed backend detection, policy validation, destructive probes, environment scrubbing, output caps/timeouts, a sandbox-routed Pi `BashOperations` adapter, and taskpane gating so `bash` only appears when a saved-document companion session reports shell `available`.
 - The broad independent taskpane transition is now committed: `a70cd9a` moves Pi session routes into the taskpane in-process kernel, reduces the companion to optional read-only file/MCP support, archives old companion source, and includes next-prompt suggestions, model curation, and runtime regression tests.
 - Dev and sideload hardening is now committed as `a8a5a0d` plus `43b2a5b`, including the CI workflow, bundle budget, cert/port preflight, sideload resource preflight, manifest cache-bust version `1.0.0.2`, taskpane dev host on `https://localhost:3443`, and Vite cert loading scoped to the dev server only.
 
@@ -72,6 +72,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - 2026-04-26: Closed `SECURITY-001` by requiring OAuth callback credential handoff before connected state, removing manual completion from connector UI, resetting tokenless imports/storage to `auth_required`, and adding callback contract tests; `npm run test:office` passed with 92 tests and `npm run typecheck` passed.
 - 2026-04-26: Closed `SECURITY-005` by turning provenance notes into an audit matrix with evidence commands, adding contributor originality guidance, linking it from README, and replacing a copied-looking competitor reference in CSS; created `SECURITY-007` for third-party connector logo source/licensing review.
 - 2026-04-26: Started `SECURITY-006` with a companion shell sandbox policy doc, README warning, and no-raw-shell regression coverage for active taskpane tools and companion routes; full sandbox backend/probes are still pending.
+- 2026-04-26: Closed `SECURITY-006` by adding shared shell capability protocol, `CompanionShellSandbox`, capability/execute routes, taskpane `bash` gating behind available sandbox state, policy/destructive probe tests, environment scrubbing, output caps/timeouts, and a custom Pi `BashOperations` adapter; `npm run test:office` passed with 98 tests and companion/taskpane typechecks passed.
 
 ## Core rules
 

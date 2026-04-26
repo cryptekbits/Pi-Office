@@ -20,6 +20,7 @@
     "../../apps/taskpane/src/lib/office-bridge.ts",
     "../../apps/taskpane/src/lib/office-action-policy.ts",
     "../../apps/taskpane/src/lib/runtime/**/*.ts",
+    "../../apps/companion/src/shell-sandbox.ts",
     "./src/**/*.ts"
   ]
 }

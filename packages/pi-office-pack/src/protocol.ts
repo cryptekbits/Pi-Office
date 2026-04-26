@@ -17,6 +17,7 @@ export interface CompanionCapabilities {
   fileRead: boolean;
   localMcp: boolean;
   endpoint?: string | undefined;
+  shell?: CompanionShellCapability | undefined;
 }
 
 export interface CompanionState {
@@ -234,6 +235,69 @@ export interface CompanionSessionOpenResponse {
   sessionId: string;
   companion: CompanionState;
   connectors: ConnectorStatus[];
+}
+
+export const COMPANION_SHELL_STATES = ["unavailable", "available", "degraded"] as const;
+export type CompanionShellState = (typeof COMPANION_SHELL_STATES)[number];
+
+export type CompanionShellBackend =
+  | "none"
+  | "docker"
+  | "wsl2"
+  | "linux-bubblewrap"
+  | "macos-container"
+  | "test";
+
+export type CompanionShellNetworkPolicy = "disabled" | "enabled";
+
+export interface CompanionShellPolicy {
+  version: string;
+  readableRoots: string[];
+  scratchRoot?: string | undefined;
+  deniedPatterns: string[];
+  network: CompanionShellNetworkPolicy;
+  timeoutMs: number;
+  outputByteLimit: number;
+}
+
+export interface CompanionShellProbeResult {
+  id: string;
+  description: string;
+  ok: boolean;
+  blocked: boolean;
+  detail: string;
+}
+
+export interface CompanionShellCapability {
+  state: CompanionShellState;
+  backend: CompanionShellBackend;
+  detectedAt: string;
+  reason?: string | undefined;
+  policy: CompanionShellPolicy;
+  probes: CompanionShellProbeResult[];
+}
+
+export interface CompanionShellExecuteRequest {
+  command: string;
+  cwd?: string | undefined;
+  category?: "read-only" | "scratch-write" | undefined;
+  approvalId?: string | undefined;
+  timeoutMs?: number | undefined;
+}
+
+export interface CompanionShellExecuteResponse {
+  ok: boolean;
+  auditId: string;
+  backend: CompanionShellBackend;
+  policyVersion: string;
+  durationMs: number;
+  exitCode?: number | null | undefined;
+  stdout: string;
+  stderr: string;
+  capped: boolean;
+  deniedPaths: string[];
+  touchedPaths: string[];
+  error?: string | undefined;
 }
 
 export interface PromptRequest {

@@ -32,6 +32,7 @@ import {
   type BridgeServerMessage,
   type CheckpointMetadata,
   type CompanionConnectorDefinition,
+  type CompanionShellExecuteRequest,
   type CompanionState,
   type ConnectorDiagnostic,
   type ConnectorAuditPreference,
@@ -240,6 +241,15 @@ function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: b
     lines.push("Local MCP execution is available through the companion when configured read-only connectors are ready.");
   } else {
     lines.push("Local MCP execution is unavailable in this session.");
+  }
+
+  const shellCapability = companion.capabilities.shell;
+  if (companion.status === "connected" && shellCapability?.state === "available") {
+    lines.push("Sandboxed shell is available through the companion for saved-document context; writes are limited to companion scratch.");
+  } else if (companion.status === "connected" && shellCapability) {
+    lines.push(`Sandboxed shell is ${shellCapability.state}: ${shellCapability.reason ?? "not enabled for this session"}`);
+  } else {
+    lines.push("Sandboxed shell is unavailable; do not ask for or attempt bash, PowerShell, cmd, edit, or write tools.");
   }
 
   if (companion.lastError) {
@@ -854,6 +864,7 @@ class BrowserOfficeSession {
     private readonly getPreferences: () => UserPreferences,
     private readonly executeCompanionFileTool: (sessionId: string, toolName: "read" | "grep" | "find" | "ls", params: Record<string, unknown>) => Promise<unknown>,
     private readonly executeCompanionMcpTool: (sessionId: string, toolName: string, params: Record<string, unknown>) => Promise<unknown>,
+    private readonly executeCompanionShellCommand: (sessionId: string, request: CompanionShellExecuteRequest) => Promise<unknown>,
     request: OfficeSessionOpenRequest,
   ) {
     this.windowId = request.windowId;
@@ -1312,6 +1323,14 @@ class BrowserOfficeSession {
 
   private hasCompanionConnectorTools(): boolean {
     return this.getCompanionConnectorToolNames().length > 0;
+  }
+
+  private canUseCompanionShellTools(): boolean {
+    return (
+      this.officeState.document.saved &&
+      this.companionState.status === "connected" &&
+      this.companionState.capabilities.shell?.state === "available"
+    );
   }
 
   private buildSystemPrompt(availableToolNames: readonly string[]): string {
@@ -2456,6 +2475,46 @@ class BrowserOfficeSession {
       });
     }
 
+    if (this.canUseCompanionShellTools()) {
+      tools.push({
+        name: "bash",
+        label: "Sandboxed Shell",
+        description:
+          "Execute a command through the optional companion shell sandbox. It is unavailable unless the companion reports an isolation backend and destructive probes have passed. Read-only commands can inspect the saved document folder; any writes must use the companion scratch directory only. Network, package installs, git push/commit, secret reads, and paths outside the approved roots are denied.",
+        parameters: Type.Object({
+          command: Type.String({
+            description: "Shell command to execute through the companion sandbox.",
+          }),
+          cwd: Type.Optional(Type.String({
+            description: "Working directory inside the saved document folder or companion scratch directory.",
+          })),
+          category: Type.Optional(Type.Union([
+            Type.Literal("read-only"),
+            Type.Literal("scratch-write"),
+          ])),
+          timeoutMs: Type.Optional(Type.Number({
+            description: "Requested timeout in milliseconds, capped by the companion policy.",
+          })),
+        }),
+        execute: async (_toolCallId, params) => {
+          const typed = normalizeToolParams(params);
+          const command = String(typed.command ?? "").trim();
+          if (!command) {
+            throw new Error("command is required.");
+          }
+
+          return normalizeExternalToolResult(
+            await this.executeCompanionShellCommand(this.sessionId, {
+              command,
+              cwd: typeof typed.cwd === "string" ? typed.cwd : undefined,
+              category: typed.category === "scratch-write" ? "scratch-write" : "read-only",
+              timeoutMs: typeof typed.timeoutMs === "number" ? typed.timeoutMs : undefined,
+            }),
+          );
+        },
+      });
+    }
+
     return tools;
   }
 
@@ -2979,6 +3038,7 @@ class InProcessKernel {
           () => this.userPreferences,
           (sessionId, toolName, params) => this.companionClient.executeFileTool(sessionId, toolName, params),
           (sessionId, toolName, params) => this.companionClient.executeMcpTool(sessionId, toolName, params),
+          (sessionId, request) => this.companionClient.executeShellCommand(sessionId, request),
           request,
         );
         this.sessionsByDocument.set(documentKey, session);

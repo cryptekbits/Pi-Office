@@ -1,6 +1,9 @@
 import type {
   CompanionConnectorDefinition,
   CompanionHealthResponse,
+  CompanionShellCapability,
+  CompanionShellExecuteRequest,
+  CompanionShellExecuteResponse,
   CompanionSessionOpenResponse,
   CompanionState,
   ConnectorDiagnostic,
@@ -275,6 +278,34 @@ export class CompanionClient {
         toolName,
         arguments: args,
       }),
+    });
+  }
+
+  async getShellCapability(browserSessionId?: string | undefined): Promise<CompanionShellCapability | undefined> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      return undefined;
+    }
+
+    const binding = browserSessionId ? this.bindings.get(browserSessionId) : undefined;
+    const path = binding
+      ? `/v1/sessions/${binding.companionSessionId}/shell/capability`
+      : "/v1/shell/capability";
+    return fetchJsonWithTimeout(`${this.state.endpoint}${path}`);
+  }
+
+  async executeShellCommand(
+    browserSessionId: string,
+    request: CompanionShellExecuteRequest,
+  ): Promise<CompanionShellExecuteResponse> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      throw new Error("Optional companion is not connected for this taskpane session.");
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/shell/execute`, {
+      method: "POST",
+      body: JSON.stringify(request),
     });
   }
 }

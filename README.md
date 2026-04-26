@@ -97,7 +97,7 @@ If Word launches with a blank document during debugging, open the target saved d
 - Pi-Office works without the companion
 - Without the companion, local files and local stdio MCP connectors are unavailable
 - With the companion connected, Pi-Office enables read-only `read`, `grep`, `find`, and `ls` for the saved document folder
-- Shell/bash access is intentionally unavailable until the companion sandbox policy in [`docs/companion-shell-sandbox.md`](/C:/Users/manan/Code/Personal/office-word-addin/docs/companion-shell-sandbox.md) is implemented and probed
+- Shell/bash access is hidden unless the companion shell sandbox reports an available isolation backend and passing destructive probes; there is no raw host shell fallback
 - The companion does not host providers, auth, models, or the taskpane
 - Remote HTTP connectors are currently setup-only; do not present them as usable agent tools until the runtime exposes verified read-only remote MCP execution
 - Packaging for `dist/binaries`, zip, and npm distribution is planned later

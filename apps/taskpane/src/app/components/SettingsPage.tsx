@@ -82,6 +82,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   find: "Find files by name inside the saved document folder through the optional companion.",
   ls: "List directory contents from the saved document folder through the optional companion.",
   mcp: "Execute a verified read-only local MCP tool through the optional companion.",
+  bash: "Execute a companion-sandboxed shell command only after isolation detection and destructive probes pass.",
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -402,7 +403,7 @@ function CompanionSection({
         </button>
       </div>
       <p className="settings-note">
-        Pi-Office works without the companion. The companion only adds read-only local file access and read-only local MCP execution.
+        Pi-Office works without the companion. The companion adds read-only local file access and read-only local MCP execution. Sandboxed shell stays hidden unless isolation detection and destructive probes pass.
       </p>
 
       <div className="settings-card-grid">
@@ -420,9 +421,22 @@ function CompanionSection({
             Files: {companion.capabilities.fileRead ? "Read-only ready" : "Unavailable"}
             <br />
             Local MCP: {companion.capabilities.localMcp ? "Read-only ready" : "Unavailable"}
+            <br />
+            Shell: {companion.capabilities.shell?.state === "available"
+              ? "Sandbox ready"
+              : companion.capabilities.shell?.state === "degraded"
+                ? "Sandbox blocked"
+                : "Unavailable"}
           </p>
         </div>
       </div>
+
+      {companion.capabilities.shell?.reason && (
+        <div className="settings-card">
+          <span className="label">Shell sandbox</span>
+          <p>{companion.capabilities.shell.reason}</p>
+        </div>
+      )}
 
       {companion.lastError && (
         <div className="settings-card">
@@ -468,7 +482,7 @@ function CompanionSection({
         </div>
         <div className="settings-card">
           <span className="label">3. Use</span>
-          <p>When discovery succeeds, saved documents gain read-only file tools and local stdio MCP execution. Without it, the add-in still works normally.</p>
+          <p>When discovery succeeds, saved documents gain read-only file tools and local stdio MCP execution. Sandboxed shell appears only after the companion policy passes. Without it, the add-in still works normally.</p>
         </div>
       </div>
     </section>
@@ -789,6 +803,10 @@ function ToolsSection({
   const showCompanionMcp =
     companion.status === "connected" &&
     (companion.connectorToolNames?.length ?? 0) > 0;
+  const showCompanionShell =
+    documentState === "saved" &&
+    companion.status === "connected" &&
+    companion.capabilities.shell?.state === "available";
 
   const handleOverrideChange = useCallback(
     (toolName: string, level: AutonomyLevel | "default" | "disabled") => {
@@ -856,7 +874,7 @@ function ToolsSection({
       </div>
 
       <h3>Optional Companion Tools</h3>
-      {!showCompanionFileTools && !showCompanionMcp && (
+      {!showCompanionFileTools && !showCompanionMcp && !showCompanionShell && (
         <p className="settings-note">
           {documentState !== "saved"
             ? "Save the document first to expose document-folder context. Local file tools stay disabled until the optional companion also connects."
@@ -884,6 +902,15 @@ function ToolsSection({
           <ToolCardWithOverride
             toolName="mcp"
             overrideLevel={getOverrideLevel("mcp")}
+            onOverrideChange={handleOverrideChange}
+          />
+        </div>
+      )}
+      {showCompanionShell && (
+        <div className="tool-list">
+          <ToolCardWithOverride
+            toolName="bash"
+            overrideLevel={getOverrideLevel("bash")}
             onOverrideChange={handleOverrideChange}
           />
         </div>

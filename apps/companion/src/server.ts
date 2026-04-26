@@ -5,6 +5,8 @@ import { dirname } from "node:path";
 import express from "express";
 import type {
   CompanionHealthResponse,
+  CompanionShellCapability,
+  CompanionShellExecuteRequest,
   CompanionSessionOpenRequest,
   CompanionSessionOpenResponse,
   CompanionState,
@@ -12,6 +14,7 @@ import type {
 import { loadConfig, type CompanionConfig } from "./config.js";
 import { CompanionConnectorBridge } from "./connector-bridge.js";
 import { executeFileTool } from "./file-tools.js";
+import { CompanionShellSandbox } from "./shell-sandbox.js";
 
 interface SessionRecord {
   id: string;
@@ -27,10 +30,19 @@ interface SessionRecord {
   connectorToolNames: string[];
 }
 
+function createShellSandbox(config: CompanionConfig, session?: SessionRecord | undefined): CompanionShellSandbox {
+  return new CompanionShellSandbox({
+    sessionId: session?.id ?? "discovery",
+    dataDir: config.dataDir,
+    workspaceDir: session?.workspaceDir,
+  });
+}
+
 function createCompanionState(
   config: CompanionConfig,
   sessionId?: string | undefined,
   connectorToolNames?: string[] | undefined,
+  shell?: CompanionShellCapability | undefined,
 ): CompanionState {
   return {
     status: "connected",
@@ -42,6 +54,7 @@ function createCompanionState(
       fileRead: true,
       localMcp: true,
       endpoint: config.endpoint,
+      shell,
     },
   };
 }
@@ -73,6 +86,7 @@ export class CompanionServer {
 
   private mountRoutes(app: express.Express): void {
     app.get("/v1/health", (_request, response) => {
+      const shell = createShellSandbox(this.config).getCapability();
       const body: CompanionHealthResponse = {
         ok: true,
         endpoint: this.config.endpoint,
@@ -81,9 +95,14 @@ export class CompanionServer {
           fileRead: true,
           localMcp: true,
           endpoint: this.config.endpoint,
+          shell,
         },
       };
       response.json(body);
+    });
+
+    app.get("/v1/shell/capability", (_request, response) => {
+      response.json(createShellSandbox(this.config).getCapability());
     });
 
     app.post("/v1/connectors/probe", async (request, response) => {
@@ -134,10 +153,47 @@ export class CompanionServer {
       const reply: CompanionSessionOpenResponse = {
         ok: true,
         sessionId: session.id,
-        companion: createCompanionState(this.config, session.id, prepared.connectorToolNames),
+        companion: createCompanionState(
+          this.config,
+          session.id,
+          prepared.connectorToolNames,
+          createShellSandbox(this.config, session).getCapability(),
+        ),
         connectors: prepared.connectors,
       };
       response.json(reply);
+    });
+
+    app.get("/v1/sessions/:sessionId/shell/capability", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      response.json(createShellSandbox(this.config, session).getCapability());
+    });
+
+    app.post("/v1/sessions/:sessionId/shell/execute", async (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      try {
+        const body = request.body as CompanionShellExecuteRequest;
+        if (!body || typeof body.command !== "string" || !body.command.trim()) {
+          response.status(400).json({ error: "command is required." });
+          return;
+        }
+        const result = await createShellSandbox(this.config, session).execute(body);
+        response.json(result);
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     app.post("/v1/sessions/:sessionId/files/:toolName", async (request, response) => {

@@ -127,23 +127,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] `AGENTS.md` and contributor-facing docs explain the originality policy.
   - Notes/Evidence: 2026-04-26 added `AGENTS.md` originality/provenance policy and started `docs/provenance.md`. 2026-04-26 closure expanded `docs/provenance.md` into a release audit with scope, evidence commands, findings, capability provenance matrix, asset notes, contribution rules, and release gates; added `CONTRIBUTING.md` originality guidance; linked provenance docs from `README.md`; and replaced the copied-looking `Claude Excel inspired` CSS comment with neutral original wording. Audit commands searched active release source for competitor/private-API/prompt references and enumerated active prompt/skill/image/asset files. No active source file was found containing competitor code, copied prompt bundles, private endpoint contracts, or competitor-bundled assets. Separate third-party connector logo licensing/source review is tracked in `SECURITY-007`.
 
-- [ ] SECURITY-006: Design and enforce read-only companion shell sandbox before exposing bash
+- [x] SECURITY-006: Design and enforce read-only companion shell sandbox before exposing bash
   - Category: Security
-  - Status: in_progress
+  - Status: done
   - Priority: P0
   - Source: 2026-04-26 plan implementation after user asked for Codex/OpenCode/pi sandbox analysis and a safe companion bridge design.
   - Details: SOTA coding models often use bash for analysis, but raw host bash from an Office chat can be prompt-injected into modifying files outside the document workspace. Pi-Office must not expose raw host bash. If shell capability is added, it must route through a companion-owned sandbox using Pi's pluggable tool operations, with user-selected roots mounted/readable only, writable scratch separated from user files, denied secret patterns, no network by default, timeouts/output caps, command audit logs, and fail-closed approvals. On Windows, prefer WSL2/Docker/Hyper-V-backed isolation until native sandbox behavior is proven.
   - Dependencies: FEATURE-006 and SECURITY-002.
   - Subtasks:
-    - [ ] Specify the companion shell policy, including readable roots, writable scratch, denied patterns, network policy, and command categories.
-    - [ ] Implement a custom Pi `BashOperations` backend that routes through the companion sandbox instead of local raw bash.
-    - [ ] Add Windows, WSL2/Linux, and macOS capability detection with safe fallback to "shell unavailable".
-    - [ ] Add destructive sandbox probes for write/delete outside scratch, `.env` reads, symlink escape, network calls, package installs, and git push.
+    - [x] Specify the companion shell policy, including readable roots, writable scratch, denied patterns, network policy, and command categories.
+    - [x] Implement a custom Pi `BashOperations` backend that routes through the companion sandbox instead of local raw bash.
+    - [x] Add Windows, WSL2/Linux, and macOS capability detection with safe fallback to "shell unavailable".
+    - [x] Add destructive sandbox probes for write/delete outside scratch, `.env` reads, symlink escape, network calls, package installs, and git push.
   - Acceptance Criteria:
-    - [ ] No raw host bash is available from the add-in or companion by default.
-    - [ ] Shell commands cannot modify user workspace/document files outside the approved scratch path.
-    - [ ] Sandbox probes prove denied filesystem, secret, and network operations fail closed before shell is enabled.
-  - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second. 2026-04-26 first slice added `docs/companion-shell-sandbox.md` with the required policy, platform backends, protocol contract, and destructive probes; README now states shell/bash is unavailable until that policy is implemented; `scripts/office-tests/src/external-context-gaps.test.ts` asserts the active session does not expose `bash`, `edit`, or `write` tools and the companion server has no shell/bash/exec route. Full custom `BashOperations` backend, platform detection, and destructive sandbox probes remain open.
+    - [x] No raw host bash is available from the add-in or companion by default.
+    - [x] Shell commands cannot modify user workspace/document files outside the approved scratch path.
+    - [x] Sandbox probes prove denied filesystem, secret, and network operations fail closed before shell is enabled.
+  - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second. 2026-04-26 first slice added `docs/companion-shell-sandbox.md` with the required policy, platform backends, protocol contract, and destructive probes; README then stated shell/bash was unavailable until that policy was implemented; `scripts/office-tests/src/external-context-gaps.test.ts` asserted the active session did not expose `bash`, `edit`, or `write` tools and the companion server had no shell/bash/exec route. 2026-04-26 closure added shared shell capability/request/result protocol types, `apps/companion/src/shell-sandbox.ts` with fail-closed backend detection, policy validation, destructive probes, environment scrubbing, output caps, timeout plumbing, and `createCompanionBashOperations`; companion health/session routes now expose shell capability and a sandboxed execute endpoint that returns unavailable/denied unless the sandbox state is `available`; the taskpane only publishes `bash` for saved documents with a connected companion whose sandbox capability is available. Tests in `scripts/office-tests/src/companion-shell-sandbox.test.ts` cover default-disabled detection, degraded Windows/Linux/macOS-style fallback, destructive probes, scratch-only writes, unavailable execution, env scrubbing, output caps, timeouts, and the BashOperations adapter. `scripts/office-tests/src/external-context-gaps.test.ts` proves default sessions still expose no raw `bash`, `edit`, or `write` tools and that companion shell routing goes through `CompanionShellSandbox`. Validation: `npm run test:office` passed with 98 tests; `npm run typecheck:taskpane` and `npm run typecheck:companion` passed.
 
 - [ ] SECURITY-007: Audit third-party connector logo licensing and source provenance before public packaging
   - Category: Security
