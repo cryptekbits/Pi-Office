@@ -1014,13 +1014,9 @@ export function IntegrationsSection({
   }
 
   async function handleStartOAuth(targetId?: string) {
-    let connectorId = targetId ?? selectedStatus?.id;
+    let connectorId = targetId;
     let oauthWindow: Window | null = null;
-    if (!connectorId) {
-      if (!draft) {
-        setError("Choose a connector before starting sign-in.");
-        return;
-      }
+    if (!connectorId && draft) {
       const message = connectStepValidationMessage(draft, scopeContext, selectedDraftProfile);
       if (message) {
         setError(message);
@@ -1037,6 +1033,13 @@ export function IntegrationsSection({
         setError(reason instanceof Error ? reason.message : String(reason));
         return;
       }
+    } else if (!connectorId) {
+      connectorId = selectedStatus?.id;
+      if (!connectorId) {
+        setError("Choose a connector before starting sign-in.");
+        return;
+      }
+      oauthWindow = openConnectorOAuthWindow();
     } else {
       oauthWindow = openConnectorOAuthWindow();
     }

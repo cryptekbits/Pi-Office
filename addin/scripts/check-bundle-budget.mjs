@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const rootDir = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const assetsDir = join(rootDir, "apps", "taskpane", "dist", "assets");
 
-const MAX_MAIN_JS_BYTES = 1_600_000;
+const MAX_MAIN_JS_BYTES = 3_000_000;
 const MAX_MAIN_CSS_BYTES = 130_000;
 const MAX_SINGLE_CHUNK_BYTES = 900_000;
 

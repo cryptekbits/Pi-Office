@@ -323,6 +323,16 @@ function endpointOrigin(url: string | undefined): string | undefined {
 }
 
 function metadataUrlForEndpoint(url: string | undefined): string | undefined {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return undefined;
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.hostname === "search.parallel.ai" && parsed.pathname.startsWith("/mcp-oauth")) {
+      return "https://platform.parallel.ai/.well-known/oauth-authorization-server";
+    }
+  } catch {
+    return undefined;
+  }
   const origin = endpointOrigin(url);
   return origin ? `${origin}/.well-known/oauth-authorization-server` : undefined;
 }

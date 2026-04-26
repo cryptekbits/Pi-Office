@@ -71,8 +71,8 @@ test("all built-in connectors expose curated setup profiles", () => {
 
   const parallel = connectors.find((connector) => connector.id === "parallel-web");
   assert.ok(parallel);
-  assert.ok(parallel.setupProfiles?.some((profile) => profile.id === "parallel-search-anonymous" && profile.endpoint === "https://search-mcp.parallel.ai/mcp"));
-  assert.ok(parallel.setupProfiles?.some((profile) => profile.id === "parallel-search-oauth-zdr" && profile.endpoint === "https://search-mcp.parallel.ai/mcp"));
+  assert.ok(parallel.setupProfiles?.some((profile) => profile.id === "parallel-search-anonymous" && profile.endpoint === "https://search.parallel.ai/mcp"));
+  assert.ok(parallel.setupProfiles?.some((profile) => profile.id === "parallel-search-oauth-zdr" && profile.endpoint === "https://search.parallel.ai/mcp-oauth"));
 
   const obsidian = connectors.find((connector) => connector.id === "obsidian");
   assert.ok(obsidian);
@@ -118,7 +118,7 @@ test("browser connector runtime persists selected profile and tool policy overri
   globalAny.fetch = async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
-    if (url === "https://search-mcp.parallel.ai/mcp" && method === "POST") {
+    if (url === "https://search.parallel.ai/mcp" && method === "POST") {
       const payload = JSON.parse(String(init?.body ?? "{}")) as { method?: string; id?: string };
       const headers = new Headers({ "content-type": "application/json", "mcp-session-id": "parallel-session-1" });
       if (payload.method === "initialize") {
@@ -146,7 +146,7 @@ test("browser connector runtime persists selected profile and tool policy overri
     authMethod: "none",
     transport: "remote_http",
     credentialSource: "none",
-    url: "https://search-mcp.parallel.ai/mcp",
+    url: "https://search.parallel.ai/mcp",
   });
 
   assert.equal(response.status.setupProfileId, "parallel-search-anonymous");
@@ -201,6 +201,59 @@ test("hosted HTTP connector diagnostics do not require companion and Slack is co
   });
   assert.equal(savedSlack.diagnostics[0]?.code, "connector_profile_not_available");
   await assert.rejects(() => runtime.startOAuth(savedSlack.status.id), /Slack app registration/i);
+});
+
+test("Parallel ZDR profile updates an existing connector to OAuth sign-in", async () => {
+  const Runtime = await loadBrowserConnectorRuntime();
+  const runtime = new Runtime();
+  await runtime.ready;
+  const globalAny = globalThis as unknown as { fetch?: typeof fetch };
+  globalAny.fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    if (url === "https://platform.parallel.ai/.well-known/oauth-authorization-server") {
+      return Response.json({
+        issuer: "https://platform.parallel.ai",
+        authorization_endpoint: "https://platform.parallel.ai/getKeys/authorize",
+        token_endpoint: "https://platform.parallel.ai/getKeys/token",
+        registration_endpoint: "https://platform.parallel.ai/getKeys/register",
+      });
+    }
+    if (url === "https://platform.parallel.ai/getKeys/register" && method === "POST") {
+      return Response.json({ client_id: "localhost" }, { status: 201 });
+    }
+    return new Response(`Unexpected ${method} ${url}`, { status: 500 });
+  };
+
+  const anonymous = await runtime.connectConnector({
+    connectorId: "parallel-web",
+    setupProfileId: "parallel-search-anonymous",
+    name: "Parallel Web",
+    enabled: true,
+    authMethod: "none",
+    transport: "remote_http",
+    credentialSource: "none",
+    url: "https://search.parallel.ai/mcp",
+  });
+  assert.equal(anonymous.status.authMethod, "none");
+
+  const oauth = await runtime.connectConnector({
+    connectorId: "parallel-web",
+    setupProfileId: "parallel-search-oauth-zdr",
+    name: "Parallel Web",
+    enabled: true,
+    authMethod: "oauth",
+    transport: "remote_http",
+    credentialSource: "oauth",
+    url: "https://search.parallel.ai/mcp-oauth",
+  });
+  assert.equal(oauth.status.id, anonymous.status.id);
+  assert.equal(oauth.status.authMethod, "oauth");
+  assert.equal(oauth.status.setupProfileId, "parallel-search-oauth-zdr");
+
+  const started = await runtime.startOAuth(oauth.status.id);
+  assert.match(started.url ?? "", /^https:\/\/platform\.parallel\.ai\/getKeys\/authorize/);
+  assert.match(started.url ?? "", /code_challenge=/);
 });
 
 test("granola OAuth starts browser sign-in and hosted MCP verification enforces tool policy", async () => {

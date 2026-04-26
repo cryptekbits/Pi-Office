@@ -2326,7 +2326,7 @@ export const CONNECTOR_CATALOG = [
     },
     "template": {
       "transport": "remote_http",
-      "url": "https://search-mcp.parallel.ai/mcp"
+      "url": "https://search.parallel.ai/mcp"
     },
     "setupProfiles": [
       {
@@ -2336,8 +2336,8 @@ export const CONNECTOR_CATALOG = [
         "transport": "remote_http",
         "setupKind": "remote_url_token",
         "authMethod": "none",
-        "endpoint": "https://search-mcp.parallel.ai/mcp",
-        "requiresCompanion": true,
+        "endpoint": "https://search.parallel.ai/mcp",
+        "requiresCompanion": false,
         "officialness": "official",
         "defaultWhenCompanionAbsent": true,
         "defaultWhenCompanionPresent": true,
@@ -2352,8 +2352,8 @@ export const CONNECTOR_CATALOG = [
           "Environment-backed headers",
           "Tool policy"
         ],
-        "docsUrl": "https://docs.parallel.ai/search-api/search-mcp",
-        "endpointEvidenceUrl": "https://docs.parallel.ai/search-api/search-mcp",
+        "docsUrl": "https://docs.parallel.ai/integrations/mcp/search-mcp",
+        "endpointEvidenceUrl": "https://docs.parallel.ai/integrations/mcp/search-mcp",
         "checkedAt": "2026-04-27",
         "riskNotes": [
           "Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this endpoint."
@@ -2368,8 +2368,8 @@ export const CONNECTOR_CATALOG = [
         "transport": "remote_http",
         "setupKind": "remote_oauth",
         "authMethod": "oauth",
-        "endpoint": "https://search-mcp.parallel.ai/mcp",
-        "requiresCompanion": true,
+        "endpoint": "https://search.parallel.ai/mcp-oauth",
+        "requiresCompanion": false,
         "officialness": "official",
         "defaultWhenCompanionAbsent": false,
         "defaultWhenCompanionPresent": false,
@@ -2385,15 +2385,15 @@ export const CONNECTOR_CATALOG = [
           "Environment-backed headers",
           "Tool policy"
         ],
-        "docsUrl": "https://docs.parallel.ai/search-api/search-mcp",
-        "endpointEvidenceUrl": "https://docs.parallel.ai/search-api/search-mcp",
+        "docsUrl": "https://docs.parallel.ai/integrations/mcp/search-mcp",
+        "endpointEvidenceUrl": "https://docs.parallel.ai/integrations/mcp/search-mcp",
         "checkedAt": "2026-04-27",
         "riskNotes": [
-          "Current official docs expose the same Search MCP endpoint; ZDR/account behavior depends on Parallel account and OAuth metadata, not a hard-coded /mcp-oauth URL."
+          "Official docs require the /mcp-oauth endpoint for OAuth, account attribution, organization controls, and ZDR."
         ],
         "availability": "available",
         "browserDirect": "unknown",
-        "authEvidenceUrl": "https://docs.parallel.ai/search-api/search-mcp"
+        "authEvidenceUrl": "https://docs.parallel.ai/integrations/oauth-provider"
       },
       {
         "id": "parallel-task-mcp",
@@ -2420,18 +2420,18 @@ export const CONNECTOR_CATALOG = [
           "Environment-backed headers",
           "Tool policy"
         ],
-        "docsUrl": "https://docs.parallel.ai/search-api/search-mcp",
-        "endpointEvidenceUrl": "https://docs.parallel.ai/search-api/search-mcp",
+        "docsUrl": "https://docs.parallel.ai/integrations/mcp/search-mcp",
+        "endpointEvidenceUrl": "https://docs.parallel.ai/integrations/mcp/search-mcp",
         "checkedAt": "2026-04-27",
         "riskNotes": [
           "Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this endpoint."
         ],
         "availability": "available",
         "browserDirect": "unknown",
-        "authEvidenceUrl": "https://docs.parallel.ai/search-api/search-mcp"
+        "authEvidenceUrl": "https://docs.parallel.ai/integrations/mcp/search-mcp"
       }
     ],
-    "docsUrl": "https://docs.parallel.ai/search-api/search-mcp",
+    "docsUrl": "https://docs.parallel.ai/integrations/mcp/search-mcp",
     "setupNotes": [
       "Use an API key-backed hosted MCP endpoint if your team provides one."
     ]

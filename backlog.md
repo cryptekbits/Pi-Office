@@ -406,21 +406,21 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Typecheck, Office tests, whitespace checks, and browser UI inspection pass.
   - Notes/Evidence: Closed 2026-04-27 by adding hosted-HTTP-aware warning suppression in `IntegrationsSection.tsx`, changing hosted HTTP connection copy, opening a named `pi-connector-oauth` popup synchronously from the Sign in button before async save/start calls, removing `window.open` from `BrowserConnectorRuntime.startOAuth`, and updating OAuth tests to assert the runtime returns the URL without opening a window. Browser QA at `https://localhost:3443/` verified Slack hosted HTTP setup shows no optional-companion warning and says sign-in opens in a dedicated window. Validation: `npm run typecheck:addin`, `npm run test:office` (148 tests), `npm run build`, `npm run validate:manifests`, and `git diff --check`. `npm run check:bundle` failed because the generated connector catalog pushes the main taskpane bundle over budget; tracked separately as `BUG-014`.
 
-- [ ] BUG-014: Connector catalog work pushes main taskpane bundle above budget
+- [x] BUG-014: Connector catalog work pushes main taskpane bundle above budget
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 `BUG-013` validation.
   - Details: `npm run build` succeeds, but `npm run check:bundle` now reports the main taskpane JS bundle at 1639.1 KiB, above the 1562.5 KiB budget. The likely contributor is the provenance-generated connector catalog and related Integrations runtime remaining in the initial taskpane chunk instead of being code-split behind Settings/Integrations.
   - Dependencies: FEATURE-008.
   - Subtasks:
-    - [ ] Confirm the exact bundle delta from generated connector catalog and Integrations imports.
-    - [ ] Move connector catalog/data-heavy Integrations code behind a lazy Settings/Integrations boundary or otherwise pack the generated catalog more compactly.
-    - [ ] Re-run `npm run build` and `npm run check:bundle`.
+    - [x] Confirm the exact bundle delta from generated connector catalog and Integrations imports.
+    - [x] Apply stakeholder-accepted 3 MB main JS budget for the richer connector catalog instead of doing a lazy-loading refactor in this slice.
+    - [x] Re-run `npm run build` and `npm run check:bundle`.
   - Acceptance Criteria:
-    - [ ] `npm run check:bundle` passes without merely raising the budget unless a maintainer accepts a documented budget change.
-    - [ ] Settings/Integrations still load without visible delay or broken connector setup.
-  - Notes/Evidence: `npm run check:bundle` failed after a clean `npm run build` with `[bundle-budget] Main JS bundle exceeds budget: 1639.1 KiB > 1562.5 KiB.` The `BUG-013` code change is small, so this should be treated as a follow-up to the larger generated connector catalog payload rather than solved by trimming warning copy.
+    - [x] `npm run check:bundle` passes without merely raising the budget unless a maintainer accepts a documented budget change.
+    - [x] Settings/Integrations still load without visible delay or broken connector setup.
+  - Notes/Evidence: `npm run check:bundle` failed after a clean `npm run build` with `[bundle-budget] Main JS bundle exceeds budget: 1639.1 KiB > 1562.5 KiB.` The `BUG-013` code change is small, so this should be treated as a follow-up to the larger generated connector catalog payload rather than solved by trimming warning copy. Closed 2026-04-27 after stakeholder explicitly accepted raising the main taskpane JS budget to 3 MB for the richer connector catalog. `addin/scripts/check-bundle-budget.mjs` now uses `MAX_MAIN_JS_BYTES = 3_000_000`; future bundle work should still keep single chunks under their existing limit and revisit lazy-loading if startup becomes visibly slow.
 
 - [x] BUG-016: Companion discovery reports raw abort errors even when dev servers are running
   - Category: Bug
@@ -442,29 +442,66 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Regression tests cover fallback candidates, abort-message sanitization, and health-response validation.
   - Notes/Evidence: Closed 2026-04-27 by adding companion discovery attempts to `CompanionState`, extending discovery timeout to 5s, trying manual/last-known/default loopback candidates, sanitizing abort/network/certificate failures, validating health response shape, simplifying `/v1/health`, and clarifying Settings setup text. Validation passed: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (153 tests), `npm run build`, `npm run validate:manifests`, and `git diff --check`. `npm run check:bundle` still fails on the known main-taskpane budget issue tracked by `BUG-014`.
 
-- [ ] BUG-015: Hosted connector setup is disrupted by companion polling and over-eager OAuth assumptions
+- [x] BUG-015: Hosted connector setup is disrupted by companion polling and over-eager OAuth assumptions
   - Category: Bug
-  - Status: in_progress
+  - Status: done
   - Priority: P0
   - Source: 2026-04-27 Office add-in smoke from stakeholder: Slack sign-in failed with missing DCR, Parallel setup showed companion warnings and profile selection reset, Granola DCR was blocked by CORS, and system-browser OAuth was requested.
   - Details: Hosted HTTP MCP setup should not feel companion-gated. Companion discovery and diagnostics refreshes should update background state without rebuilding an open wizard draft or resetting the user's selected setup profile. Slack MCP is official but cannot be generic browser-DCR OAuth because Slack documents no Dynamic Client Registration and requires a registered Slack app/client credentials; mark it coming soon until the Slack app path is ready. Browser-only OAuth DCR can also fail at provider CORS, as seen with Granola, so Pi-Office must fail closed with actionable copy instead of raw console/CORS errors. System-browser OAuth should not be switched on until there is a broker or companion callback handoff, because the system browser cannot complete callback state in the Office taskpane runtime.
   - Dependencies: FEATURE-008, BUG-013.
   - Subtasks:
-    - [ ] Keep hosted HTTP setup free of optional-companion warnings while preserving companion requirements for local STDIO/local HTTP.
-    - [ ] Stop companion/diagnostics polling from rebuilding the active wizard draft or resetting the selected setup profile.
-    - [ ] Mark Slack MCP setup as coming soon/planned until Pi-Office has a registered Slack app/confidential OAuth path.
-    - [ ] Attempt browser-direct verification for hosted HTTP profiles when possible and fail closed on CORS/auth limitations.
-    - [ ] Replace raw OAuth DCR/token CORS failures with actionable UI errors.
-    - [ ] Record why system-browser OAuth needs a broker/companion callback handoff before becoming the default.
+    - [x] Keep hosted HTTP setup free of optional-companion warnings while preserving companion requirements for local STDIO/local HTTP.
+    - [x] Stop companion/diagnostics polling from rebuilding the active wizard draft or resetting the selected setup profile.
+    - [x] Mark Slack MCP setup as coming soon/planned until Pi-Office has a registered Slack app/confidential OAuth path.
+    - [x] Attempt browser-direct verification for hosted HTTP profiles when possible and fail closed on CORS/auth limitations.
+    - [x] Replace raw OAuth DCR/token CORS failures with actionable UI errors.
+    - [x] Record why system-browser OAuth needs a broker/companion callback handoff before becoming the default.
   - Acceptance Criteria:
-    - [ ] Parallel profile selection remains stable while companion discovery refreshes.
-    - [ ] Hosted HTTP connectors do not show "Optional companion unavailable" in the setup wizard solely because companion is offline.
-    - [ ] Slack appears as a visible coming-soon connector and cannot start OAuth until the Slack app registration path exists.
-    - [ ] Granola DCR CORS failures show a clear broker/companion-needed message rather than a raw CORS/failed fetch error.
-    - [ ] Regression tests cover hosted HTTP diagnostics, Slack planned gating, Parallel browser verification, and OAuth DCR CORS failure copy.
-  - Notes/Evidence: First-party Slack MCP docs state the endpoint is `https://mcp.slack.com/mcp`, Dynamic Client Registration is not supported, and Slack MCP clients need confidential OAuth with a registered Slack app. Microsoft Office Add-ins docs say `window.open()` is unreliable and `Office.context.ui.openBrowserWindow()` is for external URLs, not authentication/data exchange; system-browser OAuth therefore needs an explicit callback broker before it can safely replace the taskpane/dialog flow.
+    - [x] Parallel profile selection stays on the user-selected profile while companion state refreshes in the background.
+    - [x] Hosted HTTP connectors do not display "Optional companion unavailable" during setup.
+    - [x] Slack appears as a visible coming-soon connector and cannot start OAuth until the Slack app registration path exists.
+    - [x] Granola DCR CORS failures show a clear broker/companion-needed message rather than a raw CORS/failed fetch error.
+    - [x] Regression tests cover hosted HTTP diagnostics, Slack planned gating, Parallel browser verification, and OAuth DCR CORS failure copy.
+  - Notes/Evidence: First-party Slack MCP docs state the endpoint is `https://mcp.slack.com/mcp`, Dynamic Client Registration is not supported, and Slack MCP clients need confidential OAuth with a registered Slack app. Microsoft Office Add-ins docs say `window.open()` is unreliable and `Office.context.ui.openBrowserWindow()` is for external URLs, not authentication/data exchange; system-browser OAuth therefore needs an explicit callback broker before it can safely replace the taskpane/dialog flow. Closed 2026-04-27 by making hosted HTTP profiles taskpane-attemptable without companion warnings, keeping companion status/diagnostics in a ref so polling no longer rebuilds the open wizard draft, marking Slack planned/disabled, preserving local HTTP and STDIO companion routing, and converting browser metadata/DCR/token fetch failures into broker/companion-mediated guidance. Browser QA at `https://localhost:3443/` verified Parallel's "Account or ZDR search" profile stayed selected after a background wait with no optional-companion warning, Granola simple setup showed only hosted sign-in with no API-key/env/header controls, and Slack appeared disabled with a Planned badge. Validation: `npm --prefix addin run check:connector-catalog`, `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (150 tests), `npm run build`, `npm run validate:manifests`, and `git diff --check`. At closure time `npm run check:bundle` still failed under the older 1.6 MB budget; `BUG-014` later accepted the 3 MB budget and restored the bundle gate.
+
+- [x] BUG-018: Parallel OAuth/ZDR setup uses stale endpoint and stale saved auth mode
+  - Category: Bug
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 stakeholder smoke: selecting Parallel Web Search OAuth/ZDR and clicking Sign in showed "This connector does not use OAuth sign-in."
+  - Details: The Parallel Search MCP catalog was still using the older `search-mcp.parallel.ai` endpoint and pointed the OAuth/ZDR profile at the same anonymous `/mcp` URL as the free profile. Current first-party Parallel docs distinguish `https://search.parallel.ai/mcp` for anonymous/free use from `https://search.parallel.ai/mcp-oauth` for OAuth/account attribution/ZDR. The wizard also started OAuth from `selectedStatus` before saving the currently edited draft, so switching an existing Parallel connector from free search to OAuth could call `startOAuth` on the older non-OAuth record.
+  - Dependencies: FEATURE-008, BUG-015.
+  - Subtasks:
+    - [x] Update Parallel Search MCP free and OAuth/ZDR profile endpoints from current first-party docs.
+    - [x] Route Parallel `/mcp-oauth` OAuth discovery to the Parallel OAuth provider metadata on `platform.parallel.ai`.
+    - [x] Save the active wizard draft before OAuth start when no explicit connected-row target is passed.
+    - [x] Add regression coverage for switching an existing Parallel connector from anonymous to OAuth/ZDR.
+  - Acceptance Criteria:
+    - [x] Parallel OAuth/ZDR setup no longer fails with "This connector does not use OAuth sign-in" after selecting the OAuth profile.
+    - [x] The OAuth authorization URL is generated from Parallel's `platform.parallel.ai` provider metadata.
+    - [x] The anonymous/free profile remains available separately and uses the non-OAuth `/mcp` endpoint.
+  - Notes/Evidence: First-party Parallel docs checked 2026-04-27: Search MCP free endpoint is `https://search.parallel.ai/mcp`; OAuth/ZDR/account-attributed endpoint is `https://search.parallel.ai/mcp-oauth`; the OAuth provider metadata is available at `https://platform.parallel.ai/.well-known/oauth-authorization-server` and supports DCR with CORS for `https://localhost:3443` in local validation.
 
 ### Features
+
+- [ ] FEATURE-019: Add connector OAuth broker for system-browser sign-in and CORS-blocked DCR providers
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 stakeholder connector smoke: Granola DCR is blocked by provider CORS from the Office taskpane, and stakeholder prefers sign-in through the system browser where users may already be signed in.
+  - Details: Opening the system browser with `Office.context.ui.openBrowserWindow` is useful for external pages, but the current connector OAuth implementation stores pending state and token exchange inside the Office taskpane webview. A system-browser callback to `https://localhost:3443/connector-oauth-callback` lands in a different browser profile/storage context and cannot safely complete the taskpane's pending OAuth flow. Providers such as Granola can also block browser-side DCR/token exchange with CORS before a sign-in URL is available. Pi-Office needs an explicit OAuth broker path, likely companion-mediated in Pro mode and/or an app-hosted callback broker, that owns DCR, PKCE state, token exchange, refresh, secure token storage, and the final verified credential handoff back to the taskpane.
+  - Dependencies: SECURITY-001, SECURITY-004, FEATURE-008.
+  - Subtasks:
+    - [ ] Decide broker ownership: local companion loopback callback, hosted Pi-Office broker, or both.
+    - [ ] Implement system-browser launch only when callback state/token handoff is brokered and verified.
+    - [ ] Move DCR and token exchange for CORS-blocked providers through the broker.
+    - [ ] Store connector OAuth tokens in companion/OS-keychain-compatible storage where available, with explicit migration from taskpane storage.
+    - [ ] Add cancellation, state mismatch, expired state, provider denial, refresh failure, and revoke tests.
+  - Acceptance Criteria:
+    - [ ] Granola can complete OAuth from the system browser or honest broker-mediated fallback without raw CORS errors.
+    - [ ] The taskpane never marks a connector OAuth-connected until the broker returns a verified token handoff.
+    - [ ] Providers that require confidential clients or registered apps remain planned/disabled until their broker configuration exists.
+  - Notes/Evidence: Microsoft Office Add-ins guidance says `openBrowserWindow` opens external URLs in a separate browser window and is not for authentication/data exchange with the add-in; this is why system-browser sign-in needs a broker instead of only replacing `window.open`.
 
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards
   - Category: Feature
