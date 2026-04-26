@@ -196,8 +196,8 @@ const captureSnapshotParams = Type.Object({
         "Optional context hint (selection, document, worksheet, workbook, slide, shape). Scope is currently most effective for Excel and may be treated as a hint in Word/PowerPoint.",
     }),
   ),
-  includeFormatting: Type.Optional(Type.Boolean({ description: "Include formatting and layout metadata alongside the visuals." })),
-  maxImages: Type.Optional(Type.Number({ minimum: 0, maximum: 4, description: "Maximum number of visual snapshots to include." })),
+  includeFormatting: Type.Optional(Type.Boolean({ description: "Include formatting and layout metadata alongside Office.js context snapshots." })),
+  maxImages: Type.Optional(Type.Number({ minimum: 0, maximum: 4, description: "Maximum number of Office.js context snapshots to include." })),
 });
 
 const captureViewportParams = Type.Object({
@@ -383,15 +383,15 @@ const getRangeAsCsvParams = Type.Object({
 }, { additionalProperties: true });
 
 const readRangeImageParams = Type.Object({
-  sheetName: Type.Optional(Type.String({ description: "Worksheet name hint for the range image capture context." })),
-  address: Type.Optional(Type.String({ description: "A1-style range address hint for the range image capture context." })),
+  sheetName: Type.Optional(Type.String({ description: "Worksheet name hint. The capture still uses the active Excel selection." })),
+  address: Type.Optional(Type.String({ description: "A1-style range hint. Select or navigate to this range before capture; browser-only runtime does not render arbitrary offscreen ranges." })),
   scope: Type.Optional(
     Type.String({
-      description: "Visual capture scope hint. Defaults to selection.",
+      description: "Visual capture scope hint. Defaults to the active selection.",
     }),
   ),
   includeFormatting: Type.Optional(Type.Boolean({ description: "Include formatting metadata in the visual payload. Defaults to true." })),
-  maxImages: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "Maximum number of range images to include." })),
+  maxImages: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "Maximum number of active-selection snapshots to include." })),
 }, { additionalProperties: true });
 
 const extractChartXmlParams = Type.Object({
@@ -824,7 +824,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
     pi.registerTool({
       name: "office_capture_snapshot",
       label: "Office Snapshot",
-      description: "Capture visual snapshots and formatting metadata for the current Office selection when layout fidelity matters.",
+      description: "Capture Office.js context snapshots and formatting metadata for the current Office selection when layout fidelity matters. This is not an OS/window screenshot.",
       parameters: captureSnapshotParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_capture_snapshot", params);
@@ -1064,7 +1064,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       name: "read_range_image",
       label: "Read Range Image",
       description:
-        "Excel-only first-class range imagery read for visual verification workflows on the active worksheet selection/range.",
+        "Excel-only active-selection visual snapshot using Office.js image coercion. Select or navigate to the target range first; this does not render arbitrary offscreen ranges by address.",
       parameters: readRangeImageParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("read_range_image", params);

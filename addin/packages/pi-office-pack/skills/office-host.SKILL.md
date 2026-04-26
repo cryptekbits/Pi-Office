@@ -15,7 +15,7 @@ Use this skill when a task depends on the active Microsoft Office document.
 - In Excel, use `get_all_objects` to inventory workbook objects before targeting table/chart/pivot names.
 - In Excel, use `search_data` for worksheet/workbook discovery across tables, charts, PivotTables, named items, and cited cells.
 - In Excel, use `get_range_as_csv` for auditable exports and set `includeFormulas=true` when formula-level verification is required.
-- In Excel, use `read_range_image` for non-mutating visual verification of the active range/selection.
+- In Excel, use `read_range_image` only for non-mutating visual verification of the active selection. It does not render arbitrary offscreen ranges by address; use `office_navigate` or ask the user to select the target range first.
 - In Excel, use `extract_chart_xml` when a chart metadata XML snapshot is required (runtime-generated metadata XML, not full package OOXML).
 - In Excel, follow a formula-first, auditable-cell workflow: verify formulas and explicit cell/range references before and after mutations.
 - In PowerPoint, use `verify_slides` for non-mutating structural slide/layout/master verification and `verify_slide_visual` for non-mutating visual verification based on supported slide/shape snapshots.

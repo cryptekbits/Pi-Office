@@ -63,6 +63,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - `BUG-005` is closed: provider/model readiness now separates stored credentials from verified usable credentials, labels unverified/auth-failed states in Settings and model selection, migrates old stored keys to unverified, promotes providers after successful use, and demotes 401/403/auth failures.
 - `BUG-003` is closed: local stdio connector launches now merge safe inherited env, connector env, and the intended manual/env/detected credential variable; missing credential values or manual secrets without env targets stay auth-required without leaking secret values.
 - `BUG-008` is closed: Excel rewind restores captured formula matrices instead of flattening formulas to values, falls back with warnings only when formula data is unavailable, and surfaces the current checkpoint fidelity boundary.
+- `BUG-007` is closed: visual capture contracts now describe Office.js context/active-selection snapshots instead of OS screenshots or arbitrary offscreen Excel range renders, and `read_range_image` fails with selection guidance when the requested range does not match the active Excel selection.
 - The broad independent taskpane transition is now committed: `a70cd9a` moves Pi session routes into the taskpane in-process kernel, reduces the companion to optional read-only file/MCP support, archives old companion source, and includes next-prompt suggestions, model curation, and runtime regression tests.
 - Dev and sideload hardening is now committed as `a8a5a0d` plus `43b2a5b`, including the CI workflow, bundle budget, cert/port preflight, sideload resource preflight, manifest cache-bust version `1.0.0.2`, taskpane dev host on `https://localhost:3443`, and Vite cert loading scoped to the dev server only.
 
@@ -86,6 +87,7 @@ The core product bar is not just "chat in a taskpane." It is an interactive, tru
 - 2026-04-26: Closed `SECURITY-004` by adding the taskpane CSP meta policy, Privacy settings disclosure and clear-data controls, provider/connector clear-all runtime routes that remove local crypto keys, saved chat-history clearing, privacy/storage docs, and CSP/storage regression coverage; add-in typecheck, Office tests, add-in build, companion typecheck, bundle budget, and manifest validation passed.
 - 2026-04-26: Closed `BUG-003` by tracing MCP stdio env behavior, adding explicit safe-env and credential injection for local stdio connectors, preserving manual local credential env targets from setup, and verifying companion/taskpane typechecks, Office tests, build, manifests, and bundle budget.
 - 2026-04-26: Closed `BUG-008` by changing Excel checkpoint restore to write captured formula matrices, adding restore warnings for values-only fallback and unsupported workbook semantics, and validating add-in typecheck, Office tests, build, manifests, and bundle budget.
+- 2026-04-26: Closed `BUG-007` by making snapshot and Excel range-image copy fidelity-honest, enforcing active-selection matching for `read_range_image`, updating the Claude parity tracker, and validating add-in typecheck, Office tests, build, manifests, and bundle budget.
 
 ## Core rules
 

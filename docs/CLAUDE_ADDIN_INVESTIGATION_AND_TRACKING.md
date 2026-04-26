@@ -403,7 +403,7 @@ Entry format is strict: `ID: status - note`.
 - GAP-XLS-06: resolved - First-class Excel object mutation is exposed (`modify_object` equivalent).
 - GAP-XLS-07: resolved - First-class sheet/workbook structure mutation is exposed (`modify_sheet_structure` equivalent).
 - GAP-XLS-08: resolved - First-class CSV export is exposed (`get_range_as_csv` equivalent).
-- GAP-XLS-09: resolved - First-class range imagery export is exposed (`read_range_image` equivalent).
+- GAP-XLS-09: partially resolved - `read_range_image` exposes an Office.js active-selection image snapshot. It is not an arbitrary offscreen range renderer; navigate/select the target range first.
 - GAP-XLS-10: resolved - First-class workbook data/object search is exposed (`search_data` equivalent).
 - GAP-XLS-11: resolved - First-class workbook object inventory is exposed (`get_all_objects` equivalent).
 - GAP-XLS-12: resolved - First-class chart XML extraction is exposed (`extract_chart_xml` equivalent).
@@ -482,10 +482,10 @@ The following Excel checklist is aligned to `npm run smoke:office -- --list` sce
   1. Select a populated range and run `modify_object` with `operation=format_range` using font/fill/alignment/border options.
   2. Run `modify_object` with `operation=format_table` (or table-filter operations) against an existing table.
   3. Run `get_range_as_csv` for the edited range with `includeFormulas=true` to capture a formula-first auditable export snapshot.
-  4. Run `read_range_image` and confirm visual payload plus `visuals` image data are returned.
+  4. Select the edited range, run `read_range_image`, and confirm active-selection visual payload plus `visuals` image data are returned.
 - Expected:
   - Range and table updates remain native Excel object mutations.
-  - CSV export and range imagery provide auditable cell-level evidence for the edited region.
+  - CSV export and active-selection imagery provide auditable cell-level evidence for the edited region without implying offscreen range rendering.
 
 #### Scenario: `excel-charts-and-pivots` — Existing chart and PivotTable editing
 

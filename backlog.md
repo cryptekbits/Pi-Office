@@ -273,23 +273,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Tests cover image-provider catalog/runtime consistency.
   - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/app/components/SettingsPage.tsx` mentioning OpenAI/Google/OpenRouter and `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` throwing for non-OpenAI image generation.
 
-- [ ] BUG-007: Visual capture tools overstate screenshot and range-image fidelity
+- [x] BUG-007: Visual capture tools overstate screenshot and range-image fidelity
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 product-goal review; 2026-04-26 Office-host subagent review.
   - Details: The product goal depends on vision and layout reasoning for diagrams, images, pitch decks, resumes, and polished documents. Current Word viewport capture is explicitly metadata/context-derived and cannot capture a pixel-perfect window/page screenshot after the companion-based window capture was removed. Excel `read_range_image` is described as first-class range imagery but falls back to generic selected-image capture rather than rendering/copying the requested range. Settings also calls `office_capture_snapshot` a visual screenshot even though the actual contract is selection/context snapshots plus metadata.
   - Dependencies: TESTING-002 for manual Office desktop validation.
   - Subtasks:
-    - [ ] Reconcile tool names/descriptions so they match current fidelity exactly.
-    - [ ] Decide whether to restore a safe owner-approved viewport/window capture capability or keep metadata-only capture.
-    - [ ] Implement a real Excel range image path or downgrade `read_range_image` messaging until one exists.
-    - [ ] Add visual QA tests/manual scripts for Word viewport and Excel range-image scenarios.
+    - [x] Reconcile tool names/descriptions so they match current fidelity exactly.
+    - [x] Decide whether to restore a safe owner-approved viewport/window capture capability or keep metadata-only capture.
+    - [x] Implement a real Excel range image path or downgrade `read_range_image` messaging until one exists.
+    - [x] Add visual QA tests/manual scripts for Word viewport and Excel range-image scenarios.
   - Acceptance Criteria:
-    - [ ] Tool descriptions and Settings copy do not claim pixel screenshots or range imagery unless actually produced.
-    - [ ] Word layout prompts clearly distinguish metadata/context-derived views from true screenshots.
-    - [ ] Excel visual range workflows either return a real image of the requested range or report the limitation clearly.
-  - Notes/Evidence: Review pointed to `office_capture_viewport` comments in `addin/apps/taskpane/src/lib/office-bridge.ts`, `read_range_image` fallback in `addin/apps/taskpane/src/lib/office/excel-context.ts`, and Settings tool descriptions.
+    - [x] Tool descriptions and Settings copy do not claim pixel screenshots or range imagery unless actually produced.
+    - [x] Word layout prompts clearly distinguish metadata/context-derived views from true screenshots.
+    - [x] Excel visual range workflows either return a real image of the requested range or report the limitation clearly.
+  - Notes/Evidence: Review pointed to `office_capture_viewport` comments in `addin/apps/taskpane/src/lib/office-bridge.ts`, `read_range_image` fallback in `addin/apps/taskpane/src/lib/office/excel-context.ts`, and Settings tool descriptions. Closed 2026-04-26 by downgrading snapshot/range-image tool descriptions to Office.js context snapshots, documenting `read_range_image` as an active-selection snapshot rather than arbitrary offscreen range rendering, and making requested range mismatches fail with guidance to select/navigate first. Regression coverage added in `addin/scripts/office-tests/src/excel-object-export-tools.test.ts`; `docs/CLAUDE_ADDIN_INVESTIGATION_AND_TRACKING.md` now records the partial active-selection fidelity. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 114 tests, `npm run check:bundle`, `npm run build`, and `npm run validate:manifests`.
 
 - [x] BUG-008: Excel rewind restores values and number formats but drops formulas
   - Category: Bug
