@@ -147,6 +147,7 @@ export function ModelSelector({
 
   const triggerLabel = selectedModel ? selectedModel.model.modelName : "Pi default";
   const triggerSublabel = selectedModel ? selectedModel.provider.label : undefined;
+  const triggerAuthLabel = selectedModel ? authStateLabel(selectedModel.model) : undefined;
 
   const thinkingLabel = thinkingLevel === "off"
     ? "Off" : thinkingLevel === "xhigh"
@@ -169,6 +170,9 @@ export function ModelSelector({
         </div>
         {selectedModel?.model.supportsThinking && (
           <span className="model-selector-thinking-badge">{thinkingLabel}</span>
+        )}
+        {triggerAuthLabel && (
+          <span className="model-selector-auth-badge">{triggerAuthLabel}</span>
         )}
         <svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true">
           <path d="M7 10l5 5 5-5z" fill="currentColor" />
@@ -220,6 +224,7 @@ export function ModelSelector({
                       label={entry.model.modelName}
                       modelKey={entry.key}
                       costTier={entry.model.costTier}
+                      authStateLabel={authStateLabel(entry.model)}
                       isSelected={entry.key === selectedModelKey}
                       onSelect={() => handleSelect(entry.key)}
                       onMouseEnter={handleRowMouseEnter}
@@ -238,6 +243,7 @@ export function ModelSelector({
                       label={entry.model.modelName}
                       modelKey={entry.key}
                       costTier={entry.model.costTier}
+                      authStateLabel={authStateLabel(entry.model)}
                       isSelected={entry.key === selectedModelKey}
                       onSelect={() => handleSelect(entry.key)}
                       onMouseEnter={handleRowMouseEnter}
@@ -282,6 +288,11 @@ export function ModelSelector({
                 {hoveredModel.model.contextWindow && hoveredModel.model.costTier ? " · " : ""}
                 {hoveredModel.model.costTier ?? ""}
               </p>
+              {authStateLabel(hoveredModel.model) && (
+                <p className="model-detail-auth-note">
+                  {authStateDescription(hoveredModel.model)}
+                </p>
+              )}
 
               {hoveredModel.model.supportsThinking && availableThinkingLevels.length > 0 && (
                 <div className="model-detail-section">
@@ -312,6 +323,7 @@ function ModelRow({
   label,
   modelKey,
   costTier,
+  authStateLabel,
   isSelected,
   onSelect,
   onMouseEnter,
@@ -320,6 +332,7 @@ function ModelRow({
   label: string;
   modelKey: string;
   costTier?: string | undefined;
+  authStateLabel?: string | undefined;
   isSelected: boolean;
   onSelect: () => void;
   onMouseEnter: (key: string, el: HTMLElement) => void;
@@ -338,9 +351,29 @@ function ModelRow({
     >
       <span className="model-popup-item-name">{label}</span>
       <span className="model-popup-item-meta">
+        {authStateLabel && <span className="model-popup-auth-state">{authStateLabel}</span>}
         {costTier && <span className="model-popup-cost">{costTier}</span>}
         {isSelected && <CheckIcon />}
       </span>
     </button>
   );
+}
+
+function authStateLabel(model: ProviderModelDescriptor): string | undefined {
+  if (model.verifiedUsable) return undefined;
+  if (model.authState === "verification_failed") return "Auth failed";
+  if (model.credentialStored) return "Unverified";
+  return "Locked";
+}
+
+function authStateDescription(model: ProviderModelDescriptor): string {
+  if (model.authState === "verification_failed") {
+    return model.verificationError
+      ? `Stored credential failed verification: ${model.verificationError}`
+      : "Stored credential failed verification. Check the key and save it again.";
+  }
+  if (model.credentialStored) {
+    return "Credential is stored but has not succeeded with this provider yet.";
+  }
+  return "Add provider credentials before using this model.";
 }

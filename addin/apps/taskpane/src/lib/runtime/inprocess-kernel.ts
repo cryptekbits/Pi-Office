@@ -79,6 +79,8 @@ import {
   type PromptSuggestionMessage,
   type PromptSuggestionRequest,
   type PromptSuggestionResponse,
+  type ProviderAuthDescriptor,
+  type ProviderAuthState,
   type ProviderCatalogResponse,
   type ProviderDescriptor,
   type ProviderModelDescriptor,
@@ -101,6 +103,11 @@ type JsonRecord = Record<string, unknown>;
 interface StoredAuthRecord {
   provider: string;
   apiKey: string;
+  authState?: ProviderAuthState | undefined;
+  savedAt?: string | undefined;
+  verifiedAt?: string | undefined;
+  lastVerificationAttemptAt?: string | undefined;
+  lastVerificationError?: string | undefined;
 }
 
 interface PendingAskUser {
@@ -128,6 +135,12 @@ const CHECKPOINT_STORAGE_KEY_PREFIX = "pi-office-checkpoints:";
 const MAX_CHECKPOINT_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_CHECKPOINTS_PER_DOC = 50;
 const BROWSER_UNSUPPORTED_PROVIDERS = new Set<string>(["amazon-bedrock"]);
+const PROVIDER_AUTH_STATE_VALUES = new Set<ProviderAuthState>([
+  "not_configured",
+  "credential_stored",
+  "verified_usable",
+  "verification_failed",
+]);
 interface EncryptedAuthEnvelope {
   version: number;
   algorithm: "AES-GCM";
@@ -146,9 +159,12 @@ function isBrowserProviderSupported(provider: string): boolean {
   return !BROWSER_UNSUPPORTED_PROVIDERS.has(provider);
 }
 
-const IMAGE_MODEL_CATALOG: Array<
-  Omit<ImageModelDescriptor, "configured"> & { key: string }
-> = [
+type BrowserImageModelCatalogEntry = Omit<
+  ImageModelDescriptor,
+  "authState" | "credentialStored" | "verifiedUsable" | "verificationError" | "verifiedAt" | "configured"
+> & { key: string };
+
+const IMAGE_MODEL_CATALOG: BrowserImageModelCatalogEntry[] = [
   {
     key: "openai::gpt-image-1",
     provider: "openai",
@@ -514,6 +530,51 @@ function isEncryptedAuthEnvelope(value: unknown): value is EncryptedAuthEnvelope
   );
 }
 
+function normalizeProviderAuthState(record: StoredAuthRecord | undefined): ProviderAuthState {
+  if (!record?.apiKey) return "not_configured";
+  return record.authState && PROVIDER_AUTH_STATE_VALUES.has(record.authState)
+    ? record.authState
+    : "credential_stored";
+}
+
+function toProviderAuthDescriptor(provider: string, record: StoredAuthRecord | undefined): ProviderAuthDescriptor {
+  const state = normalizeProviderAuthState(record);
+  const credentialStored = state !== "not_configured";
+  const verifiedUsable = state === "verified_usable";
+  return {
+    provider,
+    state,
+    credentialStored,
+    verifiedUsable,
+    ...(record?.verifiedAt ? { verifiedAt: record.verifiedAt } : {}),
+    ...(record?.lastVerificationAttemptAt ? { lastVerificationAttemptAt: record.lastVerificationAttemptAt } : {}),
+    ...(state === "verification_failed" && record?.lastVerificationError
+      ? { lastVerificationError: record.lastVerificationError }
+      : {}),
+  };
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isProviderAuthFailure(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  const status = typeof error === "object" && error
+    ? (error as { status?: unknown; statusCode?: unknown; code?: unknown }).status
+      ?? (error as { statusCode?: unknown }).statusCode
+      ?? (error as { code?: unknown }).code
+    : undefined;
+  if (status === 401 || status === 403 || status === "401" || status === "403") return true;
+  return /\b(401|403)\b/.test(message)
+    || message.includes("unauthorized")
+    || message.includes("forbidden")
+    || message.includes("invalid api key")
+    || message.includes("incorrect api key")
+    || message.includes("invalid_api_key")
+    || message.includes("authentication");
+}
+
 function sanitizeCheckpointDocumentId(documentId: string): string {
   return documentId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
 }
@@ -544,8 +605,51 @@ class BrowserAuthStore {
     return this.store.get(provider)?.apiKey;
   }
 
+  getAuthState(provider: string): ProviderAuthDescriptor {
+    return toProviderAuthDescriptor(provider, this.store.get(provider));
+  }
+
+  listAuthStates(providerIds?: string[]): ProviderAuthDescriptor[] {
+    const ids = providerIds?.length ? providerIds : this.list();
+    return ids
+      .map((provider) => this.getAuthState(provider))
+      .sort((left, right) => left.provider.localeCompare(right.provider));
+  }
+
   async setApiKey(provider: string, apiKey: string): Promise<void> {
-    this.store.set(provider, { provider, apiKey });
+    const now = new Date().toISOString();
+    this.store.set(provider, {
+      provider,
+      apiKey,
+      authState: "credential_stored",
+      savedAt: now,
+    });
+    await this.persist();
+  }
+
+  async markVerificationSuccess(provider: string): Promise<void> {
+    const record = this.store.get(provider);
+    if (!record?.apiKey) return;
+    const now = new Date().toISOString();
+    this.store.set(provider, {
+      ...record,
+      authState: "verified_usable",
+      verifiedAt: now,
+      lastVerificationAttemptAt: now,
+      lastVerificationError: undefined,
+    });
+    await this.persist();
+  }
+
+  async markVerificationFailure(provider: string, error: unknown): Promise<void> {
+    const record = this.store.get(provider);
+    if (!record?.apiKey) return;
+    this.store.set(provider, {
+      ...record,
+      authState: "verification_failed",
+      lastVerificationAttemptAt: new Date().toISOString(),
+      lastVerificationError: getErrorMessage(error).slice(0, 300),
+    });
     await this.persist();
   }
 
@@ -563,7 +667,7 @@ class BrowserAuthStore {
       if (Array.isArray(parsed)) {
         for (const entry of parsed as StoredAuthRecord[]) {
           if (!entry?.provider || !entry.apiKey) continue;
-          this.store.set(entry.provider, { provider: entry.provider, apiKey: entry.apiKey });
+          this.store.set(entry.provider, this.normalizeRecord(entry));
         }
         await this.persist();
         return;
@@ -577,7 +681,7 @@ class BrowserAuthStore {
       const entries = await this.decryptRecords(parsed);
       for (const entry of entries) {
         if (!entry?.provider || !entry.apiKey) continue;
-        this.store.set(entry.provider, { provider: entry.provider, apiKey: entry.apiKey });
+        this.store.set(entry.provider, this.normalizeRecord(entry));
       }
     } catch {
       this.store.clear();
@@ -632,6 +736,18 @@ class BrowserAuthStore {
     const decoded = new TextDecoder().decode(plaintext);
     const parsed = JSON.parse(decoded) as unknown;
     return Array.isArray(parsed) ? (parsed as StoredAuthRecord[]) : [];
+  }
+
+  private normalizeRecord(entry: StoredAuthRecord): StoredAuthRecord {
+    return {
+      provider: String(entry.provider),
+      apiKey: String(entry.apiKey),
+      authState: normalizeProviderAuthState(entry),
+      ...(entry.savedAt ? { savedAt: entry.savedAt } : {}),
+      ...(entry.verifiedAt ? { verifiedAt: entry.verifiedAt } : {}),
+      ...(entry.lastVerificationAttemptAt ? { lastVerificationAttemptAt: entry.lastVerificationAttemptAt } : {}),
+      ...(entry.lastVerificationError ? { lastVerificationError: entry.lastVerificationError } : {}),
+    };
   }
 }
 
@@ -729,7 +845,8 @@ class BrowserModelRegistry {
       if (!isBrowserProviderSupported(providerId)) continue;
       const models = this.getModelsForProvider(provider);
       if (!models.length) continue;
-      const configured = this.authStore.hasAuth(providerId);
+      const auth = this.authStore.getAuthState(providerId);
+      const configured = auth.credentialStored;
       const descriptors: ProviderModelDescriptor[] = models
         .map((model) => {
           const totalCostPer1k = (model.cost.input + model.cost.output) / 2;
@@ -739,6 +856,11 @@ class BrowserModelRegistry {
             providerLabel: titleCase(providerId),
             modelId: model.id,
             modelName: model.name,
+            authState: auth.state,
+            credentialStored: auth.credentialStored,
+            verifiedUsable: auth.verifiedUsable,
+            verificationError: auth.lastVerificationError,
+            verifiedAt: auth.verifiedAt,
             configured,
             oauthSupported: false,
             usesApiKey: true,
@@ -753,6 +875,11 @@ class BrowserModelRegistry {
       providers.push({
         provider: providerId,
         label: titleCase(providerId),
+        authState: auth.state,
+        credentialStored: auth.credentialStored,
+        verifiedUsable: auth.verifiedUsable,
+        verificationError: auth.lastVerificationError,
+        verifiedAt: auth.verifiedAt,
         configured,
         oauthSupported: false,
         models: descriptors,
@@ -764,11 +891,22 @@ class BrowserModelRegistry {
   }
 
   getAuthStatus(): AuthStatusResponse {
-    const storedProviders = this.authStore.list().filter(isBrowserProviderSupported);
+    const providerIds = getProviders().map((provider) => String(provider)).filter(isBrowserProviderSupported);
+    const providerStates = this.authStore.listAuthStates(providerIds);
+    const storedProviders = providerStates.filter((entry) => entry.credentialStored).map((entry) => entry.provider);
+    const verifiedProviders = providerStates.filter((entry) => entry.verifiedUsable).map((entry) => entry.provider);
     return {
       storedProviders,
       oauthProviders: [],
-      configuredProviders: storedProviders,
+      configuredProviders: verifiedProviders,
+      verifiedProviders,
+      unverifiedProviders: providerStates
+        .filter((entry) => entry.state === "credential_stored")
+        .map((entry) => entry.provider),
+      verificationFailedProviders: providerStates
+        .filter((entry) => entry.state === "verification_failed")
+        .map((entry) => entry.provider),
+      providerStates,
     };
   }
 
@@ -820,10 +958,20 @@ class BrowserModelRegistry {
       modelId: entry.modelId,
       modelName: entry.modelName,
       apiType: entry.apiType,
+      ...(() => {
+        const auth = this.authStore.getAuthState(entry.provider);
+        return {
+          authState: auth.state,
+          credentialStored: auth.credentialStored,
+          verifiedUsable: auth.verifiedUsable,
+          verificationError: auth.lastVerificationError,
+          verifiedAt: auth.verifiedAt,
+          configured: auth.credentialStored,
+        };
+      })(),
       supportsReasoningEffort: entry.supportsReasoningEffort,
       supportedAspectRatios: entry.supportedAspectRatios,
       supportedSizes: entry.supportedSizes,
-      configured: this.authStore.hasAuth(entry.provider),
     }));
 
     return {
@@ -975,7 +1123,7 @@ class BrowserOfficeSession {
         this.agent.steer(message);
         return;
       }
-      await this.agent.prompt([message]);
+      await this.runWithCurrentModelVerification(() => this.agent.prompt([message]));
       return;
     }
 
@@ -984,11 +1132,11 @@ class BrowserOfficeSession {
         this.agent.followUp(message);
         return;
       }
-      await this.agent.prompt([message]);
+      await this.runWithCurrentModelVerification(() => this.agent.prompt([message]));
       return;
     }
 
-    await this.agent.prompt(input, piImages);
+    await this.runWithCurrentModelVerification(() => this.agent.prompt(input, piImages));
   }
 
   async abort(): Promise<void> {
@@ -1199,13 +1347,19 @@ class BrowserOfficeSession {
       })),
     };
 
-    const result = await completeSimple(model, context, {
-      ...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
-      ...(auth.headers ? { headers: auth.headers } : {}),
-    });
-    const text = result.content.find((part) => part.type === "text");
-    if (!text || text.type !== "text") throw new Error("No text in subject response.");
-    return text.text.trim();
+    try {
+      const result = await completeSimple(model, context, {
+        ...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
+        ...(auth.headers ? { headers: auth.headers } : {}),
+      });
+      await this.authStore.markVerificationSuccess(String(model.provider));
+      const text = result.content.find((part) => part.type === "text");
+      if (!text || text.type !== "text") throw new Error("No text in subject response.");
+      return text.text.trim();
+    } catch (error) {
+      await this.markProviderVerificationFailureIfAuthError(String(model.provider), error);
+      throw error;
+    }
   }
 
   async suggestPrompts(request: PromptSuggestionRequest): Promise<PromptSuggestionResponse> {
@@ -1230,6 +1384,7 @@ class BrowserOfficeSession {
         temperature: 0.2,
         reasoning: "minimal" as PiThinkingLevel,
       });
+      await this.authStore.markVerificationSuccess(String(model.provider));
       const rawText = result.content
         .filter((part): part is { type: "text"; text: string } => part.type === "text")
         .map((part) => part.text)
@@ -1240,7 +1395,8 @@ class BrowserOfficeSession {
         generationId,
         suggestions: parsePromptSuggestions(rawText, { documentState: this.documentState }),
       };
-    } catch {
+    } catch (error) {
+      await this.markProviderVerificationFailureIfAuthError(String(this.agent.state.model.provider), error);
       return emptyResponse;
     }
   }
@@ -1428,6 +1584,24 @@ class BrowserOfficeSession {
     if (!caps.supportsThinking) return "off";
     if (!caps.availableLevels.includes(level)) return "high";
     return level;
+  }
+
+  private async runWithCurrentModelVerification<T>(operation: () => Promise<T>): Promise<T> {
+    const provider = String(this.agent.state.model.provider);
+    try {
+      const result = await operation();
+      await this.authStore.markVerificationSuccess(provider);
+      return result;
+    } catch (error) {
+      await this.markProviderVerificationFailureIfAuthError(provider, error);
+      throw error;
+    }
+  }
+
+  private async markProviderVerificationFailureIfAuthError(provider: string, error: unknown): Promise<void> {
+    if (isProviderAuthFailure(error)) {
+      await this.authStore.markVerificationFailure(provider, error);
+    }
   }
 
   private buildTools(): AgentTool[] {
@@ -2376,7 +2550,11 @@ class BrowserOfficeSession {
 
           if (!response.ok) {
             const text = await response.text();
-            throw new Error(text || `${response.status} ${response.statusText}`);
+            const error = new Error(text || `${response.status} ${response.statusText}`);
+            if (response.status === 401 || response.status === 403) {
+              await this.authStore.markVerificationFailure(provider, error);
+            }
+            throw error;
           }
 
           const payload = (await response.json()) as {
@@ -2393,6 +2571,7 @@ class BrowserOfficeSession {
           if (!base64) {
             throw new Error("Image API did not return image data.");
           }
+          await this.authStore.markVerificationSuccess(provider);
 
           const shouldInsert = typed.insert !== false;
           if (shouldInsert) {

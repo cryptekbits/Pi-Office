@@ -236,24 +236,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Word desktop smoke testing confirms selection/context updates remain stable.
   - Notes/Evidence: Transition plan lists "Office state refresh race potential" under WS5.
 
-- [ ] BUG-005: Provider readiness reports stored credentials as ready without validating usability
+- [x] BUG-005: Provider readiness reports stored credentials as ready without validating usability
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 product-goal review and provider/auth/privacy subagent review.
   - Details: Provider/model status treats the presence of a stored API key as configured/ready. The taskpane accepts and persists a string, `BrowserModelRegistry` reports models as configured via `hasAuth(providerId)`, and Settings displays ready counts from that flag. A mistyped, expired, revoked, or incompatible key can therefore appear ready until the first real model call fails. For a provider-flexible product, "stored" and "verified usable" need separate states.
   - Dependencies: FEATURE-002 for broader provider-auth capability modeling.
   - Subtasks:
-    - [ ] Split provider auth state into at least `credentialStored`, `verifiedUsable`, `verificationFailed`, and `notConfigured`.
-    - [ ] Add a lightweight validation path where provider APIs support it, or mark keys unverified until the first successful request.
-    - [ ] Demote provider/model readiness after 401/403/auth failures and surface actionable recovery text.
-    - [ ] Update Settings labels so unverified credentials do not read as fully ready.
-    - [ ] Add tests for saved-but-invalid, verified, expired/revoked, and recovered provider credentials.
+    - [x] Split provider auth state into at least `credentialStored`, `verifiedUsable`, `verificationFailed`, and `notConfigured`.
+    - [x] Add a lightweight validation path where provider APIs support it, or mark keys unverified until the first successful request.
+    - [x] Demote provider/model readiness after 401/403/auth failures and surface actionable recovery text.
+    - [x] Update Settings labels so unverified credentials do not read as fully ready.
+    - [x] Add tests for saved-but-invalid, verified, expired/revoked, and recovered provider credentials.
   - Acceptance Criteria:
-    - [ ] A newly saved key is not labeled fully ready unless it has been verified or successfully used.
-    - [ ] Auth failures update provider status visibly.
-    - [ ] Model selection cannot imply a provider is usable when only an unverified credential string exists.
-  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` accepting API keys and using `hasAuth`, plus `addin/apps/taskpane/src/app/components/SettingsPage.tsx` deriving ready counts from model `configured`.
+    - [x] A newly saved key is not labeled fully ready unless it has been verified or successfully used.
+    - [x] Auth failures update provider status visibly.
+    - [x] Model selection cannot imply a provider is usable when only an unverified credential string exists.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` accepting API keys and using `hasAuth`, plus `addin/apps/taskpane/src/app/components/SettingsPage.tsx` deriving ready counts from model `configured`. Closed 2026-04-26 by adding shared provider auth states (`not_configured`, `credential_stored`, `verified_usable`, `verification_failed`), preserving legacy `configured` as credential-present while exposing explicit `credentialStored`/`verifiedUsable` metadata, migrating old stored keys to unverified, promoting providers after successful model/image requests, demoting 401/403/auth failures, and updating Settings/model-picker labels to show `Unverified` or `Auth failed` instead of `Ready`. Regression coverage added in `addin/scripts/office-tests/src/provider-auth-readiness.test.ts` for newly saved, legacy stored, auth-failed, and recovered credentials. Validation: `npm run typecheck:addin` passed; `npm run test:office` passed with 101 tests; `npm run build:addin` passed; `npm run typecheck:companion` passed; `npm run check:bundle` passed with `main.js=1436.3 KiB`; `npm run validate:manifests` validated Word, Excel, and PowerPoint.
 
 - [ ] BUG-006: Image-generation UI and catalog imply providers that browser runtime cannot execute
   - Category: Bug

@@ -837,6 +837,11 @@ export interface ProviderModelDescriptor {
   providerLabel: string;
   modelId: string;
   modelName: string;
+  authState: ProviderAuthState;
+  credentialStored: boolean;
+  verifiedUsable: boolean;
+  verificationError?: string | undefined;
+  verifiedAt?: string | undefined;
   configured: boolean;
   oauthSupported: boolean;
   usesApiKey: boolean;
@@ -960,6 +965,11 @@ export interface ImageModelDescriptor {
   modelId: string;
   modelName: string;
   apiType: ImageApiType;
+  authState: ProviderAuthState;
+  credentialStored: boolean;
+  verifiedUsable: boolean;
+  verificationError?: string | undefined;
+  verifiedAt?: string | undefined;
   supportsReasoningEffort: boolean;
   supportedAspectRatios: string[];
   supportedSizes: string[];
@@ -1012,9 +1022,27 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   toolPermissionOverrides: [],
 };
 
+export const PROVIDER_AUTH_STATES = ["not_configured", "credential_stored", "verified_usable", "verification_failed"] as const;
+export type ProviderAuthState = (typeof PROVIDER_AUTH_STATES)[number];
+
+export interface ProviderAuthDescriptor {
+  provider: string;
+  state: ProviderAuthState;
+  credentialStored: boolean;
+  verifiedUsable: boolean;
+  verifiedAt?: string | undefined;
+  lastVerificationAttemptAt?: string | undefined;
+  lastVerificationError?: string | undefined;
+}
+
 export interface ProviderDescriptor {
   provider: string;
   label: string;
+  authState: ProviderAuthState;
+  credentialStored: boolean;
+  verifiedUsable: boolean;
+  verificationError?: string | undefined;
+  verifiedAt?: string | undefined;
   configured: boolean;
   oauthSupported: boolean;
   models: ProviderModelDescriptor[];
@@ -1028,6 +1056,10 @@ export interface AuthStatusResponse {
   storedProviders: string[];
   oauthProviders: string[];
   configuredProviders: string[];
+  verifiedProviders: string[];
+  unverifiedProviders: string[];
+  verificationFailedProviders: string[];
+  providerStates: ProviderAuthDescriptor[];
 }
 
 export interface SessionUsageTotals {

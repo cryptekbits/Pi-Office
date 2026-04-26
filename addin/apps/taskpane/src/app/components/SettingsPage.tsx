@@ -590,6 +590,7 @@ function ProvidersSection({
   onClearAuth: (provider: string) => void;
 }) {
   const stored = authStatus?.storedProviders ?? [];
+  const providerStates = new Map((authStatus?.providerStates ?? []).map((entry) => [entry.provider, entry]));
 
   return (
     <div className="settings-section">
@@ -602,6 +603,7 @@ function ProvidersSection({
             onToggleEnabled={() => onToggleProvider(provider.provider)}
             provider={provider}
             hasAuth={stored.includes(provider.provider)}
+            lastVerificationError={providerStates.get(provider.provider)?.lastVerificationError}
             onSaveApiKey={(key) => onSaveApiKey(provider.provider, key)}
             onStartOAuth={() => onStartOAuth(provider.provider)}
             onClearAuth={() => onClearAuth(provider.provider)}
@@ -618,6 +620,7 @@ function ProvidersSection({
 function ProviderCard({
   provider,
   hasAuth,
+  lastVerificationError,
   isEnabled,
   onToggleEnabled,
   onSaveApiKey,
@@ -626,6 +629,7 @@ function ProviderCard({
 }: {
   provider: ProviderDescriptor;
   hasAuth: boolean;
+  lastVerificationError?: string | undefined;
   isEnabled: boolean;
   onToggleEnabled: () => void;
   onSaveApiKey: (key: string) => void;
@@ -634,7 +638,28 @@ function ProviderCard({
 }) {
   const [apiKey, setApiKey] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const readyCount = provider.models.filter((m) => m.configured).length;
+  const verifiedCount = provider.models.filter((m) => m.verifiedUsable).length;
+  const statusLabel = provider.verifiedUsable
+    ? "Verified"
+    : provider.authState === "verification_failed"
+      ? "Auth failed"
+      : provider.credentialStored
+        ? "Unverified"
+        : "Not configured";
+  const statusClass = provider.verifiedUsable
+    ? "provider-status-ready"
+    : provider.authState === "verification_failed"
+      ? "provider-status-error"
+      : provider.credentialStored
+        ? "provider-status-pending"
+        : "";
+  const authStatusText = provider.verifiedUsable
+    ? "Verified credentials found."
+    : provider.authState === "verification_failed"
+      ? `Stored credential failed verification${lastVerificationError ? `: ${lastVerificationError}` : "."}`
+      : hasAuth
+        ? "Credential stored. It will be marked verified after the first successful provider request."
+        : "No stored credentials.";
 
   const handleSave = useCallback(() => {
     if (apiKey.trim()) {
@@ -653,12 +678,12 @@ function ProviderCard({
         >
           <div className="provider-card-info">
             <strong>{provider.label}</strong>
-            <span className={`provider-status ${provider.configured ? "provider-status-ready" : ""}`}>
-              {provider.configured ? "Ready" : "Not configured"}
+            <span className={`provider-status ${statusClass}`}>
+              {statusLabel}
             </span>
           </div>
           <span className="provider-card-meta">
-            {readyCount}/{provider.models.length} models
+            {verifiedCount}/{provider.models.length} verified
           </span>
         </button>
         <button
@@ -676,7 +701,7 @@ function ProviderCard({
       {expanded && (
         <div className="provider-card-body">
           <div className="provider-auth-status">
-            {hasAuth ? "Stored credentials found." : "No stored credentials."}
+            {authStatusText}
           </div>
 
           <div className="field">
@@ -738,7 +763,13 @@ function ModelsSection({
             {provider.models.map((model) => {
               const modelKey = `${model.provider}::${model.modelId}`;
               const isEnabled = enabledModels.has(modelKey);
-              const isReady = model.configured;
+              const stateLabel = model.verifiedUsable
+                ? ""
+                : model.authState === "verification_failed"
+                  ? "Auth failed"
+                  : model.credentialStored
+                    ? "Unverified"
+                    : "Locked";
               return (
                 <div
                   key={modelKey}
@@ -761,8 +792,8 @@ function ModelsSection({
                     </span>
                   </div>
                   <div className="settings-model-actions">
-                    {!isReady && (
-                      <span className="settings-model-state">Locked</span>
+                    {stateLabel && (
+                      <span className="settings-model-state">{stateLabel}</span>
                     )}
                     <button
                       type="button"
