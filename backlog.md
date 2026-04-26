@@ -422,6 +422,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Settings/Integrations still load without visible delay or broken connector setup.
   - Notes/Evidence: `npm run check:bundle` failed after a clean `npm run build` with `[bundle-budget] Main JS bundle exceeds budget: 1639.1 KiB > 1562.5 KiB.` The `BUG-013` code change is small, so this should be treated as a follow-up to the larger generated connector catalog payload rather than solved by trimming warning copy.
 
+- [x] BUG-016: Companion discovery reports raw abort errors even when dev servers are running
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 stakeholder screenshot of Settings > Companion showing `signal is aborted without reason`, `Not discovered yet`, and a manual endpoint of `https://localhost:3444` while the expected dev server was running.
+  - Details: Companion discovery used a short abort timeout, surfaced the raw abort reason, tried only the manual/default localhost endpoint, and the setup copy could be read as if the taskpane dev server on `3443` was the companion. The companion health route also included shell capability probing, making a basic health check vulnerable to slow optional capability detection.
+  - Dependencies: FEATURE-006, BUG-011.
+  - Subtasks:
+    - [x] Replace the raw abort message with actionable timeout, network, and certificate guidance.
+    - [x] Record per-endpoint discovery attempts in companion state and show them in Settings.
+    - [x] Try both `https://localhost:3444` and `https://127.0.0.1:3444`, plus any manual or last-known endpoint.
+    - [x] Keep `/v1/health` fast by avoiding slow optional shell capability probing.
+    - [x] Clarify setup copy so `3443` is the taskpane dev server and `3444` is the optional companion.
+  - Acceptance Criteria:
+    - [x] The Companion tab no longer shows `signal is aborted without reason` for timeout discovery failures.
+    - [x] The UI shows which endpoints were attempted and their sanitized result messages.
+    - [x] Discovery accepts only structurally valid companion health responses before marking connected.
+    - [x] Regression tests cover fallback candidates, abort-message sanitization, and health-response validation.
+  - Notes/Evidence: Closed 2026-04-27 by adding companion discovery attempts to `CompanionState`, extending discovery timeout to 5s, trying manual/last-known/default loopback candidates, sanitizing abort/network/certificate failures, validating health response shape, simplifying `/v1/health`, and clarifying Settings setup text. Validation passed: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (153 tests), `npm run build`, `npm run validate:manifests`, and `git diff --check`. `npm run check:bundle` still fails on the known main-taskpane budget issue tracked by `BUG-014`.
+
 ### Features
 
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards

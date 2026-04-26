@@ -547,6 +547,7 @@ function CompanionSection({
         : companion.status === "error"
           ? "Error"
           : "Unavailable";
+  const discoveryAttempts = companion.lastDiscoveryAttempts ?? [];
 
   return (
     <section className="settings-section">
@@ -607,6 +608,28 @@ function CompanionSection({
         </div>
       )}
 
+      {discoveryAttempts.length > 0 && (
+        <div className="settings-card">
+          <span className="label">Discovery attempts</span>
+          <div className="settings-note-list">
+            {discoveryAttempts.map((attempt) => (
+              <p key={`${attempt.endpoint}-${attempt.durationMs ?? "n"}`}>
+                <strong>{attempt.ok ? "Connected" : "Failed"}</strong>
+                {" · "}
+                {attempt.endpoint}
+                {typeof attempt.durationMs === "number" ? ` · ${attempt.durationMs}ms` : ""}
+                {attempt.message ? (
+                  <>
+                    <br />
+                    {attempt.message}
+                  </>
+                ) : null}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="field">
         <span>Manual endpoint override</span>
         <input
@@ -640,7 +663,9 @@ function CompanionSection({
         </div>
         <div className="settings-card">
           <span className="label">2. Start</span>
-          <p>Run the companion on your machine and keep it listening on `https://localhost:3444` or your chosen loopback endpoint.</p>
+          <p>
+            In local development, run <code>npm run dev</code> for the taskpane on <code>https://localhost:3443</code> and run <code>npm run dev:companion</code> separately for the companion on <code>https://localhost:3444</code>.
+          </p>
         </div>
         <div className="settings-card">
           <span className="label">3. Use</span>
