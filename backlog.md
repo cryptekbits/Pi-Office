@@ -53,23 +53,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Connector status clearly reports incomplete, failed, and expired OAuth flows.
   - Notes/Evidence: Review pointed to `apps/taskpane/src/app/components/IntegrationsSection.tsx` sending `approved: true`, `apps/taskpane/src/lib/runtime/browser-connectors.ts` setting OAuth state from that flag, `getExportBundle` exporting `credentialSource` without secrets, and `applyImport` setting `oauthConnected` from the imported credential source. 2026-04-26 hardening removed the visible manual "Complete sign-in" UI path, changed callback completion to remain incomplete without a verified credential handoff, and reset imported OAuth connectors to `oauthConnected: false`; the full OAuth contract and token exchange work remains open.
 
-- [ ] SECURITY-002: Tool permission prompts time out as allow-by-default
+- [x] SECURITY-002: Tool permission prompts time out as allow-by-default
   - Category: Security
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-26 product-goal review and provider/auth/privacy subagent review.
   - Details: `requestToolPermission` resolves a pending approval as `{ allowed: true, scope: "once" }` after 120 seconds. Silence, hidden taskpane UI, host disconnect, or an unattended machine should not authorize document writes, connector calls, external reads, or future write-external tools. This conflicts with the privacy-conscious and reviewable-workbench product goal.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Change permission timeout behavior to deny, expire, or abort the tool call instead of allowing it.
-    - [ ] Surface expired permission requests clearly in the UI and model/tool result.
-    - [ ] Ensure disconnect, session teardown, and pending-request cleanup cannot produce allow decisions.
-    - [ ] Add tests for timeout behavior across write-doc, connector, read-external, and write-external categories.
+    - [x] Change permission timeout behavior to deny, expire, or abort the tool call instead of allowing it.
+    - [x] Surface expired permission requests clearly in the UI and model/tool result.
+    - [x] Ensure disconnect, session teardown, and pending-request cleanup cannot produce allow decisions.
+    - [x] Add tests for timeout behavior across write-doc, connector, read-external, and write-external categories.
   - Acceptance Criteria:
-    - [ ] No permission request can become allowed without an explicit user action or a pre-existing approved policy.
-    - [ ] Timed-out requests are visible as expired/denied and do not execute.
-    - [ ] Automated tests prove timeout, disconnect, and cleanup paths fail closed.
-  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` resolving allowed on timeout and `packages/pi-office-pack/src/protocol.ts` defining tool categories/autonomy levels. 2026-04-26 hardening changed timeout resolution to `allowed: false`, added a `tool_permission_expired` bridge event, clears the visible prompt when the matching request expires, and added a static regression test in `scripts/office-tests/src/runtime-permission-policy.test.ts`; disconnect/cleanup-specific tests still need coverage before closing.
+    - [x] No permission request can become allowed without an explicit user action or a pre-existing approved policy.
+    - [x] Timed-out requests are visible as expired/denied and do not execute.
+    - [x] Automated tests prove timeout, disconnect, and cleanup paths fail closed.
+  - Notes/Evidence: Review pointed to `apps/taskpane/src/lib/runtime/inprocess-kernel.ts` resolving allowed on timeout and `packages/pi-office-pack/src/protocol.ts` defining tool categories/autonomy levels. 2026-04-26 hardening changed timeout resolution to `allowed: false`, added a `tool_permission_expired` bridge event, clears the visible prompt when the matching request expires, and added a static regression test in `scripts/office-tests/src/runtime-permission-policy.test.ts`. 2026-04-26 closure added protocol-level coverage in `scripts/office-tests/src/protocol-parity.test.ts` proving write-doc, connector, read-external, and write-external permission timeouts resolve denied; existing disconnect coverage rejects pending permission prompts when the bridge closes; new cleanup coverage rejects pending permissions when a session is force-reopened/disposed. Validation: `npm run test:office` passed with 89 tests.
 
 - [ ] SECURITY-003: `office_execute_js` raw Office.js escape hatch can be auto-approved as a normal document write
   - Category: Security

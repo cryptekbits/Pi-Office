@@ -145,6 +145,20 @@ async function waitForServerMessage(
   });
 }
 
+async function withFastPermissionTimeout<T>(body: () => Promise<T>): Promise<T> {
+  const timers = globalThis as unknown as {
+    setTimeout: typeof setTimeout;
+  };
+  const originalSetTimeout = timers.setTimeout;
+  timers.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
+    originalSetTimeout(handler, timeout === 120_000 ? 5 : timeout, ...args)) as typeof setTimeout;
+  try {
+    return await body();
+  } finally {
+    timers.setTimeout = originalSetTimeout;
+  }
+}
+
 async function openSessionHarness(label: string) {
   const runtime = await loadKernelModule();
   const documentId = `doc-${label}-${Date.now()}`;
@@ -253,6 +267,48 @@ test("protocol parity: tool_permission request/response + session approval cachi
   assert.equal(decision.scope, "session");
   const isAutoApproved = (session as { shouldAutoApproveTool: (name: string) => boolean }).shouldAutoApproveTool("office_apply_edit");
   assert.equal(isAutoApproved, true);
+  socket.close();
+});
+
+test("protocol parity: tool permission timeouts deny across gated categories", async () => {
+  const { socket, session } = await openSessionHarness("tool-permission-timeout");
+
+  await withFastPermissionTimeout(async () => {
+    for (const scenario of [
+      { toolName: "office_apply_edit", category: "write-doc" },
+      { toolName: "mcp", category: "connector" },
+      { toolName: "read", category: "read-external" },
+      { toolName: "bash", category: "write-external" },
+    ]) {
+      const requestMessage = waitForServerMessage(
+        socket,
+        (payload) =>
+          payload.type === "tool_permission_request" &&
+          (payload.request as { toolName?: string } | undefined)?.toolName === scenario.toolName,
+      );
+      const expiredMessage = waitForServerMessage(
+        socket,
+        (payload) => payload.type === "tool_permission_expired" && payload.toolName === scenario.toolName,
+      );
+      const decisionPromise = (session as {
+        requestToolPermission: (toolName: string, params: Record<string, unknown>) => Promise<unknown>;
+      }).requestToolPermission(scenario.toolName, { reason: "test" });
+
+      const outbound = await requestMessage;
+      const request = outbound.request as { requestId: string; toolName: string; toolCategory: string };
+      assert.equal(request.toolName, scenario.toolName);
+      assert.equal(request.toolCategory, scenario.category);
+
+      const expired = await expiredMessage;
+      assert.equal(expired.requestId, request.requestId);
+
+      const decision = await decisionPromise as { toolName: string; allowed: boolean; scope: string };
+      assert.equal(decision.toolName, scenario.toolName);
+      assert.equal(decision.allowed, false);
+      assert.equal(decision.scope, "once");
+    }
+  });
+
   socket.close();
 });
 
@@ -384,4 +440,29 @@ test("protocol parity: disconnect cancels pending interactive requests", async (
   await assert.rejects(askPromise, /Bridge disconnected before interactive request completed/);
   await assert.rejects(permissionPromise, /Bridge disconnected before interactive request completed/);
   await assert.rejects(proposalPromise, /Bridge disconnected before interactive request completed/);
+});
+
+test("protocol parity: session cleanup rejects pending tool permissions", async () => {
+  const { runtime, socket, session, documentId } = await openSessionHarness("permission-cleanup");
+
+  const permissionRequestMessage = waitForServerMessage(socket, (payload) => payload.type === "tool_permission_request");
+  const permissionPromise = (session as {
+    requestToolPermission: (toolName: string, params: Record<string, unknown>) => Promise<unknown>;
+  }).requestToolPermission("mcp", { toolName: "connector.read" });
+
+  await permissionRequestMessage;
+
+  const reopened = await runtime.dispatchKernelRequest("/v1/sessions/open", {
+    method: "POST",
+    body: JSON.stringify({
+      host: "word",
+      documentId,
+      saved: true,
+      title: "Doc permission cleanup",
+      forceNew: true,
+    }),
+  }) as { sessionId: string };
+
+  assert.equal(typeof reopened.sessionId, "string");
+  await assert.rejects(permissionPromise, /Session disposed/);
 });
