@@ -534,15 +534,14 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Dependencies: SECURITY-003 to reduce reliance on raw Office.js execution.
   - Subtasks:
     - [ ] Inventory native Office.js APIs for the highest-value Word/Excel/PowerPoint editing gaps.
-    - [ ] Add structured Word tools for style/paragraph/list/table/header/footer/field/content-control operations.
-    - [ ] Add deterministic targeting for footnote/endnote bodies rather than only the reference marker.
+    - [ ] Track the Word-first child tasks `FEATURE-009` through `FEATURE-018` and keep their API assumptions aligned with public Word JavaScript requirement sets.
     - [ ] Add structured PowerPoint and Excel object edits where current tools require raw code or weak anchors.
-    - [ ] Add tests for each new first-class operation and update prompt/tool guidance to prefer them.
+    - [ ] Add tests for each new first-class operation and update prompt/tool guidance to prefer structured tools.
   - Acceptance Criteria:
     - [ ] Common professional document edits can be expressed through structured tools instead of `office_execute_js`.
     - [ ] Word footnote/endnote edits target the note body correctly.
     - [ ] Tests cover representative Word, Excel, and PowerPoint native edits.
-  - Notes/Evidence: Review pointed to Word context already exposing rich objects while action coverage remains thinner than the product bar.
+  - Notes/Evidence: Review pointed to Word context already exposing rich objects while action coverage remains thinner than the product bar. 2026-04-27 Word API audit split the Word-specific implementation path into `FEATURE-009` through `FEATURE-018` so each capability can be implemented, validated, and committed independently while this item remains the parent native-editing epic.
 
 - [ ] FEATURE-005: Add explicit cross-host artifact workflows
   - Category: Feature
@@ -625,6 +624,215 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Write/destructive/unknown connector tools remain disabled by default and cannot execute directly unless explicitly enabled.
     - [x] Catalog generation, runtime, UI, and browser tests cover the new behavior and standard validation passes.
   - Notes/Evidence: Initial research evidence includes Granola docs for Streamable HTTP OAuth/DCR at `https://mcp.granola.ai/mcp`, Perplexity docs for local `@perplexity-ai/mcp-server` with `PERPLEXITY_API_KEY`, Airtable/Notion/Slack/Figma/LaunchDarkly/Stripe/PayPal/Tavily/Exa/GitHub/GitLab/Qdrant official MCP docs, and the absence of sufficient first-party evidence for the exact Google Drive endpoint in the current catalog. Closed 2026-04-27 by moving connector setup data to `addin/packages/pi-office-pack/src/connector-catalog.yaml`, adding generated typed catalog validation, implementing browser-direct Streamable HTTP MCP probing/execution plus MCP OAuth discovery/DCR/PKCE/callback handling, gating execution by read-safe tool classification, and updating Integrations UI for provenance badges, planned/community gating, Granola OAuth-only setup, and companion-only env controls. Browser QA verified Library badges/disabled states, Granola browser-direct OAuth wizard, community warning with suppression, and connected details/tool inventory at `https://localhost:3443/`; live Granola account sign-in was not completed. Validation: `npm --prefix addin run check:connector-catalog`, `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (148 tests), `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
+
+- [ ] FEATURE-009: Add Word-native critique annotation review surface
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: WordApi 1.7 and 1.8 expose writing-assistance annotation and critique APIs that can show suggestions inside the Word document itself. Pi-Office currently routes reviewable edits through sidepane proposal cards and targeted text replacement. A Word-native review surface would let the assistant place inline critique annotations, temporary highlights, and suggestion actions where the user is already reading, while falling back to the existing sidepane proposal workflow when the host does not support the requirement sets or subscription-backed annotation service.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Add runtime capability detection for WordApi 1.7 annotation/critique APIs and WordApi 1.8 highlight/popup-action APIs.
+    - [ ] Define a structured review-suggestion payload that can map current `office_propose_edits` proposals to Word critique annotations without copying competitor UX text or prompts.
+    - [ ] Implement insertion, listing, accept, reject, delete, and popup-action handling for Word-native critique annotations where supported.
+    - [ ] Preserve the current sidepane proposal-card path as the fallback for unsupported hosts, unsupported subscriptions, or failed annotation insertion.
+    - [ ] Add prompt/tool guidance that chooses native annotations only when requirement checks report them available.
+    - [ ] Add regression coverage for supported, unsupported, fallback, accept, reject, and cleanup paths.
+  - Acceptance Criteria:
+    - [ ] AI suggestions can appear as Word-native review annotations when the active Word host supports the required APIs.
+    - [ ] Unsupported hosts fall back to `office_propose_edits` or `edit_doc_list` without losing the proposal details.
+    - [ ] Accepting or rejecting a native suggestion updates the document or annotation state deterministically and reports the outcome to the model.
+    - [ ] Tests prove native annotation tools cannot be advertised when requirement-set checks fail.
+  - Notes/Evidence: Microsoft documents WordApi 1.7 as adding writing-assistance support with `Annotation`, `CritiqueAnnotation`, `Paragraph.insertAnnotations`, and annotation events; WordApi 1.8 adds popup-action events and temporary `Range.highlight()` / `removeHighlight()` APIs. Microsoft notes annotation APIs require a Microsoft 365 subscription because of an underlying service requirement, so UI/tool copy must be capability-honest.
+
+- [ ] FEATURE-010: Add structured Word style and paragraph formatting tools
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: Pi-Office reads some selection font, paragraph, and page setup metadata today, but it does not expose first-class style and paragraph-formatting actions. Professional Word work often needs controlled heading levels, resume bullet spacing, research-paper styles, spec formatting, line spacing, indentation, shading, and font changes without replacing large text spans or using raw `office_execute_js`. Structured formatting tools should target selections, paragraphs, headings, content controls, and fields by stable anchors where possible.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Inventory currently readable Word font, paragraph, style, page setup, and shading metadata in `word-context.ts`.
+    - [ ] Define structured actions for applying built-in/custom styles, paragraph alignment, spacing, indentation, outline level, font attributes, highlight/shading, and clear-formatting behavior.
+    - [ ] Add target resolution for selection, paragraph ID, heading, content control, field result, and search anchor scopes.
+    - [ ] Add style import/application support where WordApi 1.6 `Document.importStylesFromJson` is available, with safe fallback messaging elsewhere.
+    - [ ] Update workflow-pack and office-host guidance to prefer structured formatting tools for resumes, specs, papers, and professional review.
+    - [ ] Add tests for style application, paragraph formatting, unsupported requirement-set fallback, and prompt/tool contract registration.
+  - Acceptance Criteria:
+    - [ ] Common resume, spec, and paper formatting edits can be applied through structured Word tools instead of `office_execute_js`.
+    - [ ] Formatting operations report the target anchor, changed properties, and any unsupported host capabilities.
+    - [ ] Existing text proposal flows remain text-focused and do not silently perform broad formatting changes.
+    - [ ] Tests cover representative font, paragraph, style, and unsupported-host cases.
+  - Notes/Evidence: WordApi 1.1 includes paragraph/font/style properties and range style APIs; WordApi 1.6 adds style-management improvements such as `Document.importStylesFromJson`, style shading, and table-style metadata. Current Pi-Office context capture already reads selection font and paragraph formatting, making this a natural structured-write expansion.
+
+- [ ] FEATURE-011: Add Word list and multilevel numbering tools
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: The current Word editing surface can rewrite list text, but it does not expose list-aware operations for bullets, numbering, multilevel outline cleanup, legal clause numbering, acceptance-criteria lists, or nested requirement lists. Word exposes list objects, list formatting, list items, list levels, templates, and list template galleries. Pi-Office should treat list structure as document structure instead of plain text whenever the host can support it.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Add read/context support for selected and document-level list metadata, including list type, level, numbering text, paragraph anchors, and nearby headings.
+    - [ ] Define structured operations for converting paragraphs to bullets/numbered lists, changing list levels, normalizing indentation, restarting/continuing numbering, and applying multilevel templates.
+    - [ ] Add safety checks for legal or contract numbering so broad renumbering requires explicit confirmation or reviewable proposals.
+    - [ ] Add workflow guidance for business user stories, legal clauses, specs, and acceptance criteria to use list tools before text rewrites.
+    - [ ] Add tests for bullet conversion, numbered list normalization, multilevel level changes, unsupported list metadata, and deterministic targeting.
+  - Acceptance Criteria:
+    - [ ] AI can normalize bullets, legal clauses, acceptance criteria, and document outlines through structured Word list tools.
+    - [ ] List operations preserve or report numbering/restart behavior rather than silently rewriting visible text only.
+    - [ ] Destructive or broad list-structure changes are reviewable or explicitly confirmed.
+    - [ ] Tests prove list edits do not require `office_execute_js` for common cases.
+  - Notes/Evidence: The Word API reference includes `List`, `ListCollection`, `ListFormat`, `ListItem`, `ListLevel`, `ListTemplate`, and `ListTemplateGallery` objects. This is a high-value AI-assistant surface because many professional Word documents encode meaning in list structure, not just words.
+
+- [ ] FEATURE-012: Add Word table cell, row, column, and table-format tools
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: Pi-Office can insert a simple Word table, but it cannot deeply inspect or mutate cells, rows, columns, formulas, table sorting, shading, row height, column widths, or table styles through first-class actions. Professional Word workflows need clean comparison matrices, issue tables, requirements tables, DCF narrative tables, and legal-review tables without whole-table OOXML replacement. Structured table tools should support precise targets, reviewable destructive operations, and clear fallback when a host lacks a specific table API.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Add Word table inventory for tables in selection/document, including row/column counts, cell previews, headings, styles, and anchors.
+    - [ ] Define target schema for table by anchor/index/name-like label plus row/column/cell coordinates.
+    - [ ] Implement structured operations for editing cell text, inserting/deleting rows and columns, merging cells, applying table/cell shading, setting row height/left indent, sorting rows, and inserting table formulas where supported.
+    - [ ] Add confirmation requirements for destructive table operations such as deleting rows/columns/cells or converting table content to text.
+    - [ ] Update Word workflows to use table tools for requirement matrices, comparison tables, and professional report tables.
+    - [ ] Add tests for table inventory, cell edit, row/column operation, merge/shading/sort contracts, destructive confirmation, and unsupported-host messaging.
+  - Acceptance Criteria:
+    - [ ] AI can edit Word tables without replacing whole-table OOXML for routine professional table work.
+    - [ ] Table operations return precise changed table/cell anchors and warnings for partial support.
+    - [ ] Destructive table operations fail closed unless explicitly confirmed.
+    - [ ] Tests cover representative cell, row, column, format, and safety scenarios.
+  - Notes/Evidence: The Word JavaScript API preview includes `Table`, `TableCell`, `TableCellCollection`, `TableColumn`, `TableColumnCollection`, `TableRow`, `TableRowCollection`, table formulas, merge/delete/select, shading, sorting, and table style APIs. Current Pi-Office `insertTable` is only the first slice of this surface.
+
+- [ ] FEATURE-013: Add Word header, footer, section, and page setup tools
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: Pi-Office currently reads page setup metadata but does not expose structured tools for sections, headers, footers, page breaks, margins, page size, or section-scoped edits. WordApi 1.1 exposes document sections and section header/footer bodies. Professional documents often need title-page headers, confidential footers, page numbering placeholders, odd/even header behavior, section breaks, and margin cleanup, all of which should be first-class AI-assistant operations with clear scope and host support boundaries.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Add section inventory with section indexes, body previews, page setup, and available header/footer types.
+    - [ ] Define structured actions for reading, inserting, replacing, and clearing section headers/footers with explicit section and header/footer type targets.
+    - [ ] Add page setup actions for margins, page size/orientation where supported, and page/section break insertion with scope warnings.
+    - [ ] Add support for odd/even or first-page header/footer behavior only when the active requirement set exposes the required options; otherwise report limitations.
+    - [ ] Update workflow guidance for resumes, specs, reports, and legal/professional review to use section/header/footer tools.
+    - [ ] Add tests for section inventory, header/footer edits, margin/page setup changes, page break insertion, and unsupported capability reporting.
+  - Acceptance Criteria:
+    - [ ] AI can create or polish title pages, headers, footers, and section layouts with explicit section scope.
+    - [ ] Header/footer edits never imply document-body edits and document-body edits do not accidentally target headers/footers.
+    - [ ] Page setup changes report old/new values and unsupported settings.
+    - [ ] Tests cover section-specific targeting and fallback behavior.
+  - Notes/Evidence: WordApi 1.1 includes `Document.sections`, `Section.body`, `Section.getHeader`, and `Section.getFooter`; current Pi-Office context reads `Document.pageSetup` but does not provide structured write tools. Some richer header/footer import options appear in later requirement sets, so tool copy must be requirement-aware.
+
+- [ ] FEATURE-014: Add Word fields, TOC, bibliography, and citation tooling
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: Pi-Office currently reads Word fields and can insert a field, but it does not expose structured field update/lock/unlink workflows, table-of-contents/table-of-figures/table-of-authorities operations, bibliography source management, citation placeholders, or cross-reference-safe guidance. Long-form research papers, policy docs, and legal reports depend on these structural features. The assistant should distinguish field results from field codes and avoid text-only edits that corrupt generated Word structures.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Expand field inventory to include field codes, result text, type, lock state, range anchors, and safe update options.
+    - [ ] Define field actions for update, lock/unlock, select, insert, and safe replacement of field results where supported.
+    - [ ] Add table of contents, table of figures, and table of authorities inventory and operations for add/update page numbers/delete/mark entries when APIs are available.
+    - [ ] Add bibliography/source inventory and citation-placeholder workflows that do not invent sources.
+    - [ ] Add prompt guidance for research-paper and legal workflows to use field/TOC/bibliography tools before text rewrites.
+    - [ ] Add tests for field update/lock behavior, TOC inventory/update contracts, source/citation no-invention rules, and unsupported-host fallback.
+  - Acceptance Criteria:
+    - [ ] Long-form reports, research papers, and legal documents can be structurally updated without manual field work for supported operations.
+    - [ ] The assistant can explain whether it edited field codes, field results, or generated table structures.
+    - [ ] Citation and bibliography workflows never fabricate sources and preserve user-provided source provenance.
+    - [ ] Tests protect against corrupting fields or generated tables through plain text replacement.
+  - Notes/Evidence: The Word API reference includes `Field`, `FieldCollection`, `TableOfContents`, `TableOfFigures`, `TableOfAuthorities`, `Bibliography`, `Source`, and related collection/options objects. Current Pi-Office has field anchors and `insertField`, but no complete structural field/document-reference workflow.
+
+- [ ] FEATURE-015: Add Word content-control template automation
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: Pi-Office can inspect and insert some content controls, but it does not provide a complete template automation layer for updating, validating, and filling controls by title/tag/type. WordApi 1.9 adds richer dropdown and combo box list-item support. This is a strong foundation for AI-assisted reusable templates, contract variables, form filling, guided report generation, and provenance-bound placeholders where edits must map back to named controls instead of fuzzy document text.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Add a first-class content-control inventory grouped by title, tag, type, subtype, placeholder, lock flags, remove-when-edited state, and text preview.
+    - [ ] Define structured actions for updating control text, clearing content, setting metadata, locking/unlocking, deleting wrapper-only versus content, and selecting controls.
+    - [ ] Add checkbox, dropdown, combo box, date, picture, and repeating-section handling where requirement sets support those control types.
+    - [ ] Add WordApi 1.9 list-item operations for dropdown and combo box controls, including add, delete-all, select, and value/display text mapping.
+    - [ ] Add template-fill workflow guidance that maps generated content to control IDs/tags and reports unfilled or ambiguous placeholders.
+    - [ ] Add tests for control inventory, metadata update, text fill, checkbox/dropdown/combobox behavior, lock constraints, and unsupported-host messaging.
+  - Acceptance Criteria:
+    - [ ] AI can fill and maintain reusable Word templates with auditable placeholder/control mapping.
+    - [ ] Content-control updates target explicit IDs/titles/tags instead of fuzzy text when those anchors are available.
+    - [ ] Unsupported control types or host versions produce clear guidance rather than silent fallback edits.
+    - [ ] Tests cover key control types and preserve existing content-control insertion behavior.
+  - Notes/Evidence: WordApi 1.1 introduced content controls and collections; WordApi 1.7/1.9 added richer content-control subtype/list-item surfaces, including checkbox, dropdown list, and combo box support. Current context capture already lists content controls, so the missing piece is structured template automation.
+
+- [ ] FEATURE-016: Add deterministic footnote and endnote body targeting
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: Pi-Office currently reads footnotes/endnotes and can navigate to their reference markers, but the native edit path resolves note targets to the reference range rather than the note body. For research, legal, and policy documents, note text is often the exact content that needs review. This task should make note-body targeting deterministic, tested, and clearly distinct from reference-marker selection.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Add explicit note anchors that include note kind, stable ordinal, reference text, note body preview, and whether the action targets the reference or body.
+    - [ ] Update Word navigation so a note-body target can select or otherwise focus the note body when Office.js supports it, while preserving reference navigation as a separate action.
+    - [ ] Update `applyWordAction` target resolution so edit operations can insert/replace text in footnote/endnote bodies instead of only selecting reference markers.
+    - [ ] Add fallback guidance for hosts that expose note text but cannot select or edit the body through the supported API.
+    - [ ] Update workflow guidance for research paper and legal/professional review to use note-body anchors for footnote/endnote edits.
+    - [ ] Add regression tests proving note-body edits do not accidentally mutate reference markers.
+  - Acceptance Criteria:
+    - [ ] AI can edit footnote/endnote body text precisely when the host exposes a supported body range.
+    - [ ] Reference-marker navigation remains available and is not confused with body editing.
+    - [ ] Unsupported hosts return clear limitation messages with the note text preserved for manual review.
+    - [ ] Regression tests prove note references are not mistaken for note bodies.
+  - Notes/Evidence: Current Word context uses `body.footnotes` and `body.endnotes` and loads `items/body/text` plus `items/reference/text`; current navigation/action code primarily selects `note.reference`. This feature closes the known `FEATURE-004` footnote/endnote body-targeting gap.
+
+- [ ] FEATURE-017: Add first-class Word document search and anchor index
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: Current Word tools expose context snippets, headings, paragraph pages, and some internal search behavior, but there is no first-class search/index tool that returns stable anchors across paragraphs, headings, comments, revisions, fields, tables, content controls, and notes. Large-document workflows need a reliable discovery step before edits so the model can cite and navigate targets instead of relying on fuzzy text guesses or repeated-text replacement.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Define a Word search tool schema with query, scope, object types, match options, max results, and include-context flags.
+    - [ ] Implement document-wide text search using supported Word search APIs and return anchors with paragraph IDs where available.
+    - [ ] Add indexed search over already-readable structures such as headings, comments, revisions, fields, content controls, tables, footnotes, and endnotes.
+    - [ ] Add result ranking and deduping so repeated strings return enough surrounding context for deterministic follow-up edits.
+    - [ ] Add navigation/apply-edit integration so returned anchors can be used directly by `office_navigate`, `edit_doc_text`, and reviewable edit proposals.
+    - [ ] Add tests for repeated text, heading matches, comment/revision/field/control/note matches, max-result limits, and unsupported paragraph IDs.
+  - Acceptance Criteria:
+    - [ ] Large-document workflows can search, cite, navigate, and edit by returned anchors instead of fuzzy text guesses.
+    - [ ] Search results include enough context to distinguish repeated or similar passages.
+    - [ ] Returned anchors are accepted by existing navigation/edit paths where possible.
+    - [ ] Tests cover repeated-text determinism and anchor compatibility.
+  - Notes/Evidence: WordApi 1.1 exposes `Body.search`, `Range.search`, `Paragraph.search`, and search options; WordApi 1.7 adds `Document.search`. Pi-Office already uses paragraph search internally for proposal application, but a public search/index tool would make that targeting auditable before mutation.
+
+- [ ] FEATURE-018: Add Word floating shape, text box, and layout object tools
+  - Category: Feature
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
+  - Details: Pi-Office can read selected Word shapes in desktop-capable hosts and can insert inline pictures, but it does not expose first-class floating shape, text box, canvas, wrapping, positioning, or layout-object edits. WordApiDesktop requirement sets expose shapes, floating pictures, text boxes, canvases, text frames, wrapping, positioning, grouping, and shape fill/line properties. This is lower priority than core text/document-structure work, but valuable for visual resumes, flyers, illustrated docs, callout boxes, and document layout polish.
+  - Dependencies: FEATURE-004 and SECURITY-003.
+  - Subtasks:
+    - [ ] Add desktop-gated shape/textbox/canvas inventory with IDs, names, types, positions, sizes, wrapping, alt text, and anchored paragraph context.
+    - [ ] Define structured actions for inserting text boxes, floating pictures, geometric shapes, and canvases where WordApiDesktop requirement checks pass.
+    - [ ] Add edit actions for move, resize, rotate, wrapping, fill/line color, alt text, select, delete, group/ungroup where supported.
+    - [ ] Preserve inline-picture insertion as the default cross-platform image path and clearly label floating layout tools as desktop-gated.
+    - [ ] Add visual/layout verification guidance that distinguishes Office.js metadata from true viewport screenshots.
+    - [ ] Add tests for capability gating, shape inventory, insertion payloads, selection, alt text, and unsupported web/iPad fallback.
+  - Acceptance Criteria:
+    - [ ] Visual resumes, flyers, and illustrated Word documents can be improved with honest desktop-only capability gating.
+    - [ ] Floating-object operations do not appear in browser-only or unsupported host sessions.
+    - [ ] Inserted or edited shapes report anchors, dimensions, wrapping, and fallback limitations.
+    - [ ] Tests prove desktop-gated tools remain hidden or fail closed when WordApiDesktop support is absent.
+  - Notes/Evidence: WordApiDesktop 1.2 exposes `Body.shapes`, `Document.activeWindow`, paragraph/range floating shape insertion, `Shape`, `ShapeCollection`, `ShapeFill`, `ShapeTextWrap`, and `TextFrame` APIs. Current Pi-Office reads selected shapes when `WordApiDesktop` support exists, but only inline-picture insertion is wired as a first-class Word edit.
 
 ### Improvements
 
