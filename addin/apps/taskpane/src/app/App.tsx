@@ -1579,7 +1579,7 @@ export function App() {
   const handleStartConnectorOAuth = useCallback(async (connectorId: string) => {
     try {
       const response = await postJson<ConnectorOAuthStartResponse>("/v1/connectors/oauth/start", { connectorId });
-      pushSystemMessage("Connector sign-in opened in your browser. Complete sign-in in the setup panel.");
+      pushSystemMessage("Connector sign-in is ready. Complete sign-in in the dedicated sign-in window.");
       await refreshConnectorState(connectorScopeContext);
       return response;
     } catch (error) {

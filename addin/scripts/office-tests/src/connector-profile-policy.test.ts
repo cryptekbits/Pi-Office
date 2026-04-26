@@ -224,9 +224,9 @@ test("granola OAuth starts browser sign-in and browser-direct MCP verification e
 
   const started = await runtime.startOAuth(saved.status.id);
   assert.equal(started.callbackUrl, "https://localhost:3443/connector-oauth-callback");
-  assert.equal(openedUrls.length, 1);
-  assert.match(openedUrls[0]!, /^https:\/\/mcp-auth\.granola\.ai\/oauth2\/authorize/);
-  assert.match(openedUrls[0]!, /code_challenge=/);
+  assert.equal(openedUrls.length, 0);
+  assert.match(started.url ?? "", /^https:\/\/mcp-auth\.granola\.ai\/oauth2\/authorize/);
+  assert.match(started.url ?? "", /code_challenge=/);
 
   const completed = await runtime.completeOAuth({ state: started.state, code: "auth-code" });
   assert.equal(completed.status.healthState, "ready");

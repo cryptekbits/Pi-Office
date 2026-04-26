@@ -387,6 +387,41 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Normal Office sideload behavior remains unchanged.
   - Notes/Evidence: Initial reproduction showed the header stuck at `Bridge offline`, context bar `Waiting for Office...`, and a visible error `Connection failed: Unsupported Office host: undefined`; browser logs showed `Warning: Office.js is loaded outside of Office client`. Closed 2026-04-26 by adding `BROWSER_DEBUG_OFFICE_CAPABILITY`, `createBrowserDebugOfficeState`, and dev-only fallback gating in `office/shared.ts`; wiring `App.tsx` to open a synthetic unsaved preview session when Office host discovery fails in dev; filtering Office document tools out of preview model sessions in `inprocess-kernel.ts`; and documenting `?piOfficeHost=excel|powerpoint` plus `?piOfficeBrowserDebug=0` in `README.md`. Browser verification showed `Bridge ready`, `Browser Preview (Word)`, one preview notice, and no connection-failed card. Regression coverage added in `browser-debug-office-state.test.ts` and `protocol-parity.test.ts`. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 144 tests, `npm run build:addin`, `npm run check:bundle`, and `npm run validate:manifests`.
 
+- [x] BUG-013: Hosted HTTP connector wizard shows companion warning and OAuth opens from runtime
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 stakeholder review of hosted HTTP connector setup copy and OAuth launch behavior.
+  - Details: Hosted HTTP connector profiles that are not yet proven browser-direct showed the same "Optional companion not connected" warning as local STDIO profiles, making online OAuth setup feel blocked by the companion. The OAuth URL was also opened by the runtime after async setup/metadata work, which can be treated as a non-user-initiated popup and does not match the dedicated-window pattern used by diagram expansion.
+  - Dependencies: FEATURE-008.
+  - Subtasks:
+    - [x] Suppress the optional-companion warning/copy for hosted HTTP setup profiles while keeping local-only companion warnings.
+    - [x] Move OAuth URL opening to the UI click path using a dedicated named popup window before async setup work.
+    - [x] Keep the runtime responsible for generating OAuth state/URL, not opening browser windows.
+    - [x] Add a fallback sign-in link when the dedicated popup is blocked.
+  - Acceptance Criteria:
+    - [x] Hosted HTTP connector setup no longer displays the optional companion warning in the Connect step.
+    - [x] Local STDIO/local companion profiles still display companion requirements.
+    - [x] OAuth sign-in is launched through a dedicated user-initiated window and the runtime returns the generated URL.
+    - [x] Typecheck, Office tests, whitespace checks, and browser UI inspection pass.
+  - Notes/Evidence: Closed 2026-04-27 by adding hosted-HTTP-aware warning suppression in `IntegrationsSection.tsx`, changing hosted HTTP connection copy, opening a named `pi-connector-oauth` popup synchronously from the Sign in button before async save/start calls, removing `window.open` from `BrowserConnectorRuntime.startOAuth`, and updating OAuth tests to assert the runtime returns the URL without opening a window. Browser QA at `https://localhost:3443/` verified Slack hosted HTTP setup shows no optional-companion warning and says sign-in opens in a dedicated window. Validation: `npm run typecheck:addin`, `npm run test:office` (148 tests), `npm run build`, `npm run validate:manifests`, and `git diff --check`. `npm run check:bundle` failed because the generated connector catalog pushes the main taskpane bundle over budget; tracked separately as `BUG-014`.
+
+- [ ] BUG-014: Connector catalog work pushes main taskpane bundle above budget
+  - Category: Bug
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 `BUG-013` validation.
+  - Details: `npm run build` succeeds, but `npm run check:bundle` now reports the main taskpane JS bundle at 1639.1 KiB, above the 1562.5 KiB budget. The likely contributor is the provenance-generated connector catalog and related Integrations runtime remaining in the initial taskpane chunk instead of being code-split behind Settings/Integrations.
+  - Dependencies: FEATURE-008.
+  - Subtasks:
+    - [ ] Confirm the exact bundle delta from generated connector catalog and Integrations imports.
+    - [ ] Move connector catalog/data-heavy Integrations code behind a lazy Settings/Integrations boundary or otherwise pack the generated catalog more compactly.
+    - [ ] Re-run `npm run build` and `npm run check:bundle`.
+  - Acceptance Criteria:
+    - [ ] `npm run check:bundle` passes without merely raising the budget unless a maintainer accepts a documented budget change.
+    - [ ] Settings/Integrations still load without visible delay or broken connector setup.
+  - Notes/Evidence: `npm run check:bundle` failed after a clean `npm run build` with `[bundle-budget] Main JS bundle exceeds budget: 1639.1 KiB > 1562.5 KiB.` The `BUG-013` code change is small, so this should be treated as a follow-up to the larger generated connector catalog payload rather than solved by trimming warning copy.
+
 ### Features
 
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards

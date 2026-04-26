@@ -910,7 +910,8 @@ export class BrowserConnectorRuntime {
     }
 
     const profile = catalog ? profileForConnector(catalog, stored.setupProfileId) : undefined;
-    if (!profileIsBrowserDirect(profile)) {
+    const canUseMcpOAuthDiscovery = profile?.transport === "remote_http" && profile.authMethod === "oauth" && !profileSetupDisabled(profile);
+    if (!canUseMcpOAuthDiscovery) {
       const url = trimString(catalog?.authUrl);
       const state = createOAuthState();
       const issuedAt = nowIso();
@@ -927,9 +928,6 @@ export class BrowserConnectorRuntime {
       stored.oauthLastAuthError = "OAuth sign-in in progress.";
       stored.updatedAt = issuedAt;
       this.upsertRecord(stored);
-      if (url && typeof window !== "undefined" && typeof window.open === "function") {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
       this.appendLog({
         connectorId,
         connectorName: stored.name ?? catalog?.name ?? connectorId,
@@ -1021,9 +1019,6 @@ export class BrowserConnectorRuntime {
     stored.updatedAt = issuedAt;
     this.upsertRecord(stored);
 
-    if (typeof window !== "undefined" && typeof window.open === "function") {
-      window.open(url.toString(), "_blank", "noopener,noreferrer");
-    }
     this.appendLog({
       connectorId,
       connectorName: stored.name ?? catalog?.name ?? connectorId,

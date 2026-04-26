@@ -249,6 +249,13 @@ function setupProfileIsBrowserDirect(profile: ConnectorSetupProfile | undefined)
   return profile?.transport === "remote_http" && profile.browserDirect === "supported" && profile.requiresCompanion !== true && profile.setupDisabled !== true;
 }
 
+function setupProfileIsHostedHttp(profile: ConnectorSetupProfile | undefined): boolean {
+  if (profile?.transport !== "remote_http") return false;
+  const endpoint = profile.endpoint ?? "";
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(endpoint)) return false;
+  return profile.availability !== "needs_companion";
+}
+
 function setupProfileDisabled(profile: ConnectorSetupProfile | undefined): boolean {
   return profile?.setupDisabled === true || profile?.availability === "planned" || profile?.officialness === "planned";
 }
@@ -279,6 +286,60 @@ function profileNeedsCommunityWarning(profile: ConnectorSetupProfile | undefined
     profile?.officialness === "provider_reference" ||
     profile?.officialness === "deprecated" ||
     profile?.officialness === "experimental";
+}
+
+function connectorOAuthWindowFeatures(): string {
+  const screenWidth = typeof window !== "undefined" ? window.screen?.width ?? 1200 : 1200;
+  const screenHeight = typeof window !== "undefined" ? window.screen?.height ?? 900 : 900;
+  const width = Math.min(920, Math.max(560, Math.round(screenWidth * 0.72)));
+  const height = Math.min(860, Math.max(620, Math.round(screenHeight * 0.82)));
+  const left = Math.max(0, Math.round((screenWidth - width) / 2));
+  const top = Math.max(0, Math.round((screenHeight - height) / 2));
+  return `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+}
+
+function openConnectorOAuthWindow(): Window | null {
+  if (typeof window === "undefined" || typeof window.open !== "function") return null;
+  const popup = window.open("about:blank", "pi-connector-oauth", connectorOAuthWindowFeatures());
+  if (!popup) return null;
+  try {
+    popup.document.open();
+    popup.document.write([
+      "<!doctype html>",
+      "<html>",
+      "<head><meta charset=\"utf-8\"><title>Pi-Office connector sign-in</title></head>",
+      "<body style=\"font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:32px;color:#211d19;\">",
+      "<h1 style=\"font-size:18px;margin:0 0 8px;\">Opening connector sign-in...</h1>",
+      "<p style=\"margin:0;color:#6f6860;line-height:1.5;\">Pi-Office is preparing the provider sign-in page.</p>",
+      "</body>",
+      "</html>",
+    ].join(""));
+    popup.document.close();
+  } catch {
+    // Cross-window document access can fail in hardened hosts; the navigation below still works.
+  }
+  try { popup.focus(); } catch { /* ignore */ }
+  return popup;
+}
+
+function navigateConnectorOAuthWindow(popup: Window | null, url: string | undefined): boolean {
+  if (!url) return false;
+  if (popup && !popup.closed) {
+    try {
+      popup.location.href = url;
+      popup.focus();
+      return true;
+    } catch {
+      // Fall through to opening the provider URL directly.
+    }
+  }
+  if (typeof window === "undefined" || typeof window.open !== "function") return false;
+  return Boolean(window.open(url, "pi-connector-oauth", connectorOAuthWindowFeatures()));
+}
+
+function closeConnectorOAuthWindow(popup: Window | null): void {
+  if (!popup || popup.closed) return;
+  try { popup.close(); } catch { /* ignore */ }
 }
 
 function selectSetupProfile(
@@ -745,6 +806,7 @@ export function IntegrationsSection({
     [companion, draft?.setupProfileId, selectedConnector, selectedStatus?.setupProfileId],
   );
   const selectedDraftNeedsCompanion = setupProfileNeedsCompanion(selectedDraftProfile, draft?.transport);
+  const selectedDraftNeedsCompanionNotice = selectedDraftNeedsCompanion && !setupProfileIsHostedHttp(selectedDraftProfile);
 
   useEffect(() => {
     if (!selectedKey) return;
@@ -942,6 +1004,7 @@ export function IntegrationsSection({
 
   async function handleStartOAuth(targetId?: string) {
     let connectorId = targetId ?? selectedStatus?.id;
+    let oauthWindow: Window | null = null;
     if (!connectorId) {
       if (!draft) {
         setError("Choose a connector before starting sign-in.");
@@ -952,20 +1015,27 @@ export function IntegrationsSection({
         setError(message);
         return;
       }
+      oauthWindow = openConnectorOAuthWindow();
       try {
         const saved = await onConnectConnector(buildRequest(draft, scopeContext));
         connectorId = saved.status.id;
         setSelectedKey(saved.status.id);
         setPrepareNonce((n) => n + 1);
       } catch (reason) {
+        closeConnectorOAuthWindow(oauthWindow);
         setError(reason instanceof Error ? reason.message : String(reason));
         return;
       }
+    } else {
+      oauthWindow = openConnectorOAuthWindow();
     }
     setWorking("oauth");
     setError(undefined);
     try {
       const started = await onStartOAuth(connectorId);
+      if (!navigateConnectorOAuthWindow(oauthWindow, started.url)) {
+        setError("Sign-in popup was blocked. Use the sign-in link below or allow popups for Pi-Office.");
+      }
       setPendingOAuth((current) => ({
         ...current,
         [connectorId]: {
@@ -974,8 +1044,9 @@ export function IntegrationsSection({
           url: started.url,
         },
       }));
-      setLiveMessage("OAuth sign-in started. Complete sign-in after authenticating in the browser.");
+      setLiveMessage("OAuth sign-in started. Complete sign-in in the dedicated sign-in window.");
     } catch (reason) {
+      closeConnectorOAuthWindow(oauthWindow);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setWorking(undefined);
@@ -1510,7 +1581,7 @@ export function IntegrationsSection({
                   {wizardStep === 2 && (
                     <div className="connector-wizard-section">
                       <h4>Connect</h4>
-                      {selectedDraftNeedsCompanion ? (
+                      {selectedDraftNeedsCompanionNotice ? (
                         <div className={`settings-note integration-note ${companionIsOnline(companion) ? "integration-note-info" : "integration-note-warning"}`}>
                           <strong>Optional companion</strong>{" "}
                           {companionIsOnline(companion)
@@ -1604,7 +1675,9 @@ export function IntegrationsSection({
                           <p className="settings-note">
                             {connectionTypeUserLabel(draft.transport)} — {setupProfileIsBrowserDirect(selectedDraftProfile)
                               ? "verified and executed directly from the taskpane after sign-in."
-                              : selectedDraftNeedsCompanion
+                              : setupProfileIsHostedHttp(selectedDraftProfile)
+                                ? "hosted MCP URL saved in Pi-Office; sign-in opens in a dedicated window."
+                              : selectedDraftNeedsCompanionNotice
                                 ? "verified and executed through the optional Pi-Office companion on this device."
                                 : "saved in the taskpane profile."}
                           </p>
@@ -1709,6 +1782,12 @@ export function IntegrationsSection({
                             <p className="settings-note">
                               Waiting for a verified OAuth callback. Manual completion is disabled; sign-in expires at{" "}
                               {new Date(selectedPendingOAuth.expiresAt).toLocaleTimeString()}.
+                              {selectedPendingOAuth.url ? (
+                                <>
+                                  {" "}
+                                  <a href={selectedPendingOAuth.url} target="_blank" rel="noreferrer">Open sign-in page</a>
+                                </>
+                              ) : null}
                             </p>
                           )}
                         </div>
@@ -1975,7 +2054,7 @@ export function IntegrationsSection({
                       <p className="settings-note">
                         Save persists configuration on this device. Check connection discovers tools, disables unsafe ones, and activates the connector for chat when verification succeeds.
                       </p>
-                      {draft && selectedDraftNeedsCompanion && !companionIsOnline(companion) ? (
+                      {draft && selectedDraftNeedsCompanionNotice && !companionIsOnline(companion) ? (
                         <div className="settings-note integration-note integration-note-warning">
                           Companion is offline. Start discovery on the Companion tab, then use Check connection.
                         </div>
