@@ -80,10 +80,13 @@ import {
   type PromptSuggestionRequest,
   type PromptSuggestionResponse,
   type ProviderAuthDescriptor,
+  type ProviderAuthMethod,
   type ProviderAuthState,
   type ProviderCatalogResponse,
   type ProviderDescriptor,
   type ProviderModelDescriptor,
+  type ProviderRuntimeSurface,
+  type ProviderSupportStatus,
   type SessionStatsResponse,
   type SetModelRequest,
   type ThinkingCapabilities,
@@ -134,7 +137,6 @@ const AUTH_CRYPTO_KEY_STORAGE_KEY = "pi-office-auth-key-v1";
 const CHECKPOINT_STORAGE_KEY_PREFIX = "pi-office-checkpoints:";
 const MAX_CHECKPOINT_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_CHECKPOINTS_PER_DOC = 50;
-const BROWSER_UNSUPPORTED_PROVIDERS = new Set<string>(["amazon-bedrock"]);
 const PROVIDER_AUTH_STATE_VALUES = new Set<ProviderAuthState>([
   "not_configured",
   "credential_stored",
@@ -155,8 +157,180 @@ interface StoredCheckpointDocument {
   payloads: Record<string, DocumentCheckpointPayload>;
 }
 
+interface BrowserProviderCapability {
+  supportStatus: ProviderSupportStatus;
+  runtimeSurface: ProviderRuntimeSurface;
+  authMethods: ProviderAuthMethod[];
+  apiKeySupported: boolean;
+  oauthSupported: boolean;
+  browserCallable: boolean;
+  companionRequired: boolean;
+  subscriptionBacked: boolean;
+  imageGenerationSupported: boolean;
+  capabilityNote?: string | undefined;
+}
+
+const DEFAULT_PROVIDER_CAPABILITY: BrowserProviderCapability = {
+  supportStatus: "research_only",
+  runtimeSurface: "not_implemented",
+  authMethods: [],
+  apiKeySupported: false,
+  oauthSupported: false,
+  browserCallable: false,
+  companionRequired: false,
+  subscriptionBacked: false,
+  imageGenerationSupported: false,
+  capabilityNote: "Pi-Office has not classified this provider for browser taskpane execution yet.",
+};
+
+const BROWSER_API_KEY_CAPABILITY: BrowserProviderCapability = {
+  supportStatus: "supported",
+  runtimeSurface: "browser_taskpane",
+  authMethods: ["api_key"],
+  apiKeySupported: true,
+  oauthSupported: false,
+  browserCallable: true,
+  companionRequired: false,
+  subscriptionBacked: false,
+  imageGenerationSupported: false,
+};
+
+const PROVIDER_CAPABILITIES: Record<string, BrowserProviderCapability> = {
+  "amazon-bedrock": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["aws_credentials", "manual_token"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: false,
+    imageGenerationSupported: false,
+    capabilityNote: "Amazon Bedrock needs AWS credential discovery or bearer-token handling in the companion, not browser localStorage.",
+  },
+  anthropic: {
+    ...BROWSER_API_KEY_CAPABILITY,
+    authMethods: ["api_key", "oauth"],
+    capabilityNote: "Anthropic API keys work in the taskpane. Claude subscription OAuth is planned for companion-owned auth.",
+  },
+  "azure-openai-responses": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["api_key"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: false,
+    imageGenerationSupported: false,
+    capabilityNote: "Azure OpenAI requires endpoint, deployment, and tenant-specific configuration before Pi-Office can call it honestly.",
+  },
+  cerebras: BROWSER_API_KEY_CAPABILITY,
+  "github-copilot": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["oauth"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: true,
+    imageGenerationSupported: false,
+    capabilityNote: "GitHub Copilot requires OAuth/subscription token brokerage; Pi-Office does not start that flow from the browser taskpane yet.",
+  },
+  google: BROWSER_API_KEY_CAPABILITY,
+  "google-antigravity": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["oauth"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: true,
+    imageGenerationSupported: false,
+    capabilityNote: "Antigravity uses Google OAuth and should be handled by the companion before it is offered as executable.",
+  },
+  "google-gemini-cli": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["oauth"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: true,
+    imageGenerationSupported: false,
+    capabilityNote: "Gemini CLI / Cloud Code Assist uses Google OAuth and project state that the browser taskpane does not own.",
+  },
+  "google-vertex": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["api_key", "cloud_identity"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: false,
+    imageGenerationSupported: false,
+    capabilityNote: "Vertex AI needs project, location, and ADC/API-key handling outside the current browser-only provider setup.",
+  },
+  groq: BROWSER_API_KEY_CAPABILITY,
+  huggingface: BROWSER_API_KEY_CAPABILITY,
+  "kimi-coding": BROWSER_API_KEY_CAPABILITY,
+  minimax: BROWSER_API_KEY_CAPABILITY,
+  "minimax-cn": BROWSER_API_KEY_CAPABILITY,
+  mistral: BROWSER_API_KEY_CAPABILITY,
+  openai: {
+    ...BROWSER_API_KEY_CAPABILITY,
+    imageGenerationSupported: true,
+    capabilityNote: "OpenAI API keys work in the taskpane for chat and the current OpenAI-only image generation tools.",
+  },
+  "openai-codex": {
+    supportStatus: "planned",
+    runtimeSurface: "companion",
+    authMethods: ["oauth"],
+    apiKeySupported: false,
+    oauthSupported: false,
+    browserCallable: false,
+    companionRequired: true,
+    subscriptionBacked: true,
+    imageGenerationSupported: false,
+    capabilityNote: "OpenAI Codex models require ChatGPT subscription OAuth; Pi-Office needs companion token brokerage before exposing them.",
+  },
+  opencode: BROWSER_API_KEY_CAPABILITY,
+  "opencode-go": BROWSER_API_KEY_CAPABILITY,
+  openrouter: BROWSER_API_KEY_CAPABILITY,
+  "vercel-ai-gateway": BROWSER_API_KEY_CAPABILITY,
+  xai: BROWSER_API_KEY_CAPABILITY,
+  zai: BROWSER_API_KEY_CAPABILITY,
+};
+
+function getProviderCapability(provider: string): BrowserProviderCapability {
+  if (provider.startsWith("faux")) return BROWSER_API_KEY_CAPABILITY;
+  return PROVIDER_CAPABILITIES[provider] ?? DEFAULT_PROVIDER_CAPABILITY;
+}
+
 function isBrowserProviderSupported(provider: string): boolean {
-  return !BROWSER_UNSUPPORTED_PROVIDERS.has(provider);
+  return getProviderCapability(provider).browserCallable;
+}
+
+function isProviderConfigured(auth: ProviderAuthDescriptor, capability: BrowserProviderCapability): boolean {
+  return capability.browserCallable && capability.apiKeySupported && auth.credentialStored;
+}
+
+function providerCapabilityFields(capability: BrowserProviderCapability) {
+  return {
+    supportStatus: capability.supportStatus,
+    runtimeSurface: capability.runtimeSurface,
+    authMethods: capability.authMethods,
+    apiKeySupported: capability.apiKeySupported,
+    browserCallable: capability.browserCallable,
+    companionRequired: capability.companionRequired,
+    subscriptionBacked: capability.subscriptionBacked,
+    imageGenerationSupported: capability.imageGenerationSupported,
+    ...(capability.capabilityNote ? { capabilityNote: capability.capabilityNote } : {}),
+  };
 }
 
 type BrowserImageModelCatalogEntry = Omit<
@@ -844,7 +1018,7 @@ class BrowserModelRegistry {
   constructor(private readonly authStore: BrowserAuthStore) {}
 
   find(provider: string, modelId: string): Model<any> | undefined {
-    const models = this.getModelsForProvider(provider);
+    const models = this.getExecutableModelsForProvider(provider);
     return models.find((model) => model.id === modelId);
   }
 
@@ -852,11 +1026,11 @@ class BrowserModelRegistry {
     const providers: ProviderDescriptor[] = [];
     for (const provider of getProviders()) {
       const providerId = String(provider);
-      if (!isBrowserProviderSupported(providerId)) continue;
-      const models = this.getModelsForProvider(provider);
+      const capability = getProviderCapability(providerId);
+      const models = this.getCatalogModelsForProvider(provider);
       if (!models.length) continue;
       const auth = this.authStore.getAuthState(providerId);
-      const configured = auth.credentialStored;
+      const configured = isProviderConfigured(auth, capability);
       const descriptors: ProviderModelDescriptor[] = models
         .map((model) => {
           const totalCostPer1k = (model.cost.input + model.cost.output) / 2;
@@ -866,14 +1040,15 @@ class BrowserModelRegistry {
             providerLabel: titleCase(providerId),
             modelId: model.id,
             modelName: model.name,
+            ...providerCapabilityFields(capability),
             authState: auth.state,
             credentialStored: auth.credentialStored,
             verifiedUsable: auth.verifiedUsable,
             verificationError: auth.lastVerificationError,
             verifiedAt: auth.verifiedAt,
             configured,
-            oauthSupported: false,
-            usesApiKey: true,
+            oauthSupported: capability.oauthSupported,
+            usesApiKey: capability.apiKeySupported,
             contextWindow: model.contextWindow,
             costTier,
             supportsThinking: model.reasoning,
@@ -885,13 +1060,14 @@ class BrowserModelRegistry {
       providers.push({
         provider: providerId,
         label: titleCase(providerId),
+        ...providerCapabilityFields(capability),
         authState: auth.state,
         credentialStored: auth.credentialStored,
         verifiedUsable: auth.verifiedUsable,
         verificationError: auth.lastVerificationError,
         verifiedAt: auth.verifiedAt,
         configured,
-        oauthSupported: false,
+        oauthSupported: capability.oauthSupported,
         models: descriptors,
       });
     }
@@ -901,14 +1077,17 @@ class BrowserModelRegistry {
   }
 
   getAuthStatus(): AuthStatusResponse {
-    const providerIds = getProviders().map((provider) => String(provider)).filter(isBrowserProviderSupported);
+    const providerIds = getProviders().map((provider) => String(provider));
     const providerStates = this.authStore.listAuthStates(providerIds);
     const storedProviders = providerStates.filter((entry) => entry.credentialStored).map((entry) => entry.provider);
     const verifiedProviders = providerStates.filter((entry) => entry.verifiedUsable).map((entry) => entry.provider);
+    const configuredProviders = providerStates
+      .filter((entry) => entry.verifiedUsable && isBrowserProviderSupported(entry.provider))
+      .map((entry) => entry.provider);
     return {
       storedProviders,
       oauthProviders: [],
-      configuredProviders: verifiedProviders,
+      configuredProviders,
       verifiedProviders,
       unverifiedProviders: providerStates
         .filter((entry) => entry.state === "credential_stored")
@@ -939,13 +1118,13 @@ class BrowserModelRegistry {
   getPreferredModel(): Model<any> | undefined {
     for (const providerId of this.authStore.list()) {
       if (!isBrowserProviderSupported(providerId)) continue;
-      const models = this.getModelsForProvider(providerId);
+      const models = this.getExecutableModelsForProvider(providerId);
       if (models.length) return models[0];
     }
 
     const fallbackProvider = getProviders().find((provider) => isBrowserProviderSupported(String(provider)));
     if (!fallbackProvider) return undefined;
-    return this.getModelsForProvider(String(fallbackProvider))[0];
+    return this.getExecutableModelsForProvider(String(fallbackProvider))[0];
   }
 
   getThinkingCapabilities(model: Model<any>, currentLevel: ThinkingLevel): ThinkingCapabilities {
@@ -990,13 +1169,21 @@ class BrowserModelRegistry {
     };
   }
 
-  private getModelsForProvider(provider: string): Model<any>[] {
-    if (!isBrowserProviderSupported(provider)) return [];
+  hasImageModelKey(modelKey: string): boolean {
+    return IMAGE_MODEL_CATALOG.some((entry) => entry.key === modelKey);
+  }
+
+  private getCatalogModelsForProvider(provider: string): Model<any>[] {
     try {
       return getModels(provider as never) as Model<any>[];
     } catch {
       return [];
     }
+  }
+
+  private getExecutableModelsForProvider(provider: string): Model<any>[] {
+    if (!isBrowserProviderSupported(provider)) return [];
+    return this.getCatalogModelsForProvider(provider);
   }
 }
 
@@ -2822,6 +3009,15 @@ class InProcessKernel {
   private userPreferences: UserPreferences = { ...DEFAULT_USER_PREFERENCES };
 
   setPreferences(patch: Partial<UserPreferences>): { ok: true; preferences: UserPreferences } {
+    if (
+      typeof patch.defaultImageModel === "string" &&
+      patch.defaultImageModel &&
+      !this.modelRegistry.hasImageModelKey(patch.defaultImageModel)
+    ) {
+      throw new Error(
+        `Image model ${patch.defaultImageModel} is not available in the browser taskpane image catalog.`,
+      );
+    }
     this.userPreferences = { ...this.userPreferences, ...patch };
     return { ok: true, preferences: { ...this.userPreferences } };
   }
@@ -2982,11 +3178,27 @@ class InProcessKernel {
       if (!record?.provider || !record.apiKey) {
         throw new Error("provider and apiKey are required.");
       }
+      const capability = getProviderCapability(record.provider);
+      if (!capability.browserCallable || !capability.apiKeySupported) {
+        throw new Error(
+          `${titleCase(record.provider)} does not accept browser-stored API keys in Pi-Office yet. ${
+            capability.capabilityNote ?? "Use a supported API-key provider or wait for companion-owned auth."
+          }`,
+        );
+      }
       await this.authStore.setApiKey(record.provider, record.apiKey);
       return { ok: true } as T;
     }
     if (method === "POST" && path === "/v1/auth/start") {
-      throw new Error("OAuth sign-in is unavailable in browser-only mode. Use API keys in Settings.");
+      const request = body as { provider?: string; providerId?: string } | undefined;
+      const provider = request?.providerId ?? request?.provider ?? "";
+      const capability = getProviderCapability(provider);
+      if (provider && capability.authMethods.includes("oauth")) {
+        throw new Error(
+          `${titleCase(provider)} requires companion-owned OAuth/token brokerage before Pi-Office can start sign-in.`,
+        );
+      }
+      throw new Error("OAuth sign-in is unavailable in browser-only mode. Use a supported API-key provider in Settings.");
     }
 
     if (method === "DELETE" && path === "/v1/auth") {

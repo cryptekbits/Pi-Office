@@ -255,23 +255,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Model selection cannot imply a provider is usable when only an unverified credential string exists.
   - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` accepting API keys and using `hasAuth`, plus `addin/apps/taskpane/src/app/components/SettingsPage.tsx` deriving ready counts from model `configured`. Closed 2026-04-26 by adding shared provider auth states (`not_configured`, `credential_stored`, `verified_usable`, `verification_failed`), preserving legacy `configured` as credential-present while exposing explicit `credentialStored`/`verifiedUsable` metadata, migrating old stored keys to unverified, promoting providers after successful model/image requests, demoting 401/403/auth failures, and updating Settings/model-picker labels to show `Unverified` or `Auth failed` instead of `Ready`. Regression coverage added in `addin/scripts/office-tests/src/provider-auth-readiness.test.ts` for newly saved, legacy stored, auth-failed, and recovered credentials. Validation: `npm run typecheck:addin` passed; `npm run test:office` passed with 101 tests; `npm run build:addin` passed; `npm run typecheck:companion` passed; `npm run check:bundle` passed with `main.js=1436.3 KiB`; `npm run validate:manifests` validated Word, Excel, and PowerPoint.
 
-- [ ] BUG-006: Image-generation UI and catalog imply providers that browser runtime cannot execute
+- [x] BUG-006: Image-generation UI and catalog imply providers that browser runtime cannot execute
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: 2026-04-26 product-goal review and provider/auth/privacy subagent review.
   - Details: Settings copy tells users to configure OpenAI, Google, or OpenRouter for image models, and protocol constants include multiple image API styles. The browser runtime currently hard-errors unless the selected image model provider is OpenAI. This creates capability drift for visual reasoning and diagram/image workflows.
   - Dependencies: FEATURE-002 if non-OpenAI image providers are implemented through the broader provider matrix.
   - Subtasks:
-    - [ ] Decide whether v1 image generation is OpenAI-only or multi-provider.
-    - [ ] If OpenAI-only, restrict catalog/UI copy to OpenAI and explain other providers are not implemented yet.
-    - [ ] If multi-provider, implement Google/OpenRouter image execution paths with provider-specific request/response handling.
-    - [ ] Add tests proving the configured image model catalog matches executable providers.
+    - [x] Decide whether v1 image generation is OpenAI-only or multi-provider.
+    - [x] Restrict catalog/UI copy to OpenAI and explain other providers are not implemented yet.
+    - [x] Defer Google/OpenRouter image execution paths behind future provider-specific runtime work.
+    - [x] Add tests proving the configured image model catalog matches executable providers.
   - Acceptance Criteria:
-    - [ ] The UI never lists an image provider as usable unless runtime execution exists.
-    - [ ] Unsupported image providers fail at configuration/catalog time with clear messaging, not only during generation.
-    - [ ] Tests cover image-provider catalog/runtime consistency.
-  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/app/components/SettingsPage.tsx` mentioning OpenAI/Google/OpenRouter and `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` throwing for non-OpenAI image generation.
+    - [x] The UI never lists an image provider as usable unless runtime execution exists.
+    - [x] Unsupported image providers fail at configuration/catalog time with clear messaging, not only during generation.
+    - [x] Tests cover image-provider catalog/runtime consistency.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/app/components/SettingsPage.tsx` mentioning OpenAI/Google/OpenRouter and `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` throwing for non-OpenAI image generation. Closed 2026-04-26 by making Settings image-generation copy OpenAI-only, keeping `/v1/image-models` OpenAI-only, adding `imageGenerationSupported` provider capability metadata, and rejecting unsupported `defaultImageModel` preference writes before generation. Regression coverage in `addin/scripts/office-tests/src/provider-auth-readiness.test.ts` proves the image catalog is OpenAI-only and non-catalog image model preferences fail during configuration. Validation passed: `npm run typecheck:addin`, `npm run test:office`, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 - [x] BUG-007: Visual capture tools overstate screenshot and range-image fidelity
   - Category: Bug
@@ -370,22 +370,22 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 - [ ] FEATURE-002: Define and implement provider/auth matrix for subscription-backed and API-key-backed AI access
   - Category: Feature
-  - Status: open
+  - Status: in_progress
   - Priority: P1
   - Source: 2026-04-26 product-goal narrative and implementation review.
   - Details: The product thesis is that users should be able to bring an existing AI subscription or inference provider instead of buying another enterprise add-in subscription. Current browser provider catalog discovers Pi models and supports API-key storage, but reports `oauthSupported: false` for providers and `/v1/auth/start` throws that OAuth is unavailable in browser-only mode. Provider support needs an explicit capability matrix covering API key, OAuth, official SDK constraints, subscription-backed routes, browser compatibility, companion requirements, image support, and any legal/provider policy restrictions.
   - Dependencies: SECURITY-004 for user-facing disclosure; BUG-005 for honest readiness state.
   - Subtasks:
-    - [ ] Create a provider/auth matrix for Pi, OpenAI/ChatGPT, Anthropic-compatible official paths, GitHub Copilot, OpenCode, OpenRouter, Cloudflare, Vercel, and other target providers.
-    - [ ] Mark each provider as supported, planned, blocked, or research-only with the required auth method and runtime surface.
+    - [x] Create a provider/auth matrix for Pi, OpenAI/ChatGPT, Anthropic-compatible official paths, GitHub Copilot, OpenCode, OpenRouter, Cloudflare, Vercel, and other target providers.
+    - [x] Mark each provider as supported, planned, blocked, or research-only with the required auth method and runtime surface.
     - [ ] Implement provider auth flows one at a time behind honest capability flags.
-    - [ ] Ensure UI copy never advertises OAuth/subscription access until a real flow exists.
-    - [ ] Add provider-level tests for catalog flags, auth start behavior, readiness, and model execution.
+    - [x] Ensure UI copy never advertises OAuth/subscription access until a real flow exists.
+    - [x] Add provider-level tests for catalog flags, auth start behavior, readiness, and model execution.
   - Acceptance Criteria:
-    - [ ] Provider catalog flags match implemented auth/runtime capability.
-    - [ ] Users can distinguish API-key providers, OAuth providers, companion-required providers, and unsupported providers.
-    - [ ] At least one non-API-key provider path is implemented or explicitly deferred with documented constraints before any UI promise.
-  - Notes/Evidence: Review pointed to `BrowserModelRegistry.getProviderCatalog()` hardcoding `oauthSupported: false`, `/v1/auth/start` throwing for browser-only mode, and the new `AGENTS.md` product goal requiring provider flexibility.
+    - [x] Provider catalog flags match implemented auth/runtime capability.
+    - [x] Users can distinguish API-key providers, OAuth providers, companion-required providers, and unsupported providers.
+    - [x] At least one non-API-key provider path is implemented or explicitly deferred with documented constraints before any UI promise.
+  - Notes/Evidence: Review pointed to `BrowserModelRegistry.getProviderCatalog()` hardcoding `oauthSupported: false`, `/v1/auth/start` throwing for browser-only mode, and the new `AGENTS.md` product goal requiring provider flexibility. 2026-04-26 first implementation slice added `docs/provider-auth-matrix.md`, shared provider capability metadata, runtime catalog fields for support status/runtime/auth methods/browser-callable/companion-required/subscription-backed/image support, Settings provider cards that show planned companion/OAuth providers as informational, `/v1/auth/api-key` rejection for non-browser API-key providers, and `/v1/auth/start` errors that distinguish companion-owned OAuth from unsupported browser OAuth. Regression coverage now proves OpenAI is browser/API-key/image capable, Codex/Copilot/Gemini CLI/Antigravity are planned companion OAuth paths, Bedrock is companion-only, OAuth start behavior is honest, and image providers remain OpenAI-only. Real companion-owned OAuth provider implementations remain open under this task. Validation passed: `npm run typecheck:addin`, `npm run test:office`, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 - [ ] FEATURE-003: Add professional workflow packs and host playbooks for high-value Office artifacts
   - Category: Feature

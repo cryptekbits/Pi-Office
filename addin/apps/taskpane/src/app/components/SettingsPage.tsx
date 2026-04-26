@@ -23,6 +23,7 @@ import type {
   CompanionState,
   OfficeDocumentState,
   OfficeStateUpdate,
+  ProviderAuthMethod,
   ProviderDescriptor,
   SessionStatsResponse,
   UserPreferences,
@@ -737,34 +738,51 @@ function ProviderCard({
   const [apiKey, setApiKey] = useState("");
   const [expanded, setExpanded] = useState(false);
   const verifiedCount = provider.models.filter((m) => m.verifiedUsable).length;
-  const statusLabel = provider.verifiedUsable
+  const providerCallable = provider.browserCallable;
+  const statusLabel = !providerCallable
+    ? providerSupportLabel(provider)
+    : provider.verifiedUsable
     ? "Verified"
     : provider.authState === "verification_failed"
       ? "Auth failed"
       : provider.credentialStored
         ? "Unverified"
         : "Not configured";
-  const statusClass = provider.verifiedUsable
+  const statusClass = !providerCallable
+    ? provider.supportStatus === "blocked" || provider.supportStatus === "research_only"
+      ? "provider-status-error"
+      : "provider-status-pending"
+    : provider.verifiedUsable
     ? "provider-status-ready"
     : provider.authState === "verification_failed"
       ? "provider-status-error"
       : provider.credentialStored
         ? "provider-status-pending"
         : "";
-  const authStatusText = provider.verifiedUsable
+  const authStatusText = !providerCallable
+    ? provider.capabilityNote ?? "This provider is not callable from the browser taskpane yet."
+    : provider.verifiedUsable
     ? "Verified credentials found."
     : provider.authState === "verification_failed"
       ? `Stored credential failed verification${lastVerificationError ? `: ${lastVerificationError}` : "."}`
       : hasAuth
         ? "Credential stored. It will be marked verified after the first successful provider request."
         : "No stored credentials.";
+  const providerMeta = providerCallable
+    ? `${verifiedCount}/${provider.models.length} verified`
+    : provider.companionRequired
+      ? "Companion required"
+      : "Not available";
+  const authMethodSummary = provider.authMethods.length
+    ? provider.authMethods.map(authMethodLabel).join(" + ")
+    : "No supported auth path";
 
   const handleSave = useCallback(() => {
-    if (apiKey.trim()) {
+    if (provider.apiKeySupported && apiKey.trim()) {
       onSaveApiKey(apiKey.trim());
       setApiKey("");
     }
-  }, [apiKey, onSaveApiKey]);
+  }, [apiKey, onSaveApiKey, provider.apiKeySupported]);
 
   return (
     <div className={`provider-card ${!isEnabled ? "provider-card-disabled" : ""}`}>
@@ -781,16 +799,18 @@ function ProviderCard({
             </span>
           </div>
           <span className="provider-card-meta">
-            {verifiedCount}/{provider.models.length} verified
+            {providerMeta}
           </span>
         </button>
         <button
           type="button"
           className={`toggle-switch toggle-sm ${isEnabled ? "toggle-on" : ""}`}
           onClick={onToggleEnabled}
+          disabled={!providerCallable}
           role="switch"
-          aria-checked={isEnabled}
+          aria-checked={providerCallable && isEnabled}
           aria-label={`${isEnabled ? "Disable" : "Enable"} ${provider.label}`}
+          title={providerCallable ? undefined : provider.capabilityNote ?? "This provider is not callable yet."}
         >
           <span className="toggle-thumb" />
         </button>
@@ -802,18 +822,34 @@ function ProviderCard({
             {authStatusText}
           </div>
 
-          <div className="field">
-            <span>API Key</span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={provider.oauthSupported ? "Optional key override" : "Paste provider API key"}
-            />
+          <div className="provider-capability-row">
+            <span className="settings-model-tag">{providerCallable ? "Browser callable" : providerSupportLabel(provider)}</span>
+            {provider.companionRequired && <span className="settings-model-tag">Companion</span>}
+            {provider.subscriptionBacked && <span className="settings-model-tag">Subscription</span>}
+            <span className="settings-model-tag">{authMethodSummary}</span>
+            {provider.imageGenerationSupported && <span className="settings-model-tag">Images</span>}
           </div>
 
+          {provider.apiKeySupported ? (
+            <div className="field">
+              <span>API Key</span>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Paste provider API key"
+              />
+            </div>
+          ) : (
+            <p className="settings-note">
+              {provider.companionRequired
+                ? "This provider needs companion-owned auth before setup can be enabled here."
+                : "Pi-Office does not support direct browser auth for this provider yet."}
+            </p>
+          )}
+
           <div className="settings-actions">
-            <button type="button" className="button button-solid" onClick={handleSave}>
+            <button type="button" className="button button-solid" onClick={handleSave} disabled={!provider.apiKeySupported}>
               Save Key
             </button>
             {provider.oauthSupported && (
@@ -831,6 +867,22 @@ function ProviderCard({
   );
 }
 
+function providerSupportLabel(provider: ProviderDescriptor): string {
+  if (provider.supportStatus === "supported") return "Supported";
+  if (provider.supportStatus === "planned") return "Planned";
+  if (provider.supportStatus === "blocked") return "Blocked";
+  return "Research";
+}
+
+function authMethodLabel(method: ProviderAuthMethod): string {
+  if (method === "api_key") return "API key";
+  if (method === "oauth") return "OAuth";
+  if (method === "manual_token") return "Manual token";
+  if (method === "cloud_identity") return "Cloud identity";
+  if (method === "aws_credentials") return "AWS credentials";
+  return method;
+}
+
 function ModelsSection({
   providers,
   enabledModels,
@@ -842,7 +894,7 @@ function ModelsSection({
   enabledProviders: Set<string>;
   onToggleModel: (key: string) => void;
 }) {
-  const activeProviders = providers.filter((p) => enabledProviders.has(p.provider));
+  const activeProviders = providers.filter((p) => enabledProviders.has(p.provider) && p.browserCallable);
 
   return (
     <div className="settings-section">
@@ -852,7 +904,7 @@ function ModelsSection({
         Only models from enabled providers are shown.
       </p>
       {activeProviders.length === 0 && (
-        <p className="settings-note">Enable a provider in the Providers tab first.</p>
+        <p className="settings-note">Enable a browser-callable provider in the Providers tab first.</p>
       )}
       {activeProviders.map((provider) => (
         <div key={provider.provider} className="settings-model-group">
@@ -1259,7 +1311,7 @@ function ImageGenerationSettings({
       {preferences.imageGenerationEnabled && (
         <>
           <p className="settings-note">
-            Choose the default model for image generation. Only providers with stored credentials are available.
+            Choose the default model for image generation. The browser taskpane currently exposes OpenAI image models only.
           </p>
 
           {configuredModels.length > 0 ? (
@@ -1282,7 +1334,7 @@ function ImageGenerationSettings({
             </div>
           ) : (
             <p className="settings-note">
-              No image models available. Configure an AI provider (OpenAI, Google, or OpenRouter) in the Providers tab.
+              No image models available. Configure OpenAI in the Providers tab.
             </p>
           )}
 

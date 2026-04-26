@@ -222,6 +222,115 @@ test("provider auth readiness distinguishes stored credentials from verified usa
   }
 });
 
+test("provider catalog distinguishes browser API-key providers from companion OAuth providers", async () => {
+  const runtime = await loadKernelModule();
+  const catalog = await runtime.dispatchKernelRequest("/v1/providers") as {
+    providers: Array<{
+      provider: string;
+      supportStatus: string;
+      runtimeSurface: string;
+      authMethods: string[];
+      apiKeySupported: boolean;
+      oauthSupported: boolean;
+      browserCallable: boolean;
+      companionRequired: boolean;
+      subscriptionBacked: boolean;
+      imageGenerationSupported: boolean;
+      models: Array<{
+        usesApiKey: boolean;
+        configured: boolean;
+        browserCallable: boolean;
+        companionRequired: boolean;
+      }>;
+    }>;
+  };
+
+  const provider = (id: string) => {
+    const entry = catalog.providers.find((item) => item.provider === id);
+    assert.ok(entry, `Expected ${id} in provider catalog.`);
+    return entry;
+  };
+
+  const openAi = provider("openai");
+  assert.equal(openAi.supportStatus, "supported");
+  assert.equal(openAi.runtimeSurface, "browser_taskpane");
+  assert.equal(openAi.apiKeySupported, true);
+  assert.equal(openAi.browserCallable, true);
+  assert.equal(openAi.oauthSupported, false);
+  assert.equal(openAi.companionRequired, false);
+  assert.equal(openAi.imageGenerationSupported, true);
+  assert.deepEqual(openAi.authMethods, ["api_key"]);
+  assert.ok(openAi.models.length > 0);
+  assert.equal(openAi.models.every((model) => model.usesApiKey && model.browserCallable), true);
+
+  for (const id of ["openai-codex", "github-copilot", "google-gemini-cli", "google-antigravity"]) {
+    const entry = provider(id);
+    assert.equal(entry.supportStatus, "planned", `${id} should be planned until companion auth exists.`);
+    assert.equal(entry.runtimeSurface, "companion");
+    assert.equal(entry.apiKeySupported, false);
+    assert.equal(entry.oauthSupported, false, `${id} must not show a usable browser OAuth button.`);
+    assert.equal(entry.browserCallable, false);
+    assert.equal(entry.companionRequired, true);
+    assert.equal(entry.subscriptionBacked, true);
+    assert.equal(entry.authMethods.includes("oauth"), true);
+    assert.equal(entry.models.every((model) => !model.usesApiKey && !model.configured && !model.browserCallable), true);
+  }
+
+  const bedrock = provider("amazon-bedrock");
+  assert.equal(bedrock.browserCallable, false);
+  assert.equal(bedrock.companionRequired, true);
+  assert.equal(bedrock.authMethods.includes("aws_credentials"), true);
+});
+
+test("provider auth routes reject unavailable browser auth methods", async () => {
+  const runtime = await loadKernelModule();
+
+  await assert.rejects(
+    () => runtime.dispatchKernelRequest("/v1/auth/api-key", {
+      method: "POST",
+      body: JSON.stringify({ provider: "openai-codex", apiKey: "not-a-real-token" }),
+    }),
+    /does not accept browser-stored API keys/i,
+  );
+
+  await assert.rejects(
+    () => runtime.dispatchKernelRequest("/v1/auth/start", {
+      method: "POST",
+      body: JSON.stringify({ providerId: "openai-codex" }),
+    }),
+    /requires companion-owned OAuth/i,
+  );
+
+  await assert.rejects(
+    () => runtime.dispatchKernelRequest("/v1/auth/start", {
+      method: "POST",
+      body: JSON.stringify({ providerId: "openai" }),
+    }),
+    /OAuth sign-in is unavailable/i,
+  );
+});
+
+test("image model catalog is OpenAI-only until additional browser execution paths exist", async () => {
+  const runtime = await loadKernelModule();
+  const catalog = await runtime.dispatchKernelRequest("/v1/image-models") as {
+    models: Array<{ provider: string; apiType: string; configured: boolean }>;
+    defaultModelKey: string;
+  };
+
+  assert.ok(catalog.models.length > 0, "Expected at least one image model.");
+  assert.equal(catalog.models.every((model) => model.provider === "openai"), true);
+  assert.equal(catalog.models.every((model) => model.apiType === "openai-images"), true);
+  assert.match(catalog.defaultModelKey, /^openai::/);
+
+  await assert.rejects(
+    () => runtime.dispatchKernelRequest("/v1/preferences", {
+      method: "POST",
+      body: JSON.stringify({ defaultImageModel: "openrouter::imaginary-image-model" }),
+    }),
+    /not available in the browser taskpane image catalog/i,
+  );
+});
+
 test("legacy stored auth records migrate to unverified instead of ready", async () => {
   const runtime = await loadKernelModule((storage) => {
     storage.setItem("pi-office-auth", JSON.stringify([{ provider: "openai", apiKey: "legacy-key" }]));

@@ -837,6 +837,15 @@ export interface ProviderModelDescriptor {
   providerLabel: string;
   modelId: string;
   modelName: string;
+  supportStatus: ProviderSupportStatus;
+  runtimeSurface: ProviderRuntimeSurface;
+  authMethods: ProviderAuthMethod[];
+  apiKeySupported: boolean;
+  browserCallable: boolean;
+  companionRequired: boolean;
+  subscriptionBacked: boolean;
+  imageGenerationSupported: boolean;
+  capabilityNote?: string | undefined;
   authState: ProviderAuthState;
   credentialStored: boolean;
   verifiedUsable: boolean;
@@ -1038,6 +1047,15 @@ export interface ProviderAuthDescriptor {
 export interface ProviderDescriptor {
   provider: string;
   label: string;
+  supportStatus: ProviderSupportStatus;
+  runtimeSurface: ProviderRuntimeSurface;
+  authMethods: ProviderAuthMethod[];
+  apiKeySupported: boolean;
+  browserCallable: boolean;
+  companionRequired: boolean;
+  subscriptionBacked: boolean;
+  imageGenerationSupported: boolean;
+  capabilityNote?: string | undefined;
   authState: ProviderAuthState;
   credentialStored: boolean;
   verifiedUsable: boolean;
@@ -1051,6 +1069,15 @@ export interface ProviderDescriptor {
 export interface ProviderCatalogResponse {
   providers: ProviderDescriptor[];
 }
+
+export type ProviderSupportStatus = "supported" | "planned" | "blocked" | "research_only";
+export type ProviderRuntimeSurface = "browser_taskpane" | "companion" | "not_implemented";
+export type ProviderAuthMethod =
+  | "api_key"
+  | "oauth"
+  | "manual_token"
+  | "cloud_identity"
+  | "aws_credentials";
 
 export interface AuthStatusResponse {
   storedProviders: string[];
