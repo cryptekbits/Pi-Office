@@ -603,18 +603,22 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Status: open
   - Priority: P1
   - Source: 2026-04-26 Office-host subagent review.
-  - Details: The current Office tool inventory is broad, but professional editing still needs more structured native operations so agents do not fall back to raw execution or broad rewrites. Word gaps include styles, paragraph/list formatting, table-cell edits, headers/footers, page setup, field updates, content-control updates, and footnote/endnote body targeting. PowerPoint and Excel also need deeper object-level actions for polished artifacts.
-  - Dependencies: SECURITY-003 to reduce reliance on raw Office.js execution.
+  - Details: The current Office tool inventory is broad, but professional editing still needs more structured native operations so agents do not fall back to raw execution or broad rewrites. Word gaps include styles, paragraph/list formatting, table-cell edits, headers/footers, page setup, field updates, content-control updates, footnote/endnote body targeting, compare/redline workflows, bookmarks/navigation, hyperlinks, building blocks/templates, proofing/readability, protection/coauthoring, custom XML/metadata/export, and event-driven document awareness. This expansion should use semantic tools, dynamic tool discovery, and structured batch execution rather than sending the entire Office.js API surface to every model turn or relying on `office_execute_js` as the default. PowerPoint and Excel also need deeper object-level actions for polished artifacts.
+  - Dependencies: SECURITY-003 to reduce reliance on raw Office.js execution; FEATURE-028 for deferred Office/MCP tool discovery and structured batch execution.
   - Subtasks:
     - [ ] Inventory native Office.js APIs for the highest-value Word/Excel/PowerPoint editing gaps.
-    - [ ] Track the Word-first child tasks `FEATURE-009` through `FEATURE-018` and keep their API assumptions aligned with public Word JavaScript requirement sets.
+    - [ ] Track the Word-first child tasks `FEATURE-009` through `FEATURE-018` plus `FEATURE-020` through `FEATURE-027` and keep their API assumptions aligned with public Word JavaScript requirement sets.
+    - [ ] Route expanded Word operations through a searchable tool registry and small core tool set instead of exposing every Word tool schema up front.
+    - [ ] Add structured batch-operation contracts for repeated Word operations so intermediate scans/results stay local and only compact summaries return to the model.
     - [ ] Add structured PowerPoint and Excel object edits where current tools require raw code or weak anchors.
     - [ ] Add tests for each new first-class operation and update prompt/tool guidance to prefer structured tools.
   - Acceptance Criteria:
     - [ ] Common professional document edits can be expressed through structured tools instead of `office_execute_js`.
+    - [ ] The model can discover relevant Word capabilities on demand without receiving the whole Office.js reference or every Word tool schema every turn.
+    - [ ] Multi-step Word operations can be batched with deterministic verification and reviewable write boundaries.
     - [ ] Word footnote/endnote edits target the note body correctly.
     - [ ] Tests cover representative Word, Excel, and PowerPoint native edits.
-  - Notes/Evidence: Review pointed to Word context already exposing rich objects while action coverage remains thinner than the product bar. 2026-04-27 Word API audit split the Word-specific implementation path into `FEATURE-009` through `FEATURE-018` so each capability can be implemented, validated, and committed independently while this item remains the parent native-editing epic.
+  - Notes/Evidence: Review pointed to Word context already exposing rich objects while action coverage remains thinner than the product bar. 2026-04-27 Word API audit split the Word-specific implementation path into `FEATURE-009` through `FEATURE-018` plus `FEATURE-020` through `FEATURE-027` so each capability can be implemented, validated, and committed independently while this item remains the parent native-editing epic. 2026-04-27 tool-architecture discussion concluded that Pi-Office should prefer semantic tools plus deferred discovery and structured batch execution, keeping raw Office.js as an explicit escape hatch rather than a default document-editing strategy.
 
 - [ ] FEATURE-005: Add explicit cross-host artifact workflows
   - Category: Feature
@@ -906,6 +910,231 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Inserted or edited shapes report anchors, dimensions, wrapping, and fallback limitations.
     - [ ] Tests prove desktop-gated tools remain hidden or fail closed when WordApiDesktop support is absent.
   - Notes/Evidence: WordApiDesktop 1.2 exposes `Body.shapes`, `Document.activeWindow`, paragraph/range floating shape insertion, `Shape`, `ShapeCollection`, `ShapeFill`, `ShapeTextWrap`, and `TextFrame` APIs. Current Pi-Office reads selected shapes when `WordApiDesktop` support exists, but only inline-picture insertion is wired as a first-class Word edit.
+
+- [ ] FEATURE-020: Add Word compare, redline, and review-exchange workflows
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit and tool-architecture discussion; fills remaining Tier A Word review workflow gap.
+  - Details: Pi-Office can read tracked changes and accept/reject individual or collection revisions, but it does not expose document compare, merge, send-for-review, reply-with-changes, end-review, or review-session orchestration. Legal, spec, policy, and professional editing workflows often need a true redline against a baseline rather than fuzzy text replacement or sidepane-only proposals. The first implementation should keep compare/merge inputs explicit, preserve user review boundaries, and avoid claiming mail/review exchange capabilities that require unsupported host or tenant behavior.
+  - Dependencies: FEATURE-004, SECURITY-003, FEATURE-028.
+  - Subtasks:
+    - [ ] Inventory `Document.compare`, `Document.merge`, `sendForReview`, `replyWithChanges`, `endReview`, revision filter, reviewer, and related option APIs by requirement set and host support.
+    - [ ] Define structured compare/redline tool contracts for baseline source, comparison target, output behavior, and review scope.
+    - [ ] Integrate compare output with existing revision anchors and accept/reject tools.
+    - [ ] Add safeguards for destructive merge/review-end operations and require explicit confirmation where document state can be broadly changed.
+    - [ ] Update legal/professional and spec workflow guidance to use compare/redline paths before broad rewrites.
+    - [ ] Add tests for compare contract validation, unsupported-host fallback, revision integration, and confirmation requirements.
+  - Acceptance Criteria:
+    - [ ] The assistant can produce or reason over a Word-native redline when a supported baseline/comparison path is available.
+    - [ ] Compare/merge/review operations report the source, target, created revisions, and unsupported boundaries clearly.
+    - [ ] Existing revision accept/reject tools work with revisions created or surfaced by the compare workflow.
+    - [ ] Broad review-state changes fail closed without explicit user approval.
+  - Notes/Evidence: The Word JavaScript API reference includes document compare/merge/review option types and rich revision/reviewer surfaces. Current Pi-Office covers tracked-change reading and accept/reject but not the upstream compare/review workflow.
+
+- [ ] FEATURE-021: Add Word bookmarks, go-to navigation, hyperlinks, and cross-reference anchors
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Source: 2026-04-27 Word API audit and Tier A/B gap review.
+  - Details: Pi-Office navigation currently relies on paragraph IDs, text matching, comments, revisions, fields, content controls, and internal search fallback. Word exposes bookmarks, native go-to navigation, hyperlinks, and cross-reference-adjacent field patterns that can make long-document targeting and provenance far more deterministic. The assistant should be able to create durable bookmarks for user-approved working areas, navigate by page/line/heading/bookmark/comment/field where supported, and insert or update hyperlinks without raw OOXML.
+  - Dependencies: FEATURE-004, FEATURE-017, SECURITY-003.
+  - Subtasks:
+    - [ ] Add bookmark inventory, creation, deletion, navigation, and range-targeting contracts.
+    - [ ] Add native go-to operations for supported target types while preserving current anchor fallback behavior.
+    - [ ] Add hyperlink inventory and structured add/update/remove operations with display text, address, screen tip, and target anchors where supported.
+    - [ ] Define how generated bookmarks are named, scoped, and cleaned up so they do not clutter user documents unexpectedly.
+    - [ ] Integrate bookmark/go-to/hyperlink anchors with `office_navigate`, search results, and edit proposal locators.
+    - [ ] Add tests for duplicate bookmark names, repeated-text targeting, hyperlink mutation, unsupported go-to targets, and cleanup behavior.
+  - Acceptance Criteria:
+    - [ ] Long-document workflows can create, cite, navigate, and edit by durable bookmark or native go-to anchor where supported.
+    - [ ] Hyperlink operations are first-class and do not require OOXML or raw Office.js for common cases.
+    - [ ] Generated anchors are visible, auditable, and cleaned up or preserved according to explicit tool options.
+    - [ ] Tests prove bookmark/go-to/hyperlink tools interoperate with search and navigation.
+  - Notes/Evidence: The Word API reference includes `Bookmark`, `BookmarkCollection`, `Selection.goTo`, `Document.goTo`, `GoToOptions`, `Hyperlink`, `HyperlinkCollection`, and `HyperlinkAddOptions`. These close the remaining Tier A navigation and Tier B hyperlink gaps.
+
+- [ ] FEATURE-022: Add Word building block and template insertion tools
+  - Category: Feature
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 Word API audit and Tier B reusable-content gap review.
+  - Details: Professional Word workflows often reuse approved clause libraries, boilerplate, cover pages, letterheads, signature blocks, and branded snippets. Word exposes building blocks, building block categories/types, template collections, and building-block gallery content controls, but Pi-Office currently has no structured way to inventory or insert approved reusable content. This should be implemented as an original Pi-Office workflow with provenance-aware copy and no bundled competitor text.
+  - Dependencies: FEATURE-004, SECURITY-005, FEATURE-015.
+  - Subtasks:
+    - [ ] Inventory available templates, building block types, categories, and entries where supported.
+    - [ ] Define structured insertion operations for approved building blocks with placement, target anchor, and formatting behavior.
+    - [ ] Integrate building-block gallery content controls with template automation where requirement sets permit it.
+    - [ ] Add provenance and user-approval guidance for clause/boilerplate insertion so the model does not invent official library content.
+    - [ ] Add tests for inventory, insertion contract validation, unsupported-host fallback, and provenance/no-invention behavior.
+  - Acceptance Criteria:
+    - [ ] The assistant can insert approved reusable Word content through native template/building-block APIs where available.
+    - [ ] Boilerplate insertion reports the source template/category/entry and target location.
+    - [ ] Unsupported template/building-block surfaces fall back with clear guidance instead of fabricated content.
+    - [ ] Tests prevent unapproved or provenance-ambiguous boilerplate from being presented as official content.
+  - Notes/Evidence: The Word API reference includes `BuildingBlock`, `BuildingBlockCategory`, `BuildingBlockCollection`, `BuildingBlockEntryCollection`, `BuildingBlockGalleryContentControl`, `BuildingBlockTypeItem`, `Template`, and `TemplateCollection`.
+
+- [ ] FEATURE-023: Add Word proofing, readability, and document-statistics tools
+  - Category: Feature
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 Word API audit and Tier C quality-assessment gap review.
+  - Details: Pi-Office can critique text with an LLM, but it does not expose native Word proofing, readability statistics, or numbered-item counting. Resume polish, executive summaries, legal simplification, and academic editing benefit from concrete measures such as readability, spelling/proofing status, numbered-item counts, and before/after quality checks. These tools should be non-mutating by default and should clearly distinguish native proofing signals from model judgment.
+  - Dependencies: FEATURE-004.
+  - Subtasks:
+    - [ ] Inventory `Document.checkSpelling`, readability statistics, word/count-style APIs, and numbered item counting by requirement set.
+    - [ ] Add non-mutating proofing/readability/statistics tools for selection, section, and document scopes where supported.
+    - [ ] Add optional apply/fix flows only when a native proofing API supports deterministic fixes or when routed through reviewable proposals.
+    - [ ] Add workflow guidance for resume, spec, legal/professional, and research-paper checks.
+    - [ ] Add tests for statistics extraction, unsupported-host fallback, no-mutation default behavior, and scope handling.
+  - Acceptance Criteria:
+    - [ ] The assistant can report native Word proofing/readability/statistics evidence without relying only on LLM judgment.
+    - [ ] Proofing tools are non-mutating unless the user explicitly chooses a reviewable fix path.
+    - [ ] Results distinguish native metrics from model-generated recommendations.
+    - [ ] Tests cover scope, unsupported capability, and no-mutation guarantees.
+  - Notes/Evidence: The Word API reference includes `Document.checkSpelling`, `DocumentCheckSpellingOptions`, `ReadabilityStatistic`, `ReadabilityStatisticCollection`, `Document.countNumberedItems`, and related options.
+
+- [ ] FEATURE-024: Add Word protection, reviewer, coauthoring, and conflict-awareness tools
+  - Category: Feature
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 Word API audit and Tier C review-safety gap review.
+  - Details: AI edits in shared or protected Word documents need awareness of protection mode, editable ranges, reviewers, coauthoring updates, locks, and conflicts. Pi-Office currently gates tool permissions but does not inspect or manage Word-native protection and collaboration state. This task should prioritize non-mutating awareness first, then narrowly scoped protection/editable-range operations where supported and safe.
+  - Dependencies: FEATURE-004, SECURITY-002, SECURITY-003.
+  - Subtasks:
+    - [ ] Inventory protection, editor, reviewer, revisions filter, coauthoring lock/update, and conflict APIs by requirement set.
+    - [ ] Add read-only collaboration/protection diagnostics that warn before document writes in protected, locked, or conflicted ranges.
+    - [ ] Define guarded operations for protect/unprotect, editable ranges, reviewer filters, and conflict resolution only where supported.
+    - [ ] Integrate diagnostics with tool permission prompts so risky writes surface native collaboration state.
+    - [ ] Add tests for protected document warnings, locked-range denial, reviewer filtering, conflict detection, and unsupported-host fallback.
+  - Acceptance Criteria:
+    - [ ] The assistant can detect and explain protection/coauthoring/review state before making risky edits.
+    - [ ] Protected or conflicted ranges fail closed or request explicit user action before mutation.
+    - [ ] Reviewer and revisions filters are handled transparently and do not hide relevant changes from the model.
+    - [ ] Tests cover non-mutating diagnostics and guarded write behavior.
+  - Notes/Evidence: The Word API reference includes `Document.protect`, `DocumentProtectOptions`, `Editor`, `EditorCollection`, `Reviewer`, `ReviewerCollection`, `RevisionsFilter`, `Coauthoring`, `CoauthoringLock`, `CoauthoringUpdate`, `Conflict`, and related collections.
+
+- [ ] FEATURE-025: Add Word custom XML, XML mapping, document metadata, and settings tools
+  - Category: Feature
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 Word API audit and Tier C enterprise-template gap review.
+  - Details: Enterprise Word templates often bind content controls to custom XML parts, document properties, custom properties, and add-in settings. Pi-Office currently reads content controls but does not expose XML mappings, custom XML data, document metadata, or document-scoped settings as first-class context. These capabilities would support structured form filling, provenance-bound placeholder updates, workflow state stored inside the document, and metadata cleanup before export.
+  - Dependencies: FEATURE-004, FEATURE-015, SECURITY-004.
+  - Subtasks:
+    - [ ] Add inventory for document properties, custom properties, add-in settings, custom XML parts/nodes/schemas, and XML mappings.
+    - [ ] Define structured metadata and custom-property update tools with clear privacy/storage disclosure.
+    - [ ] Add XML-mapped content-control read/fill flows that preserve mapping provenance and validation errors.
+    - [ ] Add custom XML mutation only behind explicit structured schemas and fail-closed validation.
+    - [ ] Add tests for metadata updates, custom XML inventory, XML-mapped control fill, validation errors, and privacy copy.
+  - Acceptance Criteria:
+    - [ ] The assistant can fill XML-mapped Word templates while preserving mapping and source provenance.
+    - [ ] Document metadata updates are explicit, reviewable, and privacy-disclosed.
+    - [ ] Invalid custom XML operations fail closed without corrupting document data stores.
+    - [ ] Tests cover properties, settings, custom XML, and mapped content controls.
+  - Notes/Evidence: The Word API reference includes `DocumentProperties`, `CustomProperty`, `CustomPropertyCollection`, `Setting`, `SettingCollection`, `CustomXmlPart`, `CustomXmlNode`, `CustomXmlSchema`, `XmlMapping`, `XmlNode`, and related collection/validation objects.
+
+- [ ] FEATURE-026: Add Word fixed-format export and delivery-preflight tools
+  - Category: Feature
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 Word API audit and Tier C export/delivery gap review.
+  - Details: The assistant can help edit a document but cannot run Word-native export-to-PDF/XPS or delivery preflight. Professional workflows often end with "make this ready to send": check unresolved comments/revisions, missing fields/citations, readability, metadata, and export settings. Fixed-format export must be explicit because it can create files or blobs and may involve host/platform limits.
+  - Dependencies: FEATURE-004, FEATURE-014, FEATURE-023, FEATURE-025.
+  - Subtasks:
+    - [ ] Inventory `Document.exportAsFixedFormat`, `exportAsFixedFormat2`, `exportAsFixedFormat3`, and option support across hosts.
+    - [ ] Define delivery-preflight checks for unresolved comments, revisions, fields, citations, metadata, accessibility/tagging options, and export readiness.
+    - [ ] Add fixed-format export tool contracts that return explicit file/blob handling behavior and warnings.
+    - [ ] Add user confirmation for export/write-external behavior where generated artifacts leave the Office document.
+    - [ ] Add tests for preflight summaries, export option validation, unsupported-host fallback, and permission categorization.
+  - Acceptance Criteria:
+    - [ ] The assistant can run a delivery-readiness preflight before export.
+    - [ ] PDF/XPS export options are explicit and host-supported before execution.
+    - [ ] Exported artifacts are handled according to privacy and permission policy.
+    - [ ] Tests cover preflight, export option validation, and unsupported capability messaging.
+  - Notes/Evidence: The Word API reference includes `Document.exportAsFixedFormat`, `Document.exportAsFixedFormat2`, `Document.exportAsFixedFormat3`, and related option interfaces.
+
+- [ ] FEATURE-027: Add event-driven Word awareness for comments, content controls, annotations, and selection changes
+  - Category: Feature
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 Word API audit and Tier C event-surface gap review.
+  - Details: Pi-Office currently works mostly through explicit tool calls and Office state refreshes. Word exposes event surfaces for selection, content controls, comments, paragraph changes, and annotations. Event-driven awareness would let the taskpane update context, proposal state, annotation actions, and connector/session state without polling or stale context, but it must be carefully throttled and deduped to avoid the refresh-noise issues previously tracked under `BUG-004`.
+  - Dependencies: BUG-004, FEATURE-009, FEATURE-015, FEATURE-028.
+  - Subtasks:
+    - [ ] Inventory Word event APIs by requirement set and identify which are safe for taskpane sessions.
+    - [ ] Add an event subscription registry with teardown, dedupe, throttling, and latest-only session guards.
+    - [ ] Wire high-value events for content controls, comments, annotations, and selection/context changes into compact state updates.
+    - [ ] Ensure event payloads do not flood model context; route them through summaries or pending-state badges unless the model asks for detail.
+    - [ ] Add tests for subscription lifecycle, duplicate suppression, teardown, stale-session rejection, and unsupported-host behavior.
+  - Acceptance Criteria:
+    - [ ] User actions in Word can update Pi-Office context/proposal state without manual refresh where supported.
+    - [ ] Event streams are throttled and summarized rather than appended raw into model context.
+    - [ ] Event subscriptions are cleaned up on session close/reopen and do not leak across documents.
+    - [ ] Tests protect against stale refresh and duplicate-event regressions.
+  - Notes/Evidence: The Word API reference includes selection, content-control, comment, paragraph, and annotation event argument types. This task extends the existing latest-only Office state refresh hardening from `BUG-004`.
+
+- [ ] FEATURE-028: Add deferred Office and MCP tool discovery with a canonical capability registry
+  - Category: Feature
+  - Status: open
+  - Priority: P0
+  - Source: 2026-04-27 architecture discussion inspired by Claude tool-use, tool-search, and context-management docs.
+  - Details: Pi-Office should not send the whole Office.js API, every Office tool schema, or every MCP connector tool definition to the model on every turn. Large tool catalogs increase token use and can degrade tool selection accuracy. Add a canonical tool/capability registry with deferred loading: the main agent sees a small stable core (`office_get_context`, `office_tool_search`, `mcp_tool_search`, `office_apply_edit`, verification, permission/ask-user, and escape-hatch metadata), then retrieves only the 3-5 relevant Office/MCP tool definitions for the current task. This must work in taskpane-only mode and companion advanced mode.
+  - Dependencies: FEATURE-004, FEATURE-006, FEATURE-007, FEATURE-008, IMPROVEMENT-003.
+  - Subtasks:
+    - [ ] Define a shared registry schema for Office tools, Word child capabilities, MCP connector tools, categories, host/runtime requirements, risk level, permission category, and concise search metadata.
+    - [ ] Implement taskpane-side Office tool search over the registry and expose only selected tool schemas/prompts to the model for a turn or session.
+    - [ ] Implement MCP connector tool search for browser-direct taskpane connectors and companion-routed connectors, including server/profile/source metadata.
+    - [ ] Add companion-side registry/search support so advanced mode can own MCP/provider/non-Office tool discovery while the taskpane still owns Office.js execution.
+    - [ ] Preserve prompt caching by keeping the stable core prompt/tool prefix small and moving large schemas to deferred discovery.
+    - [ ] Add tests for search ranking, host gating, deferred schema loading, permission category preservation, and stale/deleted connector tools.
+  - Acceptance Criteria:
+    - [ ] The model no longer receives every Office/MCP tool schema up front once the registry path is enabled.
+    - [ ] Tool search returns concise, relevant tool definitions and hides unsupported host/runtime tools.
+    - [ ] Taskpane and companion registries agree on connector availability, permission categories, and source provenance.
+    - [ ] Tests show reduced baseline tool context and no loss of capability for representative Word and MCP tasks.
+  - Notes/Evidence: Claude's tool-search guidance describes deferred loading to reduce tool-definition context and improve selection accuracy for large toolsets. Pi-Office has growing Word API tasks plus a provenance-driven connector catalog, so deferred tool discovery should become a foundation before adding many more schemas.
+
+- [ ] FEATURE-029: Add structured batch execution for Office tools and MCP connectors
+  - Category: Feature
+  - Status: open
+  - Priority: P0
+  - Source: 2026-04-27 architecture discussion inspired by programmatic tool calling.
+  - Details: Multi-step Office and MCP tasks can require many small operations: search every section, inspect twenty connector resources, normalize dozens of Word paragraphs, or verify many MCP records. Sending every intermediate result through the main model context is slow and token-heavy. Add structured batch executors that let the model submit a constrained plan, run repeated reads/filters locally in the taskpane or companion, and return compact summaries, handles, and verification results. This is not raw arbitrary code execution against Office documents; it should be a typed plan DSL over approved tools with the same permission gates as individual calls.
+  - Dependencies: FEATURE-028, SECURITY-002, SECURITY-003, FEATURE-006.
+  - Subtasks:
+    - [ ] Define a typed Office batch plan format for read-only scans, repeated structured edits, verification steps, and reviewable write boundaries.
+    - [ ] Define a typed MCP batch plan format for repeated connector tool/resource calls, local filtering, result ranking, and summarization.
+    - [ ] Implement taskpane batch execution for Office.js-bound operations and browser-direct hosted MCP profiles.
+    - [ ] Implement companion batch execution for local STDIO/remote HTTP MCP connectors and future advanced-mode non-Office tools.
+    - [ ] Enforce permission policy per write/destructive operation, not only per batch envelope.
+    - [ ] Add tests for partial failure, cancellation, output caps, permission prompts, deterministic verification, and no arbitrary JS/code execution.
+  - Acceptance Criteria:
+    - [ ] Repetitive Word and MCP workflows can execute with fewer model round trips and compact final results.
+    - [ ] Intermediate large results stay local unless explicitly requested through handles/pages.
+    - [ ] Batch writes remain reviewable and permission-gated at the same or stricter level as individual tools.
+    - [ ] Tests prove the batch executor cannot bypass `office_execute_js`, connector policy, or write approval rules.
+  - Notes/Evidence: Programmatic tool calling reduces latency and context by running repeated calls and filtering before results reach the model. Pi-Office should borrow that shape with typed taskpane/companion executors instead of giving the model raw unrestricted code over Word or MCP servers.
+
+- [ ] FEATURE-030: Add MCP result handles, pagination, summarization, and connector-local context windows
+  - Category: Feature
+  - Status: open
+  - Priority: P0
+  - Source: 2026-04-27 MCP/tool-context architecture discussion.
+  - Details: MCP tool definitions and responses can be very large. Some connectors return massive JSON payloads, resource blobs, or many tool/resource entries. Pi-Office should store raw MCP results in a taskpane or companion result store, return compact summaries plus opaque handles to the main Office agent, and allow explicit pagination, filtering, or summarization follow-ups. Browser-direct taskpane connectors and companion-routed connectors both need this behavior. The companion should also support a dedicated connector context window/result cache for heavy MCP exploration so the main Office conversation stays concise.
+  - Dependencies: FEATURE-007, FEATURE-008, FEATURE-028, FEATURE-029, SECURITY-004.
+  - Subtasks:
+    - [ ] Define a result-handle protocol with source connector, tool/resource name, timestamp, size, redaction status, summary, page info, and retention policy.
+    - [ ] Add taskpane result storage for browser-direct hosted MCP calls with output caps, redaction, pagination, and explicit clear behavior.
+    - [ ] Add companion result storage for local STDIO/remote HTTP MCP calls with the same handle/page/summarize protocol.
+    - [ ] Add connector-local summarization/extraction paths that return only relevant evidence to the main model, with raw payload access gated by explicit follow-up calls.
+    - [ ] Update privacy/storage disclosure for MCP raw result caching and connector-local context windows.
+    - [ ] Add tests for large responses, pagination, stale handles, deleted connectors, redaction, clear-data behavior, and taskpane/companion parity.
+  - Acceptance Criteria:
+    - [ ] Large MCP responses do not flood the main chat context by default.
+    - [ ] The model can request additional pages or targeted extracts through handles when needed.
+    - [ ] Taskpane and companion MCP runtimes apply consistent caps, redaction, retention, and clear-data behavior.
+    - [ ] Users can understand and clear locally cached connector results.
+  - Notes/Evidence: Claude context-management guidance highlights tool-result bloat as a separate problem from tool-definition bloat. Pi-Office already has connector provenance, tool policy, browser-direct hosted MCP, and companion-routed MCP; result handles and connector-local context are the missing scalability layer.
 
 ### Improvements
 
