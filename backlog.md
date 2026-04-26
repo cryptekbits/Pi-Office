@@ -291,23 +291,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Excel visual range workflows either return a real image of the requested range or report the limitation clearly.
   - Notes/Evidence: Review pointed to `office_capture_viewport` comments in `addin/apps/taskpane/src/lib/office-bridge.ts`, `read_range_image` fallback in `addin/apps/taskpane/src/lib/office/excel-context.ts`, and Settings tool descriptions.
 
-- [ ] BUG-008: Excel rewind restores values and number formats but drops formulas
+- [x] BUG-008: Excel rewind restores values and number formats but drops formulas
   - Category: Bug
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 Office-host subagent review.
   - Details: Excel checkpoint capture stores formulas, values, and number formats, but restore writes only `range.values` and `range.numberFormat`. For DCFs, financial models, and analytical workbooks, a rewind that flattens formulas into values can silently destroy the model while appearing successful.
   - Dependencies: None.
   - Subtasks:
-    - [ ] Define the intended Excel checkpoint fidelity contract for formulas, formats, tables, charts, validations, and workbook structure.
-    - [ ] Restore formulas when formula data exists, preserving values only where formulas are absent.
-    - [ ] Add safety messaging when a snapshot cannot fully restore workbook semantics.
-    - [ ] Add tests for formula preservation, mixed formula/value ranges, and number-format preservation.
+    - [x] Define the intended Excel checkpoint fidelity contract for formulas, formats, tables, charts, validations, and workbook structure.
+    - [x] Restore formulas when formula data exists, preserving values only where formulas are absent.
+    - [x] Add safety messaging when a snapshot cannot fully restore workbook semantics.
+    - [x] Add tests for formula preservation, mixed formula/value ranges, and number-format preservation.
   - Acceptance Criteria:
-    - [ ] Rewinding an Excel checkpoint preserves formulas for captured formula cells.
-    - [ ] The tool reports any unsupported workbook elements that were not restored.
-    - [ ] Tests protect DCF-style workbook formulas from value-only flattening.
-  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` loading `formulas` during capture but restoring only values and number formats.
+    - [x] Rewinding an Excel checkpoint preserves formulas for captured formula cells.
+    - [x] The tool reports any unsupported workbook elements that were not restored.
+    - [x] Tests protect DCF-style workbook formulas from value-only flattening.
+  - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` loading `formulas` during capture but restoring only values and number formats. 2026-04-26 fix changed Excel restore to prefer the captured `range.formulas` matrix, which includes both formula cells and constant cells per Office.js, and falls back to values only when formula data is missing or shape-mismatched. Restore now returns warnings for values-only fallback and for the current checkpoint fidelity boundary: used-range formulas/constants/number formats only, not full replay of tables, charts, data validation, or workbook structure. The taskpane surfaces those restore warnings as system messages. Regression tests in `addin/scripts/office-tests/src/excel-rewind.test.ts` prove mixed formula/value matrices write `range.formulas`, values are not used when formulas are available, number formats are restored, and values-only fallback warns. Validation passed with `npm run typecheck:addin`, `npm run test:office`, `npm run build`, `npm run validate:manifests`, and `npm run check:bundle`.
 
 - [ ] BUG-009: PowerPoint shape anchoring and slide-master tooling can mislead agents
   - Category: Bug

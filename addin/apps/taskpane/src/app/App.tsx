@@ -657,7 +657,10 @@ export function App() {
           if (cp.ooxml) snapshotData.ooxml = cp.ooxml;
           if (cp.sheets?.length) snapshotData.sheets = cp.sheets;
           if (cp.presentationBase64) snapshotData.presentationBase64 = cp.presentationBase64;
-          await restoreDocumentSnapshot(officeState.host, snapshotData);
+          const restoreResult = await restoreDocumentSnapshot(officeState.host, snapshotData);
+          if (restoreResult.warnings.length) {
+            pushSystemMessage(`Document restore note: ${restoreResult.warnings.join(" ")}`);
+          }
         } catch (error) {
           pushErrorMessage(`Document restore failed: ${error instanceof Error ? error.message : String(error)}`);
         }

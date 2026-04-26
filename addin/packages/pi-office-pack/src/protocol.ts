@@ -1286,7 +1286,7 @@ export interface DocumentCheckpointPayload {
     usedRangeAddress: string;
     values: unknown[][];
     numberFormats: string[][];
-    formulas: string[][];
+    formulas: unknown[][];
   }>;
   presentationBase64?: string;
 }
