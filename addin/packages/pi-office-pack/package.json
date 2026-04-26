@@ -25,6 +25,10 @@
     "./prompt-suggestions": {
       "types": "./dist/prompt-suggestions.d.ts",
       "import": "./dist/prompt-suggestions.js"
+    },
+    "./workflow-packs": {
+      "types": "./dist/workflow-packs.d.ts",
+      "import": "./dist/workflow-packs.js"
     }
   },
   "files": [

@@ -5,7 +5,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import type { OfficeStateUpdate } from "@pi-office/pi-office-pack/protocol";
 import type { ChatEntry } from "../../lib/helpers";
-import { quickPrompts } from "../../lib/helpers";
+import { getQuickPrompts } from "../../lib/helpers";
 import type { OfficeThemeSnapshot } from "../../lib/office";
 import { DiagramBlock } from "./DiagramBlock";
 import { CodeBlock } from "./CodeBlock";
@@ -165,6 +165,7 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRef = useRef(true);
   const [rewindTargetId, setRewindTargetId] = useState<string | null>(null);
+  const quickPrompts = getQuickPrompts(officeState);
 
   const isNearBottom = (element: HTMLDivElement) =>
     element.scrollHeight - element.scrollTop - element.clientHeight <= 60;

@@ -387,24 +387,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] At least one non-API-key provider path is implemented or explicitly deferred with documented constraints before any UI promise.
   - Notes/Evidence: Review pointed to `BrowserModelRegistry.getProviderCatalog()` hardcoding `oauthSupported: false`, `/v1/auth/start` throwing for browser-only mode, and the new `AGENTS.md` product goal requiring provider flexibility. 2026-04-26 first implementation slice added `docs/provider-auth-matrix.md`, shared provider capability metadata, runtime catalog fields for support status/runtime/auth methods/browser-callable/companion-required/subscription-backed/image support, Settings provider cards that show planned companion/OAuth providers as informational, `/v1/auth/api-key` rejection for non-browser API-key providers, and `/v1/auth/start` errors that distinguish companion-owned OAuth from unsupported browser OAuth. Regression coverage now proves OpenAI is browser/API-key/image capable, Codex/Copilot/Gemini CLI/Antigravity are planned companion OAuth paths, Bedrock is companion-only, OAuth start behavior is honest, and image providers remain OpenAI-only. Real companion-owned OAuth provider implementations remain open under this task. Validation passed: `npm run typecheck:addin`, `npm run test:office`, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
-- [ ] FEATURE-003: Add professional workflow packs and host playbooks for high-value Office artifacts
+- [x] FEATURE-003: Add professional workflow packs and host playbooks for high-value Office artifacts
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 product-goal narrative and competitor/inspiration review.
   - Details: Pi-Office should be more than generic chat in a taskpane. Claude's extracted add-in has dense host-specific behavior and verification guidance, while Pi-Office currently has a strong tool surface but only a small skill/playbook library. The product needs curated workflows for research papers, pitch decks, resumes, specs, business user stories, DCFs, legal review, spreadsheets, and similar professional artifacts.
   - Dependencies: BUG-007 for visual truthfulness where workflows rely on layout/vision; FEATURE-004 for deeper native edit coverage.
   - Subtasks:
-    - [ ] Define workflow-pack structure for task intent, required context, preferred tools, review gates, and completion checks.
-    - [ ] Add Word workflows for research papers, resumes, specs, legal/professional review, and business user stories.
-    - [ ] Add Excel workflows for DCF/financial model review, formula auditing, table/chart improvement, and narrative export.
-    - [ ] Add PowerPoint workflows for pitch-deck outline, slide polish, visual consistency, speaker notes, and data-backed slides.
-    - [ ] Add tests or snapshot checks proving workflow prompts register and route to the expected tools.
+    - [x] Define workflow-pack structure for task intent, required context, preferred tools, review gates, and completion checks.
+    - [x] Add Word workflows for research papers, resumes, specs, legal/professional review, and business user stories.
+    - [x] Add Excel workflows for DCF/financial model review, formula auditing, table/chart improvement, and narrative export.
+    - [x] Add PowerPoint workflows for pitch-deck outline, slide polish, visual consistency, speaker notes, and data-backed slides.
+    - [x] Add tests or snapshot checks proving workflow prompts register and route to the expected tools.
   - Acceptance Criteria:
-    - [ ] The package ships multiple domain-specific workflow packs beyond generic Office tool prompts.
-    - [ ] Workflows include verification and review criteria, not only generation instructions.
-    - [ ] Users can invoke or discover workflows from the taskpane without reading code.
-  - Notes/Evidence: Competitor review highlighted Claude's host playbooks and the local `addin/packages/pi-office-pack/skills` surface as a place to grow.
+    - [x] The package ships multiple domain-specific workflow packs beyond generic Office tool prompts.
+    - [x] Workflows include verification and review criteria, not only generation instructions.
+    - [x] Users can invoke or discover workflows from the taskpane without reading code.
+  - Notes/Evidence: Competitor review highlighted Claude's host playbooks and the local `addin/packages/pi-office-pack/skills` surface as a place to grow. Closed 2026-04-26 with typed workflow-pack registry in `addin/packages/pi-office-pack/src/workflow-packs.ts`, prompt/skill surfacing through `OFFICE_APPEND_SYSTEM_PROMPT` and `office-host.SKILL.md`, host-specific taskpane starter prompts, and provenance updates. The shipped packs cover Word research paper/resume/spec/legal/business-user-story work, Excel DCF/formula/table-chart/narrative work, and PowerPoint pitch-deck/slide-polish/visual-consistency/speaker-notes/data-backed-slide work. Regression coverage in `addin/scripts/office-tests/src/workflow-packs.test.ts` proves host coverage, expected Office tool references, prompt/skill injection, and taskpane discoverability. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 121 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 - [ ] FEATURE-004: Expand first-class native Office editing coverage for professional document work
   - Category: Feature

@@ -7,6 +7,7 @@ import {
   OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH,
   type AutonomyLevel,
 } from "./protocol.js";
+import { formatWorkflowPackGuidance } from "./workflow-packs.js";
 
 export const DEFAULT_COMPANION_PORT = 3444;
 export const DEFAULT_COMPANION_HOST = "localhost";
@@ -44,6 +45,8 @@ When editing PowerPoint XML/package content, use edit_slide_xml and keep expecta
 For PowerPoint layout application, use edit_slide_master only to apply an existing layout to a slide; it does not edit slide masters or layout definitions.
 office_execute_js is a best-effort restricted subset enforced with regex checks (not an isolated sandbox). It blocks network, storage, eval, and system-access patterns and should only be used as an escape hatch when structured tools are insufficient.
 When a task involves subjective choices (tone, audience, format, scope, style) or the request is ambiguous enough that different interpretations would produce materially different results, use ask_user to clarify before proceeding. Do not guess — ask. After receiving the user's answers from ask_user, immediately carry out the full task using those answers in the same turn. Never stop after merely acknowledging the user's choices.
+When the user asks for a named workflow, artifact review, or broad professional task, choose the closest workflow pack below and follow its required context, preferred tools, review gates, and completion checks.
+${formatWorkflowPackGuidance()}
 The taskpane chat renders Mermaid and Draw.io diagrams inline. When the user asks for a diagram, flowchart, sequence diagram, or visual aid, prefer returning a fenced code block tagged with mermaid or drawio so the taskpane can render it and offer insertion into the document.
 
 DRAW.IO XML RULES (critical for correct rendering):

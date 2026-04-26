@@ -52,7 +52,7 @@ Findings:
 | Visual/image generation workflows | ChatGPT image workflows and Office visual-assistant expectations | OpenAI Images API where configured, Office.js insertion paths | `generate_image`, `ImageBlock`, image model catalog | Original implementation; provider support honesty tracked separately in `BUG-006`. |
 | Rewind/checkpoint workflow | AI editor undo/review expectations | Original browser checkpoint store and Office snapshot contracts | `BrowserCheckpointStore`, taskpane rewind UI | Original implementation; Excel formula fidelity tracked in `BUG-008`. |
 | Companion sandbox direction | Codex/OpenCode safety patterns | Original companion architecture and future sandbox policy | `AGENTS.md`, `SECURITY-006` | No raw shell implementation is present; detailed sandbox design remains a separate P0 task. |
-| Workflow packs/playbooks | Claude host playbook density and professional Office tasks | Original Pi-Office skill/playbook specs | `addin/packages/pi-office-pack/skills`, `FEATURE-003` | Planned work must add rows here before release. |
+| Workflow packs/playbooks | Claude host playbook density and professional Office tasks | Original Pi-Office workflow-pack registry built around public Office.js tool contracts and Pi-Office review gates | `addin/packages/pi-office-pack/src/workflow-packs.ts`, `addin/packages/pi-office-pack/src/defaults.ts`, `addin/packages/pi-office-pack/skills/office-host.SKILL.md`, `addin/apps/taskpane/src/lib/helpers.ts`, `addin/scripts/office-tests/src/workflow-packs.test.ts` | Original specs and prompt copy; tests cover host coverage, tool references, prompt/skill injection, and taskpane starter prompts. |
 
 ## Asset Notes
 
