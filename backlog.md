@@ -505,6 +505,28 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Reconnect/fallback behavior is visible and tested.
   - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `companion/src/server.ts` only exposes health, read-only file tools, and MCP execution. 2026-04-26 Smart Auto slice added a shared `CapabilityRegistry`, explicit runtime resolution fields, session capability route, extended `CompanionCapabilities`, Settings capability groups, companion-only native viewport capture gating, Windows-first companion native capture API, taskpane fallback behavior for browser-supported providers/images, and capability docs. This slice keeps real companion-owned provider auth/inference unavailable until explicit companion auth/session storage exists; no taskpane provider secrets are silently migrated. Validation passed: `npm --prefix addin run typecheck:pack`, `npm --prefix addin run typecheck:taskpane`, `npm --prefix companion run typecheck`, `npm --prefix addin run test:office` with 138 tests, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
 
+- [x] FEATURE-007: Curate connector setup profiles and enforce visible tool safety controls
+  - Category: Feature
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 user request after per-connector MCP research using dedicated subagents.
+  - Details: The Integrations catalog currently models each connector as one transport/auth shape, but real MCP providers often expose multiple setup paths such as hosted HTTP, OAuth/ZDR endpoints, local stdio, regional HTTP endpoints, and advanced/community fallbacks. Connected connectors also do not expose a complete editable config/tool inventory surface, and non-read-only MCP tools should be visible but disabled by default with explicit user warnings before enablement.
+  - Dependencies: BUG-011, IMPROVEMENT-006, IMPROVEMENT-007, IMPROVEMENT-008.
+  - Subtasks:
+    - [x] Add protocol/catalog setup profiles for the existing connector library.
+    - [x] Default STDIO-only connectors to disabled rows without companion and mixed HTTP/STDIO connectors to HTTP when companion is absent.
+    - [x] Add connected-connector expansion with redacted config, editable setup, and full tool inventory.
+    - [x] Classify MCP tools from annotations plus curated read/write rules and persist per-tool policy overrides.
+    - [x] Keep non-read-only and unknown tools disabled by default and warn before enabling them.
+    - [x] Update connector provenance/privacy docs and validation coverage.
+  - Acceptance Criteria:
+    - [x] Every existing catalog connector has at least one curated setup profile and no longer relies only on single transport/auth metadata.
+    - [x] Companion availability controls the noob-friendly default path without exposing STDIO/SSE/OAuth jargon first.
+    - [x] Connected connectors can be expanded to inspect config, edit setup, and review enabled/disabled tools.
+    - [x] Disabled, write, destructive, and unknown MCP tools fail closed unless explicitly enabled by policy.
+    - [x] Standard add-in, companion, Office-test, build, bundle, manifest, and browser checks pass.
+  - Notes/Evidence: Initial research found multi-profile needs for Parallel `/mcp` vs `/mcp-oauth`, Parallel Task MCP, LaunchDarkly FM/AI Configs/Observability, Shopify Storefront/Customer/Dev, Microsoft Work IQ, GitHub read-only hosted/local, Atlassian hosted MCP, PostHog US/EU, and local-only Obsidian/PostgreSQL paths. Closed 2026-04-27 by adding `setupProfiles`, connector tool inventory/policy override protocol fields, curated profiles across the existing catalog, connected row expansion, warning-gated non-read tool enablement, companion-side full tool inventory classification, docs/provenance updates, and regression coverage. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (147 tests), `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and in-app browser screenshots for Integrations Library, setup wizard, and connected expansion at `https://localhost:3443/`.
+
 ### Improvements
 
 - [x] IMPROVEMENT-001: Clean up worktree hygiene for untracked archive and generated artifacts

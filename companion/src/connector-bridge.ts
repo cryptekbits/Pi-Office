@@ -10,6 +10,9 @@ import type {
   ConnectorRemoteHttpHeader,
   ConnectorRemoteHttpHeaderFromEnv,
   ConnectorStatus,
+  ConnectorMcpToolAnnotations,
+  ConnectorToolClassification,
+  ConnectorToolInventoryItem,
   ConnectorVerificationSnapshot,
   ConnectorHealthState,
 } from "@pi-office/pi-office-pack/protocol";
@@ -40,6 +43,13 @@ interface PreparedExecutionTarget {
 interface ProbeInventory {
   verification: ConnectorVerificationSnapshot;
   allowedTools: PreparedExecutionTarget[];
+}
+
+export interface McpToolInfo {
+  name: string;
+  description?: string | undefined;
+  inputSchema?: unknown;
+  annotations?: ConnectorMcpToolAnnotations | undefined;
 }
 
 type EnvironmentSource = Record<string, string | undefined>;
@@ -340,12 +350,17 @@ async function withClient<T>(
   }
 }
 
-async function fetchAllTools(client: Client): Promise<Array<{ name: string }>> {
-  const tools: Array<{ name: string }> = [];
+async function fetchAllTools(client: Client): Promise<McpToolInfo[]> {
+  const tools: McpToolInfo[] = [];
   let cursor: string | undefined;
   do {
     const result = await client.listTools(cursor ? { cursor } : undefined);
-    tools.push(...(result.tools ?? []).map((tool: { name: string }) => ({ name: tool.name })));
+    tools.push(...(result.tools ?? []).map((tool): McpToolInfo => ({
+      name: tool.name,
+      ...(tool.description ? { description: tool.description } : {}),
+      ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
+      ...(tool.annotations ? { annotations: tool.annotations as ConnectorMcpToolAnnotations } : {}),
+    })));
     cursor = result.nextCursor;
   } while (cursor);
   return tools;
@@ -420,26 +435,88 @@ function resolveRuntime(definition: CompanionConnectorDefinition): ResolvedConne
   };
 }
 
+function destructiveName(name: string): boolean {
+  return /(^|_)(delete|remove|drop|truncate|refund|charge|pay|revoke|archive|destroy)(_|$)/i.test(name);
+}
+
+export function classifyConnectorToolForPolicy(definition: Pick<CompanionConnectorDefinition, "readPolicy">, tool: McpToolInfo): {
+  classification: ConnectorToolClassification;
+  defaultEnabled: boolean;
+  reason: string;
+} {
+  const annotations = tool.annotations;
+  if (annotations?.destructiveHint === true) {
+    return {
+      classification: "destructive",
+      defaultEnabled: false,
+      reason: "MCP annotations mark this tool as destructive.",
+    };
+  }
+  if (annotations?.readOnlyHint === true) {
+    return {
+      classification: annotations.openWorldHint ? "sensitive_read" : "read",
+      defaultEnabled: true,
+      reason: annotations.openWorldHint
+        ? "MCP annotations mark this as read-only, but it can read outside the local document."
+        : "MCP annotations mark this tool as read-only.",
+    };
+  }
+  if (matchesAnyPattern(tool.name, definition.readPolicy.blockToolPatterns)) {
+    return {
+      classification: destructiveName(tool.name) ? "destructive" : "write",
+      defaultEnabled: false,
+      reason: "Catalog policy blocks this side-effecting tool by default.",
+    };
+  }
+  if (matchesAnyPattern(tool.name, definition.readPolicy.allowToolPatterns)) {
+    return {
+      classification: "read",
+      defaultEnabled: true,
+      reason: "Catalog policy allows this as a read-safe tool.",
+    };
+  }
+  return {
+    classification: "unknown",
+    defaultEnabled: false,
+    reason: "Tool was not matched by read-safe policy and is disabled until reviewed.",
+  };
+}
+
+function applyPolicyOverride(
+  tool: ConnectorToolInventoryItem,
+  definition: CompanionConnectorDefinition,
+): ConnectorToolInventoryItem {
+  const override = definition.toolPolicyOverrides?.find((entry) => entry.toolName === tool.name);
+  return override ? { ...tool, enabled: override.enabled } : tool;
+}
+
 function buildVerification(
   definition: CompanionConnectorDefinition,
   serverName: string,
-  tools: Array<{ name: string }>,
+  tools: McpToolInfo[],
   resources: Array<{ name: string; uri: string }>,
   prompts: Array<{ name: string }>,
 ): ProbeInventory {
   const allowedToolTargets: PreparedExecutionTarget[] = [];
-  const blockedToolNames: string[] = [];
+  const toolInventory: ConnectorToolInventoryItem[] = [];
 
   for (const tool of tools) {
     const exposedName = formatToolName(serverName, tool.name);
-    if (matchesAnyPattern(tool.name, definition.readPolicy.blockToolPatterns)) {
-      blockedToolNames.push(exposedName);
-      continue;
-    }
-    if (!matchesAnyPattern(tool.name, definition.readPolicy.allowToolPatterns)) {
-      blockedToolNames.push(exposedName);
-      continue;
-    }
+    const classified = classifyConnectorToolForPolicy(definition, tool);
+    const inventoryItem = applyPolicyOverride({
+      name: exposedName,
+      rawName: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      annotations: tool.annotations,
+      classification: classified.classification,
+      defaultEnabled: classified.defaultEnabled,
+      enabled: classified.defaultEnabled,
+      reason: classified.reason,
+      source: "mcp_tool",
+    }, definition);
+    toolInventory.push(inventoryItem);
+    if (!inventoryItem.enabled) continue;
 
     allowedToolTargets.push({
       exposedToolName: exposedName,
@@ -453,8 +530,20 @@ function buildVerification(
 
   if (definition.readPolicy.allowResources) {
     for (const resource of resources) {
+      const exposedToolName = formatToolName(serverName, `get_${resourceNameToToolName(resource.name)}`);
+      const inventoryItem = applyPolicyOverride({
+        name: exposedToolName,
+        rawName: resource.name,
+        classification: "read",
+        defaultEnabled: true,
+        enabled: true,
+        reason: "MCP resource helper is read-only.",
+        source: "resource",
+      }, definition);
+      toolInventory.push(inventoryItem);
+      if (!inventoryItem.enabled) continue;
       allowedToolTargets.push({
-        exposedToolName: formatToolName(serverName, `get_${resourceNameToToolName(resource.name)}`),
+        exposedToolName,
         connectorId: definition.id,
         kind: "resource",
         resourceUri: resource.uri,
@@ -472,7 +561,9 @@ function buildVerification(
     : [];
 
   const promptNames = prompts.map((prompt) => prompt.name);
-  const toolNames = allowedToolTargets.map((target) => target.exposedToolName).concat(blockedToolNames);
+  const toolNames = toolInventory.map((tool) => tool.name);
+  const allowedToolNames = allowedToolTargets.map((target) => target.exposedToolName);
+  const blockedToolNames = toolInventory.filter((tool) => !allowedToolNames.includes(tool.name)).map((tool) => tool.name);
 
   return {
     verification: {
@@ -480,8 +571,9 @@ function buildVerification(
       catalogRevision: definition.catalogRevision ?? "companion-v1",
       inventoryHash: toInventoryHash(definition, toolNames, promptNames),
       toolNames,
-      allowedTools: allowedToolTargets.map((target) => target.exposedToolName),
+      allowedTools: allowedToolNames,
       blockedTools: blockedToolNames,
+      toolInventory,
       resourceToolNames: allowedToolTargets
         .filter((target) => target.kind === "resource")
         .map((target) => target.exposedToolName),
@@ -571,6 +663,7 @@ function buildStatus(
     setupKind: definition.setupKind,
     authMethod: definition.authMethod,
     transport: definition.transport,
+    setupProfileId: definition.setupProfileId,
     credentialSource: definition.credentialSource,
     detectedEnvKey: definition.useDetectedEnvKey ?? definition.secretEnvKey,
     usesDetectedCredential: Boolean(definition.useDetectedEnvKey),
@@ -598,6 +691,7 @@ function buildStatus(
           tools: verification.toolNames,
           allowedTools: verification.allowedTools,
           blockedTools: verification.blockedTools,
+          toolInventory: verification.toolInventory,
           resourceToolNames: verification.resourceToolNames,
           promptNames: verification.promptNames,
           allowedPrompts: verification.allowedPrompts,

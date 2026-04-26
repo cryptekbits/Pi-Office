@@ -27,6 +27,8 @@ import type {
   ConnectorStatus,
   ConnectorStatusResponse,
   ConnectorTestResponse,
+  ConnectorToolPolicyUpdateRequest,
+  ConnectorToolPolicyUpdateResponse,
   CompanionState,
   OfficeDocumentState,
   OfficeSessionOpenResponse,
@@ -1636,6 +1638,18 @@ export function App() {
     }
   }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
+  const handleUpdateConnectorToolPolicy = useCallback(async (request: ConnectorToolPolicyUpdateRequest) => {
+    try {
+      await postJson<ConnectorToolPolicyUpdateResponse>("/v1/connectors/tools", request);
+      await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      pushErrorMessage(`Tool policy update failed: ${message}`);
+      throw error;
+    }
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
+
   const handleLoadConnectorLogs = useCallback(async (connectorId: string) => {
     try {
       return await fetchJson<ConnectorLogResponse>(`/v1/connectors/${connectorId}/logs`);
@@ -1815,6 +1829,7 @@ export function App() {
           onRemoveConnector={handleRemoveConnector}
           onSetConnectorFavorite={handleSetConnectorFavorite}
           onUpdateConnectorScope={handleUpdateConnectorScope}
+          onUpdateConnectorToolPolicy={handleUpdateConnectorToolPolicy}
           onLoadConnectorLogs={handleLoadConnectorLogs}
           onExportConnectors={handleExportConnectors}
           onPreviewConnectorImport={handlePreviewConnectorImport}

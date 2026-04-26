@@ -28,6 +28,10 @@ The taskpane Settings -> Privacy tab can clear:
 
 Per-provider auth removal remains available from Settings -> AI Providers, and per-connector removal remains available from Settings -> Integrations.
 
+Connector records also store the selected setup profile, redacted config metadata, per-tool enablement overrides, and whether the user suppressed the advanced-tool warning for that connector. Exported connector bundles include profile and tool-policy metadata so teams can reproduce safe defaults, but secrets and OAuth tokens are still omitted and imported OAuth connectors must sign in again.
+
+Hosted MCP profiles send connector requests and returned tool data to the named provider endpoint through the optional companion. Local STDIO profiles run a command on the companion machine and send tool results back into the active Pi-Office session. Non-read-only or unknown MCP tools are disabled unless a user explicitly enables them from the connector details view.
+
 ## Telemetry Default
 
 Pi-Office does not enable product analytics or telemetry by default. Provider services, connector services, and locally installed connector runtimes may have their own logging and retention policies outside Pi-Office.

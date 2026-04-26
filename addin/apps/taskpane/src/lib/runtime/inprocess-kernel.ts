@@ -66,6 +66,7 @@ import {
   type ConnectorStatus,
   type ConnectorStatusResponse,
   type ConnectorTestResponse,
+  type ConnectorToolPolicyUpdateRequest,
   type OfficeDocumentState,
   type ContextBreakdownEntry,
   type DeriveSubjectRequest,
@@ -3619,6 +3620,9 @@ class InProcessKernel {
     }
     if (method === "POST" && path === "/v1/connectors/scope") {
       return (await this.connectorRuntime.updateScope(body as ConnectorScopeUpdateRequest)) as T;
+    }
+    if (method === "POST" && path === "/v1/connectors/tools") {
+      return (await this.connectorRuntime.updateToolPolicy(body as ConnectorToolPolicyUpdateRequest)) as T;
     }
     const connectorDeleteMatch = method === "DELETE" ? path.match(/^\/v1\/connectors\/([^/]+)$/) : null;
     if (connectorDeleteMatch) {

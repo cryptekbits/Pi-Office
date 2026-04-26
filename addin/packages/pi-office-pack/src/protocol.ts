@@ -519,6 +519,71 @@ export interface ConnectorConfigTemplate {
   env?: Record<string, string> | undefined;
 }
 
+export type ConnectorSetupProfileOfficialness = "official" | "community" | "deprecated" | "experimental";
+
+export interface ConnectorSetupProfile {
+  id: string;
+  label: string;
+  description?: string | undefined;
+  transport: ConnectorTransport;
+  setupKind?: ConnectorSetupKind | undefined;
+  authMethod: ConnectorAuthMethod;
+  /** Hosted MCP endpoint for remote profiles. */
+  endpoint?: string | undefined;
+  command?: string | undefined;
+  args?: string[] | undefined;
+  cwd?: string | undefined;
+  env?: Record<string, string> | undefined;
+  remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
+  remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
+  credentialEnvKey?: string | undefined;
+  requiresCompanion: boolean;
+  officialness: ConnectorSetupProfileOfficialness;
+  defaultWhenCompanionAbsent?: boolean | undefined;
+  defaultWhenCompanionPresent?: boolean | undefined;
+  privacyNotes?: string[] | undefined;
+  simpleFields: string[];
+  advancedFields: string[];
+}
+
+export const CONNECTOR_TOOL_CLASSIFICATIONS = [
+  "read",
+  "sensitive_read",
+  "costly_read",
+  "write",
+  "destructive",
+  "unknown",
+] as const;
+export type ConnectorToolClassification = (typeof CONNECTOR_TOOL_CLASSIFICATIONS)[number];
+
+export interface ConnectorMcpToolAnnotations {
+  title?: string | undefined;
+  readOnlyHint?: boolean | undefined;
+  destructiveHint?: boolean | undefined;
+  idempotentHint?: boolean | undefined;
+  openWorldHint?: boolean | undefined;
+}
+
+export interface ConnectorToolInventoryItem {
+  name: string;
+  rawName?: string | undefined;
+  description?: string | undefined;
+  inputSchema?: unknown;
+  annotations?: ConnectorMcpToolAnnotations | undefined;
+  classification: ConnectorToolClassification;
+  defaultEnabled: boolean;
+  enabled: boolean;
+  reason: string;
+  source: "mcp_tool" | "resource" | "catalog_hint";
+}
+
+export interface ConnectorToolPolicyOverride {
+  toolName: string;
+  enabled: boolean;
+  warningAcknowledged?: boolean | undefined;
+  updatedAt?: string | undefined;
+}
+
 export interface ConnectorCatalogItem {
   id: string;
   name: string;
@@ -539,6 +604,7 @@ export interface ConnectorCatalogItem {
   envHints: ConnectorEnvHint[];
   readPolicy: ConnectorReadPolicy;
   template?: ConnectorConfigTemplate | undefined;
+  setupProfiles?: ConnectorSetupProfile[] | undefined;
   docsUrl?: string | undefined;
   authUrl?: string | undefined;
   setupNotes?: string[] | undefined;
@@ -562,6 +628,7 @@ export interface CompanionConnectorDefinition {
   command?: string | undefined;
   args?: string[] | undefined;
   cwd?: string | undefined;
+  setupProfileId?: string | undefined;
   env?: Record<string, string> | undefined;
   /** Extra host env var names copied into the stdio child (companion), in addition to SDK safe inherited vars. */
   stdioEnvPassthrough?: string[] | undefined;
@@ -574,6 +641,7 @@ export interface CompanionConnectorDefinition {
   useDetectedEnvKey?: string | undefined;
   readOnly: boolean;
   readPolicy: ConnectorReadPolicy;
+  toolPolicyOverrides?: ConnectorToolPolicyOverride[] | undefined;
   catalogRevision?: string | undefined;
 }
 
@@ -581,6 +649,7 @@ export interface ConnectorCapabilitySummary {
   tools: string[];
   allowedTools: string[];
   blockedTools: string[];
+  toolInventory?: ConnectorToolInventoryItem[] | undefined;
   resourceToolNames: string[];
   promptNames: string[];
   allowedPrompts: string[];
@@ -615,6 +684,7 @@ export interface ConnectorVerificationSnapshot {
   toolNames: string[];
   allowedTools: string[];
   blockedTools: string[];
+  toolInventory?: ConnectorToolInventoryItem[] | undefined;
   resourceToolNames: string[];
   promptNames: string[];
   allowedPrompts: string[];
@@ -675,6 +745,7 @@ export interface ConnectorStatus {
   setupKind: ConnectorSetupKind;
   authMethod: ConnectorAuthMethod;
   transport: ConnectorTransport;
+  setupProfileId?: string | undefined;
   credentialSource: ConnectorCredentialSource;
   detectedEnvKey?: string | undefined;
   usesDetectedCredential?: boolean | undefined;
@@ -695,6 +766,7 @@ export interface ConnectorStatus {
   capabilities?: ConnectorCapabilitySummary | undefined;
   executionEnvironment?: ConnectorExecutionEnvironment | undefined;
   executionAvailable?: boolean | undefined;
+  suppressNonReadToolWarning?: boolean | undefined;
 }
 
 export interface ConnectorRuntimeCheck {
@@ -754,6 +826,7 @@ export interface ConnectorSetupRequest {
   setupKind?: ConnectorSetupKind | undefined;
   authMethod?: ConnectorAuthMethod | undefined;
   transport?: ConnectorTransport | undefined;
+  setupProfileId?: string | undefined;
   credentialSource?: ConnectorCredentialSource | undefined;
   secret?: string | undefined;
   secretEnvKey?: string | undefined;
@@ -830,6 +903,20 @@ export interface ConnectorScopeUpdateRequest {
   scopeContext?: ConnectorScopeContext | undefined;
 }
 
+export interface ConnectorToolPolicyUpdateRequest {
+  connectorId: string;
+  toolName: string;
+  enabled: boolean;
+  warningAcknowledged?: boolean | undefined;
+  suppressWarning?: boolean | undefined;
+  scopeContext?: ConnectorScopeContext | undefined;
+}
+
+export interface ConnectorToolPolicyUpdateResponse {
+  ok: true;
+  status: ConnectorStatus;
+}
+
 export interface ConnectorFavoriteRequest {
   connectorId: string;
   favorite: boolean;
@@ -855,6 +942,7 @@ export interface ConnectorExportItem {
   setupKind: ConnectorSetupKind;
   authMethod: ConnectorAuthMethod;
   transport: ConnectorTransport;
+  setupProfileId?: string | undefined;
   credentialSource: ConnectorCredentialSource;
   secretEnvKey?: string | undefined;
   useDetectedEnvKey?: string | undefined;
@@ -866,6 +954,8 @@ export interface ConnectorExportItem {
   stdioEnvPassthrough?: string[] | undefined;
   remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
   remoteHttpHeadersFromEnv?: ConnectorRemoteHttpHeaderFromEnv[] | undefined;
+  toolPolicyOverrides?: ConnectorToolPolicyOverride[] | undefined;
+  suppressNonReadToolWarning?: boolean | undefined;
   defaultEnabled: boolean;
 }
 

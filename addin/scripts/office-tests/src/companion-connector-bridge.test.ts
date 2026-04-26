@@ -5,6 +5,7 @@ import type { CompanionConnectorDefinition } from "@pi-office/pi-office-pack/pro
 import {
   CompanionConnectorBridge,
   buildRemoteHttpRequestHeaders,
+  classifyConnectorToolForPolicy,
   resolveLocalStdioProcessEnvironment,
 } from "../../../../companion/src/connector-bridge.js";
 
@@ -189,4 +190,37 @@ test("connector status and diagnostics expose env key names but not detected sec
       process.env[key] = previous;
     }
   }
+});
+
+test("connector tool classification uses annotations before conservative name rules", () => {
+  assert.deepEqual(
+    classifyConnectorToolForPolicy(connector(), {
+      name: "anything_generate_invoice",
+      annotations: { readOnlyHint: true },
+    }),
+    {
+      classification: "read",
+      defaultEnabled: true,
+      reason: "MCP annotations mark this tool as read-only.",
+    },
+  );
+
+  const destructive = classifyConnectorToolForPolicy(connector(), {
+    name: "list_customers",
+    annotations: { destructiveHint: true },
+  });
+  assert.equal(destructive.classification, "destructive");
+  assert.equal(destructive.defaultEnabled, false);
+
+  const unknown = classifyConnectorToolForPolicy(connector({
+    readPolicy: {
+      ...READ_POLICY,
+      allowToolPatterns: ["^get_"],
+      blockToolPatterns: ["^delete_"],
+    },
+  }), {
+    name: "launch_remote_task",
+  });
+  assert.equal(unknown.classification, "unknown");
+  assert.equal(unknown.defaultEnabled, false);
 });

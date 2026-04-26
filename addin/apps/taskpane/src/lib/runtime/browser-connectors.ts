@@ -41,6 +41,11 @@ import type {
   ConnectorStatus,
   ConnectorStatusResponse,
   ConnectorTestResponse,
+  ConnectorToolClassification,
+  ConnectorToolInventoryItem,
+  ConnectorToolPolicyOverride,
+  ConnectorToolPolicyUpdateRequest,
+  ConnectorToolPolicyUpdateResponse,
   ConnectorTransport,
   ConnectorVerificationSnapshot,
 } from "@pi-office/pi-office-pack/protocol";
@@ -76,6 +81,7 @@ interface StoredConnectorRecord {
   command?: string | undefined;
   args?: string[] | undefined;
   cwd?: string | undefined;
+  setupProfileId?: string | undefined;
   env?: Record<string, string> | undefined;
   stdioEnvPassthrough?: string[] | undefined;
   remoteHttpHeaders?: ConnectorRemoteHttpHeader[] | undefined;
@@ -89,6 +95,8 @@ interface StoredConnectorRecord {
   lastError?: string | undefined;
   verification?: ConnectorVerificationSnapshot | undefined;
   capabilities?: ConnectorCapabilitySummary | undefined;
+  toolPolicyOverrides?: ConnectorToolPolicyOverride[] | undefined;
+  suppressNonReadToolWarning?: boolean | undefined;
   oauthConnected?: boolean | undefined;
   oauthExpiresAt?: string | undefined;
   oauthLastAuthAt?: string | undefined;
@@ -299,6 +307,52 @@ function sanitizeHintToToolName(value: string): string {
   return next;
 }
 
+function normalizeToolPolicyOverrides(value: unknown): ConnectorToolPolicyOverride[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ConnectorToolPolicyOverride[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as { toolName?: string; enabled?: boolean; warningAcknowledged?: boolean; updatedAt?: string };
+    const toolName = trimString(rec.toolName);
+    if (!toolName || typeof rec.enabled !== "boolean") continue;
+    out.push({
+      toolName,
+      enabled: rec.enabled,
+      warningAcknowledged: rec.warningAcknowledged === true,
+      updatedAt: trimString(rec.updatedAt),
+    });
+  }
+  return out.length ? out : undefined;
+}
+
+function profileForConnector(connector: ConnectorCatalogItem, profileId: string | undefined) {
+  if (!connector.setupProfiles?.length) return undefined;
+  const explicit = trimString(profileId);
+  if (explicit) {
+    const profile = connector.setupProfiles.find((entry) => entry.id === explicit);
+    if (profile) return profile;
+  }
+  return connector.setupProfiles.find((entry) => entry.defaultWhenCompanionAbsent)
+    ?? connector.setupProfiles.find((entry) => entry.defaultWhenCompanionPresent)
+    ?? connector.setupProfiles[0];
+}
+
+function classificationIsEnabledByDefault(classification: ConnectorToolClassification): boolean {
+  return classification === "read" || classification === "sensitive_read" || classification === "costly_read";
+}
+
+function applyToolPolicyOverrides(
+  inventory: ConnectorToolInventoryItem[],
+  overrides: ConnectorToolPolicyOverride[] | undefined,
+): ConnectorToolInventoryItem[] {
+  if (!overrides?.length) return inventory;
+  const byName = new Map(overrides.map((entry) => [entry.toolName, entry]));
+  return inventory.map((tool) => {
+    const override = byName.get(tool.name);
+    return override ? { ...tool, enabled: override.enabled } : tool;
+  });
+}
+
 function makeInventoryHash(values: string[]): string {
   return values.join("|").slice(0, 240) || "empty";
 }
@@ -335,6 +389,34 @@ function buildCustomConnectorCatalogItem(name = "Custom MCP"): ConnectorCatalogI
       allowPromptPatterns: [],
       blockPromptPatterns: [".*"],
     },
+    setupProfiles: [
+      {
+        id: "custom-local-stdio",
+        label: "Use local companion",
+        description: "Run a local MCP command through the optional companion.",
+        transport: "local_stdio",
+        setupKind: "local_executable_or_docker",
+        authMethod: "none",
+        requiresCompanion: true,
+        officialness: "community",
+        defaultWhenCompanionPresent: true,
+        simpleFields: ["Local companion", "Launch command"],
+        advancedFields: ["Arguments", "Working directory", "Environment variables", "Tool policy"],
+      },
+      {
+        id: "custom-hosted-http",
+        label: "Connect online",
+        description: "Connect to a hosted MCP endpoint through the optional companion.",
+        transport: "remote_http",
+        setupKind: "remote_url_token",
+        authMethod: "bearer_token",
+        requiresCompanion: true,
+        officialness: "community",
+        defaultWhenCompanionAbsent: true,
+        simpleFields: ["Connector URL", "Access token"],
+        advancedFields: ["HTTP headers", "Environment-backed headers", "Tool policy"],
+      },
+    ],
     setupNotes: [
       "Local stdio connectors require a local runtime and are not available in browser-only mode.",
       "Remote MCP endpoints over HTTP can still be configured.",
@@ -459,6 +541,7 @@ export class BrowserConnectorRuntime {
       setupKind: record.setupKind,
       authMethod: record.authMethod,
       transport: record.transport,
+      setupProfileId: record.setupProfileId,
       credentialSource: record.credentialSource,
       secretEnvKey: record.secretEnvKey,
       useDetectedEnvKey: record.useDetectedEnvKey,
@@ -470,6 +553,8 @@ export class BrowserConnectorRuntime {
       stdioEnvPassthrough: record.stdioEnvPassthrough,
       remoteHttpHeaders: record.remoteHttpHeaders,
       remoteHttpHeadersFromEnv: record.remoteHttpHeadersFromEnv,
+      toolPolicyOverrides: record.toolPolicyOverrides,
+      suppressNonReadToolWarning: record.suppressNonReadToolWarning,
       defaultEnabled: record.defaultEnabled,
     }));
 
@@ -542,6 +627,7 @@ export class BrowserConnectorRuntime {
         authMethod: item.authMethod,
         transport: item.transport,
         credentialSource: item.credentialSource,
+        setupProfileId: trimString(item.setupProfileId),
         secretEnvKey: trimString(item.secretEnvKey),
         useDetectedEnvKey: trimString(item.useDetectedEnvKey),
         url: normalizeUrl(item.url),
@@ -552,6 +638,8 @@ export class BrowserConnectorRuntime {
         stdioEnvPassthrough: normalizeStdioEnvPassthrough(item.stdioEnvPassthrough),
         remoteHttpHeaders: normalizeRemoteHttpHeaders(item.remoteHttpHeaders),
         remoteHttpHeadersFromEnv: normalizeRemoteHttpHeadersFromEnv(item.remoteHttpHeadersFromEnv),
+        toolPolicyOverrides: normalizeToolPolicyOverrides(item.toolPolicyOverrides),
+        suppressNonReadToolWarning: item.suppressNonReadToolWarning === true,
         defaultEnabled: item.defaultEnabled !== false,
         favorite: false,
         createdAt: timestamp,
@@ -620,12 +708,16 @@ export class BrowserConnectorRuntime {
       ? undefined
       : this.state.connectors.find((record) => record.source === "library" && record.connectorId === connector.id);
     const diagnostics: ConnectorDiagnostic[] = [];
-    if (connector.transport === "local_stdio") {
+    const profiles = connector.setupProfiles ?? [];
+    const allProfilesNeedLocalCommand = profiles.length > 0 && profiles.every((profile) => profile.transport === "local_stdio");
+    if (connector.transport === "local_stdio" || allProfilesNeedLocalCommand) {
       diagnostics.push({
         level: "warning",
         code: "local_stdio_requires_companion",
         title: "Local runtime unavailable",
-        message: "Local stdio connectors cannot execute directly in browser-only mode.",
+        message: allProfilesNeedLocalCommand
+          ? "This connector only supports a local command today. It needs the optional companion before setup can be verified."
+          : "Local stdio connectors cannot execute directly in browser-only mode.",
         connectorId: connector.id,
       });
     }
@@ -933,6 +1025,77 @@ export class BrowserConnectorRuntime {
     return { ok: true, status: this.toStatus(refreshed, request.scopeContext) };
   }
 
+  async updateToolPolicy(request: ConnectorToolPolicyUpdateRequest): Promise<ConnectorToolPolicyUpdateResponse> {
+    const record = this.state.connectors.find((entry) => entry.id === request.connectorId);
+    if (!record) {
+      throw new Error("Unknown connector.");
+    }
+    const toolName = trimString(request.toolName);
+    if (!toolName) {
+      throw new Error("toolName is required.");
+    }
+
+    const existing = record.toolPolicyOverrides ?? [];
+    const nextOverride: ConnectorToolPolicyOverride = {
+      toolName,
+      enabled: request.enabled === true,
+      warningAcknowledged: request.warningAcknowledged === true,
+      updatedAt: nowIso(),
+    };
+    record.toolPolicyOverrides = [
+      ...existing.filter((entry) => entry.toolName !== toolName),
+      nextOverride,
+    ];
+    if (request.suppressWarning === true) {
+      record.suppressNonReadToolWarning = true;
+    }
+    record.capabilities = record.capabilities
+      ? {
+          ...record.capabilities,
+          toolInventory: record.capabilities.toolInventory
+            ? applyToolPolicyOverrides(record.capabilities.toolInventory, record.toolPolicyOverrides)
+            : undefined,
+          allowedTools: (record.capabilities.toolInventory
+            ? applyToolPolicyOverrides(record.capabilities.toolInventory, record.toolPolicyOverrides)
+            : record.capabilities.allowedTools.map((name): ConnectorToolInventoryItem => ({
+                name,
+                classification: "read",
+                defaultEnabled: true,
+                enabled: true,
+                reason: "Previously verified read-safe tool.",
+                source: "catalog_hint",
+              })))
+            .filter((tool) => tool.enabled)
+            .map((tool) => tool.name),
+          blockedTools: (record.capabilities.toolInventory
+            ? applyToolPolicyOverrides(record.capabilities.toolInventory, record.toolPolicyOverrides)
+            : [])
+            .filter((tool) => !tool.enabled)
+            .map((tool) => tool.name),
+        }
+      : this.buildCapabilitySummary(record);
+    if (record.verification) {
+      const inventory = record.capabilities.toolInventory;
+      record.verification = {
+        ...record.verification,
+        toolInventory: inventory,
+        allowedTools: record.capabilities.allowedTools,
+        blockedTools: record.capabilities.blockedTools,
+      };
+    }
+    record.updatedAt = nowIso();
+    this.upsertRecord(record);
+    this.appendLog({
+      connectorId: record.id,
+      connectorName: record.name,
+      kind: "scope",
+      level: "info",
+      message: `${request.enabled ? "Enabled" : "Disabled"} connector tool ${toolName}.`,
+    });
+    await this.persist();
+    return { ok: true, status: this.toStatus(record, request.scopeContext) };
+  }
+
   getLogs(connectorId: string): ConnectorLogResponse {
     return {
       connectorId,
@@ -962,6 +1125,7 @@ export class BrowserConnectorRuntime {
       authMethod: record.authMethod,
       transport: record.transport,
       credentialSource: record.credentialSource,
+      setupProfileId: record.setupProfileId,
       url: record.url,
       command: record.command,
       args: record.args,
@@ -975,6 +1139,7 @@ export class BrowserConnectorRuntime {
       useDetectedEnvKey: record.useDetectedEnvKey,
       readOnly: catalog.readOnly,
       readPolicy: catalog.readPolicy,
+      toolPolicyOverrides: record.toolPolicyOverrides,
       catalogRevision: catalog.catalogRevision,
     };
   }
@@ -1007,6 +1172,7 @@ export class BrowserConnectorRuntime {
       setupKind: record.setupKind,
       authMethod: record.authMethod,
       transport: record.transport,
+      setupProfileId: record.setupProfileId,
       credentialSource: record.credentialSource,
       detectedEnvKey: record.useDetectedEnvKey,
       usesDetectedCredential: record.credentialSource === "detected_env" && Boolean(record.useDetectedEnvKey),
@@ -1028,6 +1194,7 @@ export class BrowserConnectorRuntime {
         lastAt: lastLog?.timestamp,
         lastLevel: lastLog?.level,
       },
+      suppressNonReadToolWarning: record.suppressNonReadToolWarning === true,
     };
   }
 
@@ -1187,26 +1354,30 @@ export class BrowserConnectorRuntime {
   }
 
   private defaultDraft(connector: ConnectorCatalogItem): ConnectorSetupRequest {
+    const profile = profileForConnector(connector, undefined);
     return {
       connectorId: connector.id,
       name: connector.name,
       enabled: true,
       favorite: false,
       scopeTarget: "global",
-      setupKind: connector.setupKind,
-      authMethod: connector.authMethod,
-      transport: connector.transport,
-      credentialSource: connector.authMethod === "none"
+      setupProfileId: profile?.id,
+      setupKind: profile?.setupKind ?? connector.setupKind,
+      authMethod: profile?.authMethod ?? connector.authMethod,
+      transport: profile?.transport ?? connector.transport,
+      credentialSource: (profile?.authMethod ?? connector.authMethod) === "none"
         ? "none"
-        : connector.authMethod === "oauth"
+        : (profile?.authMethod ?? connector.authMethod) === "oauth"
           ? "oauth"
           : "manual",
-      secretEnvKey: connector.envHints[0]?.key,
-      url: connector.template?.url,
-      command: connector.template?.command,
-      args: connector.template?.args,
-      cwd: connector.template?.cwd,
-      env: connector.template?.env,
+      secretEnvKey: profile?.credentialEnvKey ?? connector.envHints[0]?.key,
+      url: profile?.transport === "remote_http" ? (profile.endpoint ?? connector.template?.url) : connector.template?.url,
+      command: profile?.transport === "local_stdio" ? (profile.command ?? connector.template?.command) : connector.template?.command,
+      args: profile?.transport === "local_stdio" ? (profile.args ?? connector.template?.args) : connector.template?.args,
+      cwd: profile?.transport === "local_stdio" ? (profile.cwd ?? connector.template?.cwd) : connector.template?.cwd,
+      env: profile?.env ?? connector.template?.env,
+      remoteHttpHeaders: profile?.remoteHttpHeaders,
+      remoteHttpHeadersFromEnv: profile?.remoteHttpHeadersFromEnv,
     };
   }
 
@@ -1252,6 +1423,7 @@ export class BrowserConnectorRuntime {
       : getConnectorCatalogItem(connectorId);
     const source: "library" | "custom" = catalogItem && connectorId !== "custom" ? "library" : "custom";
     const base = catalogItem ?? buildCustomConnectorCatalogItem(trimString(request.name) ?? "Custom MCP");
+    const profile = profileForConnector(base, request.setupProfileId);
 
     const existing = trimString(request.existingId)
       ? this.state.connectors.find((entry) => entry.id === request.existingId)
@@ -1265,7 +1437,7 @@ export class BrowserConnectorRuntime {
           ?? (source === "library" ? connectorId : createRandomId("custom-")))
       : (trimString(request.existingId) ?? existing?.id ?? (source === "library" ? connectorId : createRandomId("preview-")));
 
-    const authMethod = request.authMethod ?? base.authMethod;
+    const authMethod = request.authMethod ?? profile?.authMethod ?? base.authMethod;
     const credentialSource = request.credentialSource
       ?? (authMethod === "none" ? "none" : authMethod === "oauth" ? "oauth" : "manual");
     const preserveStoredSecret = request.preserveStoredSecret === true;
@@ -1283,18 +1455,19 @@ export class BrowserConnectorRuntime {
       name: trimString(request.name) ?? existing?.name ?? base.name,
       category: source === "library" ? base.category : "knowledge",
       maturity: source === "library" ? base.maturity : "custom_mcp_only",
-      setupKind: request.setupKind ?? existing?.setupKind ?? base.setupKind,
+      setupKind: request.setupKind ?? profile?.setupKind ?? existing?.setupKind ?? base.setupKind,
       authMethod,
-      transport: request.transport ?? existing?.transport ?? base.transport,
+      transport: request.transport ?? profile?.transport ?? existing?.transport ?? base.transport,
+      setupProfileId: trimString(request.setupProfileId) ?? profile?.id ?? existing?.setupProfileId,
       credentialSource,
       secret: nextSecret,
-      secretEnvKey: trimString(request.secretEnvKey),
+      secretEnvKey: trimString(request.secretEnvKey) ?? profile?.credentialEnvKey,
       useDetectedEnvKey: trimString(request.useDetectedEnvKey),
-      url: normalizeUrl(request.url),
-      command: trimString(request.command),
-      args: normalizeArgs(request.args),
-      cwd: trimString(request.cwd),
-      env: normalizeEnv(request.env),
+      url: normalizeUrl(request.url ?? profile?.endpoint),
+      command: trimString(request.command) ?? profile?.command,
+      args: normalizeArgs(request.args) ?? profile?.args,
+      cwd: trimString(request.cwd) ?? profile?.cwd,
+      env: normalizeEnv(request.env) ?? profile?.env,
       stdioEnvPassthrough:
         request.stdioEnvPassthrough !== undefined
           ? normalizeStdioEnvPassthrough(request.stdioEnvPassthrough)
@@ -1302,11 +1475,11 @@ export class BrowserConnectorRuntime {
       remoteHttpHeaders:
         request.remoteHttpHeaders !== undefined
           ? normalizeRemoteHttpHeaders(request.remoteHttpHeaders)
-          : existing?.remoteHttpHeaders,
+          : existing?.remoteHttpHeaders ?? profile?.remoteHttpHeaders,
       remoteHttpHeadersFromEnv:
         request.remoteHttpHeadersFromEnv !== undefined
           ? normalizeRemoteHttpHeadersFromEnv(request.remoteHttpHeadersFromEnv)
-          : existing?.remoteHttpHeadersFromEnv,
+          : existing?.remoteHttpHeadersFromEnv ?? profile?.remoteHttpHeadersFromEnv,
       defaultEnabled: request.enabled !== false,
       favorite: request.favorite === true,
       createdAt: existing?.createdAt ?? nowIso(),
@@ -1316,6 +1489,8 @@ export class BrowserConnectorRuntime {
       lastError: existing?.lastError,
       verification: existing?.verification,
       capabilities: existing?.capabilities,
+      toolPolicyOverrides: existing?.toolPolicyOverrides,
+      suppressNonReadToolWarning: existing?.suppressNonReadToolWarning,
       oauthConnected: credentialSource === "oauth" ? (hasOAuthCredential && existing?.oauthConnected === true) : undefined,
       oauthExpiresAt: credentialSource === "oauth" && hasOAuthCredential ? existing?.oauthExpiresAt : undefined,
       oauthLastAuthAt: credentialSource === "oauth" && hasOAuthCredential ? existing?.oauthLastAuthAt : undefined,
@@ -1386,21 +1561,23 @@ export class BrowserConnectorRuntime {
     const diagnostics = this.setupDiagnostics(record);
     const ok = !diagnostics.some((entry) => entry.level === "error") && !this.needsCredential(record);
     const verifiedAt = nowIso();
-    const tools = this.buildCapabilitySummary(record).tools;
+    const capabilities = this.buildCapabilitySummary(record);
+    const tools = capabilities.tools;
     const next: StoredConnectorRecord = {
       ...record,
       lastTestedAt: verifiedAt,
       lastHealthyAt: ok ? verifiedAt : record.lastHealthyAt,
       lastError: ok ? undefined : (record.oauthLastAuthError ?? diagnostics[0]?.message ?? "Verification failed."),
       oauthLastAuthError: ok ? undefined : record.oauthLastAuthError,
-      capabilities: this.buildCapabilitySummary(record),
+      capabilities,
       verification: {
         verifiedAt,
         catalogRevision: getConnectorCatalogItem(record.connectorId)?.catalogRevision ?? "browser-v1",
         inventoryHash: makeInventoryHash(tools),
         toolNames: tools,
-        allowedTools: tools,
-        blockedTools: [],
+        allowedTools: capabilities.allowedTools,
+        blockedTools: capabilities.blockedTools,
+        toolInventory: capabilities.toolInventory,
         resourceToolNames: [],
         promptNames: [],
         allowedPrompts: [],
@@ -1419,10 +1596,23 @@ export class BrowserConnectorRuntime {
     const catalog = getConnectorCatalogItem(record.connectorId);
     const hints = catalog?.capabilityHints ?? [];
     const tools = [...new Set(hints.map(sanitizeHintToToolName))];
+    const inventory = applyToolPolicyOverrides(
+      tools.map((toolName): ConnectorToolInventoryItem => ({
+        name: toolName,
+        rawName: toolName,
+        classification: "read",
+        defaultEnabled: classificationIsEnabledByDefault("read"),
+        enabled: classificationIsEnabledByDefault("read"),
+        reason: "Catalog capability hint is read-only.",
+        source: "catalog_hint",
+      })),
+      record.toolPolicyOverrides,
+    );
     return {
       tools,
-      allowedTools: tools,
-      blockedTools: [],
+      allowedTools: inventory.filter((tool) => tool.enabled).map((tool) => tool.name),
+      blockedTools: inventory.filter((tool) => !tool.enabled).map((tool) => tool.name),
+      toolInventory: inventory,
       resourceToolNames: [],
       promptNames: [],
       allowedPrompts: [],
@@ -1605,9 +1795,14 @@ export class BrowserConnectorRuntime {
     return {
       ...state,
       connectors: state.connectors.map((record) => {
+        const normalized = {
+          ...record,
+          toolPolicyOverrides: normalizeToolPolicyOverrides(record.toolPolicyOverrides),
+          suppressNonReadToolWarning: record.suppressNonReadToolWarning === true,
+        };
         if (record.credentialSource !== "oauth") {
           return {
-            ...record,
+            ...normalized,
             oauthConnected: undefined,
             oauthExpiresAt: undefined,
             oauthLastAuthAt: undefined,
@@ -1618,7 +1813,7 @@ export class BrowserConnectorRuntime {
         const hasCredential = Boolean(trimString(record.secret));
         const connected = hasCredential && record.oauthConnected === true;
         return {
-          ...record,
+          ...normalized,
           secret: hasCredential ? record.secret : undefined,
           oauthConnected: connected,
           oauthExpiresAt: connected ? record.oauthExpiresAt : undefined,

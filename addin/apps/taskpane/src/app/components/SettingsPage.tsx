@@ -14,6 +14,7 @@ import type {
   ConnectorScopeContext,
   ConnectorScopeUpdateRequest,
   ConnectorSetupRequest,
+  ConnectorToolPolicyUpdateRequest,
   ImageModelDescriptor,
   ImageModelCatalogResponse,
   ImageReasoningEffort,
@@ -138,6 +139,7 @@ interface SettingsPageProps {
   onRemoveConnector: (storedConnectorId: string) => Promise<void>;
   onSetConnectorFavorite: (request: ConnectorFavoriteRequest) => Promise<void>;
   onUpdateConnectorScope: (request: ConnectorScopeUpdateRequest) => Promise<void>;
+  onUpdateConnectorToolPolicy: (request: ConnectorToolPolicyUpdateRequest) => Promise<void>;
   onLoadConnectorLogs: (connectorId: string) => Promise<ConnectorLogResponse>;
   onExportConnectors: () => Promise<ConnectorExportBundle>;
   onPreviewConnectorImport: (bundle: ConnectorExportBundle) => Promise<ConnectorImportPreviewResponse>;
@@ -182,6 +184,7 @@ export function SettingsPage({
   onRemoveConnector,
   onSetConnectorFavorite,
   onUpdateConnectorScope,
+  onUpdateConnectorToolPolicy,
   onLoadConnectorLogs,
   onExportConnectors,
   onPreviewConnectorImport,
@@ -314,6 +317,7 @@ export function SettingsPage({
               onRemoveConnector={onRemoveConnector}
               onSetFavorite={onSetConnectorFavorite}
               onUpdateScope={onUpdateConnectorScope}
+              onUpdateToolPolicy={onUpdateConnectorToolPolicy}
               onLoadLogs={onLoadConnectorLogs}
               onExportConnectors={onExportConnectors}
               onPreviewImport={onPreviewConnectorImport}

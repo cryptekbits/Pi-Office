@@ -5,10 +5,11 @@ import type {
   ConnectorEnvHint,
   ConnectorReadPolicy,
   ConnectorRuntimeRequirement,
+  ConnectorSetupProfile,
 } from "@pi-office/pi-office-pack";
 
 type CatalogEntry = ConnectorCatalogItem & { priority: number };
-const CATALOG_REVISION = "2026-04-02";
+const CATALOG_REVISION = "2026-04-27";
 
 const DEFAULT_ALLOW_PATTERNS = [
   "^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)",
@@ -54,14 +55,128 @@ function template(template: ConnectorConfigTemplate): ConnectorConfigTemplate {
   return template;
 }
 
+function profile(input: ConnectorSetupProfile): ConnectorSetupProfile {
+  return input;
+}
+
+function fieldsForProfile(
+  transport: ConnectorSetupProfile["transport"],
+  authMethod: ConnectorSetupProfile["authMethod"],
+): Pick<ConnectorSetupProfile, "simpleFields" | "advancedFields"> {
+  const simpleFields = transport === "local_stdio"
+    ? ["Local companion", "Launch command"]
+    : ["Connector URL"];
+  if (authMethod === "oauth") {
+    simpleFields.push("Sign in");
+  } else if (authMethod !== "none") {
+    simpleFields.push(authMethod === "api_key" ? "API key" : "Access token");
+  }
+  return {
+    simpleFields,
+    advancedFields: transport === "local_stdio"
+      ? ["Arguments", "Working directory", "Environment variables", "Tool policy"]
+      : ["HTTP headers", "Environment-backed headers", "Tool policy"],
+  };
+}
+
+function defaultSetupProfile(item: Pick<ConnectorCatalogItem, "id" | "transport" | "setupKind" | "authMethod" | "template" | "envHints">): ConnectorSetupProfile {
+  const fields = fieldsForProfile(item.transport, item.authMethod);
+  return profile({
+    id: item.transport === "local_stdio" ? "local-companion" : "hosted-http",
+    label: item.transport === "local_stdio" ? "Use local companion" : "Connect online",
+    description: item.transport === "local_stdio"
+      ? "Runs a local MCP command through the optional Pi-Office companion."
+      : "Uses a hosted MCP endpoint through the optional Pi-Office companion.",
+    transport: item.transport,
+    setupKind: item.setupKind,
+    authMethod: item.authMethod,
+    endpoint: item.template?.url,
+    command: item.template?.command,
+    args: item.template?.args,
+    cwd: item.template?.cwd,
+    env: item.template?.env,
+    credentialEnvKey: item.envHints[0]?.key,
+    requiresCompanion: true,
+    officialness: "official",
+    defaultWhenCompanionAbsent: item.transport === "remote_http",
+    defaultWhenCompanionPresent: true,
+    privacyNotes: item.transport === "local_stdio"
+      ? ["Local command output and tool results are sent back to the active Pi-Office session."]
+      : ["Connector requests are made by the companion to the hosted MCP service."],
+    ...fields,
+  });
+}
+
+function localNodeProfile(input: {
+  id?: string;
+  label?: string;
+  description?: string;
+  command: string;
+  args: string[];
+  authMethod?: ConnectorSetupProfile["authMethod"];
+  credentialEnvKey?: string;
+  officialness?: ConnectorSetupProfile["officialness"];
+  defaultWhenCompanionPresent?: boolean;
+  env?: Record<string, string>;
+}): ConnectorSetupProfile {
+  return profile({
+    id: input.id ?? "local-companion",
+    label: input.label ?? "Use local companion",
+    description: input.description ?? "Runs a local MCP command through the optional Pi-Office companion.",
+    transport: "local_stdio",
+    setupKind: "local_node",
+    authMethod: input.authMethod ?? "api_key",
+    command: input.command,
+    args: input.args,
+    env: input.env,
+    credentialEnvKey: input.credentialEnvKey,
+    requiresCompanion: true,
+    officialness: input.officialness ?? "official",
+    defaultWhenCompanionAbsent: false,
+    defaultWhenCompanionPresent: input.defaultWhenCompanionPresent === true,
+    privacyNotes: ["Local command output and tool results are sent back to the active Pi-Office session."],
+    ...fieldsForProfile("local_stdio", input.authMethod ?? "api_key"),
+  });
+}
+
+function hostedProfile(input: {
+  id: string;
+  label: string;
+  description: string;
+  endpoint: string;
+  authMethod: ConnectorSetupProfile["authMethod"];
+  setupKind?: ConnectorSetupProfile["setupKind"];
+  credentialEnvKey?: string;
+  officialness?: ConnectorSetupProfile["officialness"];
+  defaultWhenCompanionAbsent?: boolean;
+  defaultWhenCompanionPresent?: boolean;
+  privacyNotes?: string[];
+}): ConnectorSetupProfile {
+  return profile({
+    id: input.id,
+    label: input.label,
+    description: input.description,
+    transport: "remote_http",
+    setupKind: input.setupKind ?? (input.authMethod === "oauth" ? "remote_oauth" : input.authMethod === "none" ? "remote_url_token" : "remote_api_key"),
+    authMethod: input.authMethod,
+    endpoint: input.endpoint,
+    credentialEnvKey: input.credentialEnvKey,
+    requiresCompanion: true,
+    officialness: input.officialness ?? "official",
+    defaultWhenCompanionAbsent: input.defaultWhenCompanionAbsent === true,
+    defaultWhenCompanionPresent: input.defaultWhenCompanionPresent === true,
+    privacyNotes: input.privacyNotes ?? ["Connector requests are made by the companion to the hosted MCP service."],
+    ...fieldsForProfile("remote_http", input.authMethod),
+  });
+}
+
 function connector(
   priority: number,
   category: ConnectorCategory,
   item: Omit<CatalogEntry, "priority" | "category" | "recommendedHosts" | "setupDifficulty" | "catalogRevision"> &
     Partial<Pick<ConnectorCatalogItem, "recommendedHosts" | "setupDifficulty" | "catalogRevision">>,
 ): CatalogEntry {
-  return {
-    priority,
+  const base: ConnectorCatalogItem = {
     category,
     recommendedHosts: item.recommendedHosts ?? ["word", "excel", "powerpoint"],
     setupDifficulty:
@@ -69,6 +184,12 @@ function connector(
       (item.customOnly ? "advanced" : item.setupKind === "local_node" || item.setupKind === "local_python" ? "guided" : "easy"),
     catalogRevision: item.catalogRevision ?? CATALOG_REVISION,
     ...item,
+    setupProfiles: item.setupProfiles?.length ? item.setupProfiles : undefined,
+  };
+  return {
+    priority,
+    ...base,
+    setupProfiles: base.setupProfiles ?? [defaultSetupProfile(base)],
   };
 }
 
@@ -90,6 +211,32 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["JIRA_API_TOKEN", "Jira API token", "Reuse an existing Jira token from this PC."], ["JIRA_BASE_URL", "Jira site URL", "For example https://your-team.atlassian.net", true]),
     readPolicy: readPolicy(["(^|_)(transition|assign|comment|edit|create_issue|update_issue)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.atlassian.com/v1/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "atlassian-hosted-oauth",
+        label: "Sign in with Atlassian",
+        description: "Official Atlassian remote MCP for Jira through browser sign-in.",
+        endpoint: "https://mcp.atlassian.com/v1/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Jira issue and comment requests go to Atlassian's hosted MCP service."],
+      }),
+      localNodeProfile({
+        id: "community-local-stdio",
+        label: "Use local companion",
+        description: "Advanced self-hosted Jira/Confluence MCP through a local command.",
+        command: "uvx",
+        args: ["mcp-atlassian"],
+        authMethod: "api_key",
+        credentialEnvKey: "JIRA_API_TOKEN",
+        officialness: "community",
+      }),
+    ],
     docsUrl: "https://www.atlassian.com/software/jira",
     authUrl: "https://id.atlassian.com/manage-profile/security/api-tokens",
     setupNotes: [
@@ -114,6 +261,32 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["CONFLUENCE_API_TOKEN", "Confluence API token"], ["CONFLUENCE_BASE_URL", "Confluence site URL", "For example https://your-team.atlassian.net/wiki", true]),
     readPolicy: readPolicy(["(^|_)(create_page|update_page|delete_page|comment|publish)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.atlassian.com/v1/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "atlassian-hosted-oauth",
+        label: "Sign in with Atlassian",
+        description: "Official Atlassian remote MCP for Confluence through browser sign-in.",
+        endpoint: "https://mcp.atlassian.com/v1/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Confluence page and space requests go to Atlassian's hosted MCP service."],
+      }),
+      localNodeProfile({
+        id: "community-local-stdio",
+        label: "Use local companion",
+        description: "Advanced self-hosted Jira/Confluence MCP through a local command.",
+        command: "uvx",
+        args: ["mcp-atlassian"],
+        authMethod: "api_key",
+        credentialEnvKey: "CONFLUENCE_API_TOKEN",
+        officialness: "community",
+      }),
+    ],
     docsUrl: "https://www.atlassian.com/software/confluence",
     authUrl: "https://id.atlassian.com/manage-profile/security/api-tokens",
     setupNotes: [
@@ -138,6 +311,28 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["M365_ACCESS_TOKEN", "Microsoft 365 access token", "If you already export a token locally, the add-in can reuse it."]),
     readPolicy: readPolicy(["(^|_)(send|message|reply|post|upload|delete|move|rename|share|grant|create|write|create_channel)(_|$)"]),
+    setupProfiles: [
+      localNodeProfile({
+        id: "workiq-local-stdio",
+        label: "Use local Work IQ",
+        description: "Runs Microsoft's Work IQ MCP locally through the companion.",
+        command: "npx",
+        args: ["-y", "@microsoft/workiq@latest", "mcp"],
+        authMethod: "oauth",
+        credentialEnvKey: "M365_ACCESS_TOKEN",
+        defaultWhenCompanionPresent: true,
+      }),
+      hostedProfile({
+        id: "agent365-hosted-mail",
+        label: "Agent 365 hosted MCP",
+        description: "Advanced tenant/server endpoint for Microsoft Agent 365 MCP.",
+        endpoint: "https://agent365.svc.cloud.microsoft/agents/tenants/{tenantId}/servers/{serverId}",
+        authMethod: "oauth",
+        officialness: "experimental",
+        defaultWhenCompanionAbsent: true,
+        privacyNotes: ["Requires Microsoft 365 Copilot/Agent 365 tenant setup and admin-approved OAuth."],
+      }),
+    ],
     docsUrl: "https://github.com/microsoft/work-iq",
     authUrl: "https://portal.office.com",
     setupNotes: [
@@ -163,6 +358,31 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["FIGMA_API_KEY", "Figma token"]),
     readPolicy: readPolicy(["(^|_)(create|update|delete|comment|post)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.figma.com/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "figma-hosted-oauth",
+        label: "Sign in with Figma",
+        description: "Official hosted Figma MCP for supported MCP clients.",
+        endpoint: "https://mcp.figma.com/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        privacyNotes: ["Figma hosted MCP support depends on Figma's client catalog and workspace policy."],
+      }),
+      hostedProfile({
+        id: "figma-desktop-http",
+        label: "Use Figma desktop",
+        description: "Advanced local Figma Desktop MCP endpoint.",
+        endpoint: "http://127.0.0.1:3845/mcp",
+        authMethod: "none",
+        officialness: "official",
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Uses the signed-in Figma desktop app on this machine."],
+      }),
+    ],
     docsUrl: "https://www.figma.com/developers/api",
     authUrl: "https://www.figma.com/developers/api",
     setupNotes: [
@@ -187,6 +407,22 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["SLACK_BOT_TOKEN", "Slack bot token"], ["SLACK_USER_TOKEN", "Slack user token"]),
     readPolicy: readPolicy(["(^|_)(chat_post|post_message|reply|send|create_channel|archive)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.slack.com/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "slack-hosted-oauth",
+        label: "Sign in with Slack",
+        description: "Official hosted Slack MCP using browser sign-in.",
+        endpoint: "https://mcp.slack.com/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Slack messages and channel metadata requested by tools go to Slack's hosted MCP service."],
+      }),
+    ],
     docsUrl: "https://api.slack.com",
     authUrl: "https://api.slack.com/apps",
     setupNotes: [
@@ -211,6 +447,32 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["NOTION_API_KEY", "Notion internal integration token"]),
     readPolicy: readPolicy(["(^|_)(create_page|update_page|append|write)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.notion.com/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "notion-hosted-oauth",
+        label: "Sign in with Notion",
+        description: "Official hosted Notion MCP using browser sign-in.",
+        endpoint: "https://mcp.notion.com/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Notion workspace content requested by tools goes to Notion's hosted MCP service."],
+      }),
+      localNodeProfile({
+        id: "notion-local-stdio",
+        label: "Use local companion",
+        description: "Advanced local Notion MCP package with a Notion integration token.",
+        command: "npx",
+        args: ["-y", "@notionhq/notion-mcp-server"],
+        authMethod: "bearer_token",
+        credentialEnvKey: "NOTION_TOKEN",
+        officialness: "official",
+      }),
+    ],
     docsUrl: "https://developers.notion.com",
     authUrl: "https://www.notion.so/my-integrations",
     setupNotes: [
@@ -235,6 +497,19 @@ const CATALOG: CatalogEntry[] = [
     requirements: reqs(["node", "Node.js"], ["npx", "npx"]),
     envHints: [],
     readPolicy: readPolicy(["(^|_)(append|write|rename|move|delete)(_|$)"]),
+    setupProfiles: [
+      localNodeProfile({
+        id: "obsidian-local-stdio",
+        label: "Use local companion",
+        description: "Community Obsidian MCP through the optional local companion.",
+        command: "uvx",
+        args: ["mcp-obsidian"],
+        authMethod: "api_key",
+        credentialEnvKey: "OBSIDIAN_API_KEY",
+        officialness: "community",
+        defaultWhenCompanionPresent: true,
+      }),
+    ],
     docsUrl: "https://obsidian.md",
     setupNotes: [
       "Obsidian setups vary heavily, so this starts in guided custom mode.",
@@ -245,12 +520,11 @@ const CATALOG: CatalogEntry[] = [
     name: "Granola",
     vendor: "Granola",
     iconKey: "granola",
-    maturity: "custom_mcp_only",
-    setupKind: "remote_url_token",
-    authMethod: "bearer_token",
+    maturity: "beta",
+    setupKind: "remote_oauth",
+    authMethod: "oauth",
     transport: "remote_http",
     readOnly: true,
-    customOnly: true,
     summary: "Use a custom Granola MCP if your workspace exposes one.",
     officeValue: "Meeting notes and summaries can become source material for proposals and action docs.",
     tags: ["meetings", "notes"],
@@ -258,6 +532,30 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["GRANOLA_API_KEY", "Granola token"]),
     readPolicy: readPolicy(),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.granola.ai/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "granola-hosted-oauth",
+        label: "Sign in with Granola",
+        description: "Official hosted Granola MCP using browser sign-in.",
+        endpoint: "https://mcp.granola.ai/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Meeting notes and transcripts requested by tools go to Granola's hosted MCP service."],
+      }),
+      hostedProfile({
+        id: "granola-api",
+        label: "Use API key",
+        description: "Advanced bearer-token setup for Granola's public API-backed MCP.",
+        endpoint: "https://mcp.granola.ai/mcp",
+        authMethod: "bearer_token",
+        credentialEnvKey: "GRANOLA_API_KEY",
+      }),
+    ],
     docsUrl: "https://www.granola.ai",
     setupNotes: [
       "No default MCP template ships yet. Use the custom connector wizard.",
@@ -268,12 +566,11 @@ const CATALOG: CatalogEntry[] = [
     name: "Supermemory",
     vendor: "Supermemory",
     iconKey: "supermemory",
-    maturity: "custom_mcp_only",
-    setupKind: "remote_url_token",
-    authMethod: "bearer_token",
+    maturity: "beta",
+    setupKind: "remote_oauth",
+    authMethod: "oauth",
     transport: "remote_http",
     readOnly: true,
-    customOnly: true,
     summary: "Connect a hosted Supermemory MCP if your team uses it for memory and retrieval.",
     officeValue: "Useful for quickly grounding drafts in prior conversations or indexed knowledge.",
     tags: ["memory", "retrieval"],
@@ -281,6 +578,30 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["SUPERMEMORY_API_KEY", "Supermemory token"]),
     readPolicy: readPolicy(),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.supermemory.ai/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "supermemory-hosted-oauth",
+        label: "Sign in with Supermemory",
+        description: "Official hosted Supermemory MCP using browser sign-in.",
+        endpoint: "https://mcp.supermemory.ai/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Memory search and recall requests go to Supermemory's hosted MCP service."],
+      }),
+      hostedProfile({
+        id: "supermemory-api-key",
+        label: "Use API key",
+        description: "API-key setup for Supermemory projects.",
+        endpoint: "https://mcp.supermemory.ai/mcp",
+        authMethod: "bearer_token",
+        credentialEnvKey: "SUPERMEMORY_API_KEY",
+      }),
+    ],
     docsUrl: "https://supermemory.ai",
     setupNotes: ["Starts in custom setup until a stable template is confirmed."],
   }),
@@ -301,6 +622,38 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["POSTHOG_API_KEY", "PostHog personal API key"], ["POSTHOG_BASE_URL", "PostHog host URL", "Needed for self-hosted workspaces."]),
     readPolicy: readPolicy(["(^|_)(capture|create|update|delete|feature_flag_update)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.posthog.com/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "posthog-us",
+        label: "Connect PostHog US",
+        description: "PostHog hosted MCP for app.posthog.com workspaces.",
+        endpoint: "https://mcp.posthog.com/mcp",
+        authMethod: "api_key",
+        credentialEnvKey: "POSTHOG_API_KEY",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Product analytics queries go to PostHog's hosted MCP service."],
+      }),
+      hostedProfile({
+        id: "posthog-eu",
+        label: "Connect PostHog EU",
+        description: "PostHog hosted MCP for EU workspaces.",
+        endpoint: "https://mcp-eu.posthog.com/mcp",
+        authMethod: "api_key",
+        credentialEnvKey: "POSTHOG_API_KEY",
+      }),
+      hostedProfile({
+        id: "posthog-oauth",
+        label: "Sign in with PostHog",
+        description: "OAuth setup for PostHog MCP where supported.",
+        endpoint: "https://mcp.posthog.com/mcp",
+        authMethod: "oauth",
+      }),
+    ],
     docsUrl: "https://posthog.com/docs",
     authUrl: "https://app.posthog.com/settings/user-api-keys",
   }),
@@ -321,6 +674,46 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["LAUNCHDARKLY_API_KEY", "LaunchDarkly access token"]),
     readPolicy: readPolicy(["(^|_)(patch|update|delete|create|toggle|archive)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.launchdarkly.com/mcp/fm",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "launchdarkly-fm",
+        label: "Feature flags",
+        description: "LaunchDarkly hosted MCP for flag management read workflows.",
+        endpoint: "https://mcp.launchdarkly.com/mcp/fm",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Flag metadata requested by tools goes to LaunchDarkly's hosted MCP service."],
+      }),
+      hostedProfile({
+        id: "launchdarkly-ai-configs",
+        label: "AI configs",
+        description: "LaunchDarkly hosted MCP for AI Configs context.",
+        endpoint: "https://mcp.launchdarkly.com/mcp/aiconfigs",
+        authMethod: "oauth",
+      }),
+      hostedProfile({
+        id: "launchdarkly-observability",
+        label: "Observability",
+        description: "LaunchDarkly hosted MCP for observability context.",
+        endpoint: "https://mcp.launchdarkly.com/mcp/observability",
+        authMethod: "oauth",
+      }),
+      localNodeProfile({
+        id: "launchdarkly-local-stdio",
+        label: "Use local companion",
+        description: "Local LaunchDarkly MCP with a personal access token.",
+        command: "npx",
+        args: ["-y", "@launchdarkly/mcp-server"],
+        authMethod: "api_key",
+        credentialEnvKey: "LAUNCHDARKLY_API_KEY",
+        officialness: "official",
+      }),
+    ],
     docsUrl: "https://launchdarkly.com/docs",
     authUrl: "https://app.launchdarkly.com/settings/authorization/tokens",
   }),
@@ -341,6 +734,38 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["SHOPIFY_ACCESS_TOKEN", "Shopify Admin API token"], ["SHOPIFY_STORE_DOMAIN", "Shopify store domain"]),
     readPolicy: readPolicy(["(^|_)(fulfill|refund|update|delete|create|adjust)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://{shopDomain}/api/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "shopify-storefront",
+        label: "Storefront catalog",
+        description: "Shopify Storefront MCP for product/catalog reads.",
+        endpoint: "https://{shopDomain}/api/mcp",
+        authMethod: "none",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Public storefront catalog requests go to the Shopify shop domain you enter."],
+      }),
+      hostedProfile({
+        id: "shopify-customer-account",
+        label: "Customer account",
+        description: "Shopify Customer Account MCP with browser sign-in.",
+        endpoint: "https://{shopDomain}/customer/api/mcp",
+        authMethod: "oauth",
+      }),
+      localNodeProfile({
+        id: "shopify-dev-local",
+        label: "Use Shopify Dev MCP",
+        description: "Local Shopify developer MCP through the companion.",
+        command: "npx",
+        args: ["-y", "@shopify/dev-mcp@latest"],
+        authMethod: "none",
+        officialness: "official",
+      }),
+    ],
     docsUrl: "https://shopify.dev",
     authUrl: "https://shopify.dev/apps",
   }),
@@ -361,6 +786,33 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["STRIPE_API_KEY", "Stripe secret key"]),
     readPolicy: readPolicy(["(^|_)(refund|capture|create|update|delete|cancel)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.stripe.com",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "stripe-hosted",
+        label: "Connect Stripe online",
+        description: "Stripe hosted MCP using OAuth or a restricted API key.",
+        endpoint: "https://mcp.stripe.com",
+        authMethod: "api_key",
+        credentialEnvKey: "STRIPE_API_KEY",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Stripe billing requests go to Stripe's hosted MCP service. Prefer restricted read-only keys."],
+      }),
+      localNodeProfile({
+        id: "stripe-local-stdio",
+        label: "Use local companion",
+        description: "Local Stripe MCP package with a restricted key.",
+        command: "npx",
+        args: ["-y", "@stripe/mcp@latest"],
+        authMethod: "api_key",
+        credentialEnvKey: "STRIPE_API_KEY",
+        officialness: "official",
+      }),
+    ],
     docsUrl: "https://docs.stripe.com",
     authUrl: "https://dashboard.stripe.com/apikeys",
   }),
@@ -381,6 +833,41 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["PAYPAL_ACCESS_TOKEN", "PayPal access token"], ["PAYPAL_CLIENT_ID", "PayPal client id"], ["PAYPAL_CLIENT_SECRET", "PayPal client secret"]),
     readPolicy: readPolicy(["(^|_)(refund|capture|create|update|cancel)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.sandbox.paypal.com/http",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "paypal-sandbox-http",
+        label: "PayPal Sandbox",
+        description: "PayPal sandbox MCP over HTTP for safe setup and testing.",
+        endpoint: "https://mcp.sandbox.paypal.com/http",
+        authMethod: "bearer_token",
+        credentialEnvKey: "PAYPAL_ACCESS_TOKEN",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Sandbox payment requests go to PayPal's sandbox MCP service."],
+      }),
+      hostedProfile({
+        id: "paypal-live-http",
+        label: "PayPal Live",
+        description: "Production PayPal MCP over HTTP.",
+        endpoint: "https://mcp.paypal.com/http",
+        authMethod: "bearer_token",
+        privacyNotes: ["Production payment requests go to PayPal's live MCP service."],
+      }),
+      localNodeProfile({
+        id: "paypal-local-stdio",
+        label: "Use local companion",
+        description: "Local PayPal MCP package through the companion.",
+        command: "npx",
+        args: ["-y", "@paypal/mcp", "--tools=all"],
+        authMethod: "bearer_token",
+        credentialEnvKey: "PAYPAL_ACCESS_TOKEN",
+        officialness: "official",
+      }),
+    ],
     docsUrl: "https://developer.paypal.com",
     authUrl: "https://developer.paypal.com/dashboard",
   }),
@@ -401,6 +888,30 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["AIRTABLE_API_KEY", "Airtable token"]),
     readPolicy: readPolicy(["(^|_)(create|update|delete|write|append)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.airtable.com/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "airtable-hosted-oauth",
+        label: "Sign in with Airtable",
+        description: "Official Airtable hosted MCP with OAuth.",
+        endpoint: "https://mcp.airtable.com/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Selected Airtable base and record requests go to Airtable's hosted MCP service."],
+      }),
+      hostedProfile({
+        id: "airtable-pat",
+        label: "Use personal token",
+        description: "Advanced Airtable personal access token setup.",
+        endpoint: "https://mcp.airtable.com/mcp",
+        authMethod: "bearer_token",
+        credentialEnvKey: "AIRTABLE_API_KEY",
+      }),
+    ],
     docsUrl: "https://airtable.com/developers/web/api/introduction",
     authUrl: "https://airtable.com/create/tokens",
   }),
@@ -409,12 +920,11 @@ const CATALOG: CatalogEntry[] = [
     name: "Perplexity",
     vendor: "Perplexity",
     iconKey: "perplexity",
-    maturity: "custom_mcp_only",
-    setupKind: "remote_url_token",
-    authMethod: "bearer_token",
-    transport: "remote_http",
+    maturity: "beta",
+    setupKind: "local_node",
+    authMethod: "api_key",
+    transport: "local_stdio",
     readOnly: true,
-    customOnly: true,
     summary: "Use a hosted Perplexity MCP if your organization already runs one.",
     officeValue: "Useful for fast briefing support and web-grounded background research.",
     tags: ["research", "search"],
@@ -422,6 +932,30 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["PERPLEXITY_API_KEY", "Perplexity token"]),
     readPolicy: readPolicy(),
+    setupProfiles: [
+      localNodeProfile({
+        id: "perplexity-local-stdio",
+        label: "Use local companion",
+        description: "Official Perplexity MCP package through the local companion.",
+        command: "npx",
+        args: ["-yq", "@perplexity-ai/mcp-server"],
+        authMethod: "api_key",
+        credentialEnvKey: "PERPLEXITY_API_KEY",
+        officialness: "official",
+        defaultWhenCompanionPresent: true,
+      }),
+      hostedProfile({
+        id: "perplexity-self-host-http",
+        label: "Self-hosted HTTP",
+        description: "Advanced self-hosted Perplexity MCP endpoint.",
+        endpoint: "http://127.0.0.1:8080/mcp",
+        authMethod: "api_key",
+        credentialEnvKey: "PERPLEXITY_API_KEY",
+        officialness: "experimental",
+        defaultWhenCompanionAbsent: true,
+        privacyNotes: ["Use only for a Perplexity MCP server you run or trust."],
+      }),
+    ],
     docsUrl: "https://www.perplexity.ai",
     setupNotes: ["This entry starts in custom mode until a stable MCP template is confirmed."],
   }),
@@ -442,6 +976,39 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["PARALLEL_API_KEY", "Parallel API key"]),
     readPolicy: readPolicy(),
+    template: template({
+      transport: "remote_http",
+      url: "https://search.parallel.ai/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "parallel-search-anonymous",
+        label: "Free web search",
+        description: "Parallel Search MCP free anonymous endpoint.",
+        endpoint: "https://search.parallel.ai/mcp",
+        authMethod: "none",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Anonymous/free search has limited use and is not the ZDR/org endpoint."],
+      }),
+      hostedProfile({
+        id: "parallel-search-oauth-zdr",
+        label: "Account or ZDR search",
+        description: "Parallel Search MCP authenticated endpoint for OAuth/API-key and organization/ZDR setups.",
+        endpoint: "https://search.parallel.ai/mcp-oauth",
+        authMethod: "oauth",
+        privacyNotes: ["Use this endpoint for account attribution, organization controls, or ZDR requirements."],
+      }),
+      hostedProfile({
+        id: "parallel-task-mcp",
+        label: "Deep research tasks",
+        description: "Parallel Task MCP for authenticated long-running research tasks.",
+        endpoint: "https://task-mcp.parallel.ai/mcp",
+        authMethod: "api_key",
+        credentialEnvKey: "PARALLEL_API_KEY",
+        privacyNotes: ["Task MCP can create remote research tasks and may consume account quota."],
+      }),
+    ],
     docsUrl: "https://parallel.ai",
     setupNotes: ["Use an API key-backed hosted MCP endpoint if your team provides one."],
   }),
@@ -462,6 +1029,41 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["EXA_API_KEY", "Exa API key"]),
     readPolicy: readPolicy(),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.exa.ai/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "exa-hosted",
+        label: "Connect Exa online",
+        description: "Exa hosted MCP with optional API key.",
+        endpoint: "https://mcp.exa.ai/mcp",
+        authMethod: "api_key",
+        credentialEnvKey: "EXA_API_KEY",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Web queries, URLs, and fetched content requests go to Exa."],
+      }),
+      hostedProfile({
+        id: "exa-hosted-basic-tools",
+        label: "Search and fetch only",
+        description: "Exa hosted MCP limited to search and fetch tools.",
+        endpoint: "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa",
+        authMethod: "api_key",
+        credentialEnvKey: "EXA_API_KEY",
+      }),
+      localNodeProfile({
+        id: "exa-local-stdio",
+        label: "Use local companion",
+        description: "Local Exa MCP package through the companion.",
+        command: "npx",
+        args: ["-y", "exa-mcp-server"],
+        authMethod: "api_key",
+        credentialEnvKey: "EXA_API_KEY",
+        officialness: "official",
+      }),
+    ],
     docsUrl: "https://exa.ai",
   }),
   connector(29, "data", {
@@ -481,6 +1083,29 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["QDRANT_API_KEY", "Qdrant API key"], ["QDRANT_URL", "Qdrant base URL"]),
     readPolicy: readPolicy(["(^|_)(upsert|delete|create_collection|update|write)(_|$)"]),
+    setupProfiles: [
+      localNodeProfile({
+        id: "qdrant-local-stdio",
+        label: "Use local companion",
+        description: "Official Qdrant MCP through uvx on the companion machine.",
+        command: "uvx",
+        args: ["mcp-server-qdrant"],
+        authMethod: "api_key",
+        credentialEnvKey: "QDRANT_API_KEY",
+        officialness: "official",
+        defaultWhenCompanionPresent: true,
+      }),
+      hostedProfile({
+        id: "qdrant-local-http",
+        label: "Local HTTP endpoint",
+        description: "Advanced local Qdrant MCP over Streamable HTTP.",
+        endpoint: "http://127.0.0.1:8000/mcp",
+        authMethod: "api_key",
+        credentialEnvKey: "QDRANT_API_KEY",
+        officialness: "official",
+        defaultWhenCompanionAbsent: true,
+      }),
+    ],
     docsUrl: "https://qdrant.tech/documentation/",
   }),
   connector(30, "productivity", {
@@ -500,6 +1125,32 @@ const CATALOG: CatalogEntry[] = [
     requirements: [],
     envHints: envHints(["GOOGLE_DRIVE_ACCESS_TOKEN", "Google access token"]),
     readPolicy: readPolicy(["(^|_)(upload|delete|move|rename|share|create|write)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://drivemcp.googleapis.com/mcp/v1",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "google-drive-official",
+        label: "Sign in with Google",
+        description: "Google Drive first-party MCP Developer Preview.",
+        endpoint: "https://drivemcp.googleapis.com/mcp/v1",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Drive file metadata/content requested by tools goes to Google's Drive MCP service."],
+      }),
+      localNodeProfile({
+        id: "google-drive-legacy-local",
+        label: "Use local companion",
+        description: "Archived local Google Drive MCP fallback for advanced users.",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-gdrive"],
+        authMethod: "oauth",
+        credentialEnvKey: "GOOGLE_DRIVE_ACCESS_TOKEN",
+        officialness: "deprecated",
+      }),
+    ],
     docsUrl: "https://developers.google.com/drive",
     authUrl: "https://console.cloud.google.com",
     setupNotes: [
@@ -512,9 +1163,9 @@ const CATALOG: CatalogEntry[] = [
     vendor: "GitHub",
     iconKey: "github",
     maturity: "ready",
-    setupKind: "local_node",
+    setupKind: "remote_url_token",
     authMethod: "bearer_token",
-    transport: "local_stdio",
+    transport: "remote_http",
     readOnly: true,
     summary: "Read repositories, issues, pull requests, and discussions from GitHub.",
     officeValue: "Excellent for release notes, engineering reviews, and product updates assembled inside Office.",
@@ -524,13 +1175,41 @@ const CATALOG: CatalogEntry[] = [
     envHints: envHints(["GITHUB_PERSONAL_ACCESS_TOKEN", "GitHub personal access token", "Classic or fine-grained token with read scopes only when possible."]),
     readPolicy: readPolicy(["(^|_)(create_issue|create_pull|merge|close_pull|update|delete|comment|review|push)(_|$)"]),
     template: template({
-      transport: "local_stdio",
-      command: "npx",
-      args: ["-y", "@modelcontextprotocol/server-github"],
-      env: {
-        GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}",
-      },
+      transport: "remote_http",
+      url: "https://api.githubcopilot.com/mcp/readonly",
     }),
+    setupProfiles: [
+      hostedProfile({
+        id: "github-hosted-readonly",
+        label: "Connect GitHub online",
+        description: "Official GitHub hosted MCP read-only endpoint.",
+        endpoint: "https://api.githubcopilot.com/mcp/readonly",
+        authMethod: "bearer_token",
+        credentialEnvKey: "GITHUB_PERSONAL_ACCESS_TOKEN",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Repository and issue requests go to GitHub's hosted MCP/Copilot infrastructure."],
+      }),
+      localNodeProfile({
+        id: "github-local-stdio",
+        label: "Use local companion",
+        description: "Official GitHub MCP server through Docker/binary/npx-compatible local launch.",
+        command: "github-mcp-server",
+        args: ["stdio", "--read-only"],
+        authMethod: "bearer_token",
+        credentialEnvKey: "GITHUB_PERSONAL_ACCESS_TOKEN",
+        officialness: "official",
+      }),
+      hostedProfile({
+        id: "github-local-http",
+        label: "Local HTTP server",
+        description: "Advanced local GitHub MCP HTTP endpoint.",
+        endpoint: "http://127.0.0.1:8082",
+        authMethod: "bearer_token",
+        credentialEnvKey: "GITHUB_PERSONAL_ACCESS_TOKEN",
+        officialness: "official",
+      }),
+    ],
     docsUrl: "https://github.com/modelcontextprotocol/servers",
     authUrl: "https://github.com/settings/tokens",
     setupNotes: [
@@ -553,7 +1232,31 @@ const CATALOG: CatalogEntry[] = [
     capabilityHints: ["read files", "list merge requests", "inspect issues"],
     requirements: [],
     envHints: envHints(["GITLAB_PERSONAL_ACCESS_TOKEN", "GitLab personal access token"], ["GITLAB_BASE_URL", "GitLab base URL", "Required for self-hosted GitLab instances."]),
-    readPolicy: readPolicy(["(^|_)(merge|approve|comment|create|update|delete|pipeline_run)(_|$)"]),
+    readPolicy: readPolicy(["(^|_)(approve|comment|create|update|delete|manage_pipeline|pipeline_run)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://gitlab.com/api/v4/mcp",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "gitlab-hosted-oauth",
+        label: "Sign in with GitLab",
+        description: "Official GitLab MCP endpoint for GitLab.com or self-managed instances.",
+        endpoint: "https://gitlab.com/api/v4/mcp",
+        authMethod: "oauth",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["GitLab project, issue, and merge request reads go to the GitLab host you configure."],
+      }),
+      hostedProfile({
+        id: "gitlab-pat",
+        label: "Use personal token",
+        description: "GitLab API token fallback for read-only project context.",
+        endpoint: "https://gitlab.com/api/v4/mcp",
+        authMethod: "bearer_token",
+        credentialEnvKey: "GITLAB_PERSONAL_ACCESS_TOKEN",
+      }),
+    ],
     docsUrl: "https://about.gitlab.com",
     authUrl: "https://gitlab.com/-/user_settings/personal_access_tokens",
   }),
@@ -572,16 +1275,42 @@ const CATALOG: CatalogEntry[] = [
     tags: ["sql", "database", "reporting"],
     capabilityHints: ["describe schema", "run SELECT queries", "inspect tables"],
     requirements: reqs(["node", "Node.js"], ["npx", "npx"]),
-    envHints: envHints(["POSTGRES_CONNECTION_STRING", "Postgres connection string"]),
+    envHints: envHints(["DB_PASSWORD", "Postgres password"], ["DB_HOST", "Database host"], ["DB_DATABASE", "Database name"], ["DB_USERNAME", "Read-only username"]),
     readPolicy: readPolicy(["(^|_)(insert|update|delete|alter|drop|truncate|grant|revoke)(_|$)"]),
     template: template({
       transport: "local_stdio",
       command: "npx",
-      args: ["-y", "@modelcontextprotocol/server-postgres"],
+      args: ["-y", "@hovecapital/read-only-postgres-mcp-server"],
       env: {
-        POSTGRES_CONNECTION_STRING: "${POSTGRES_CONNECTION_STRING}",
+        DB_HOST: "localhost",
+        DB_PORT: "5432",
+        DB_DATABASE: "${DB_DATABASE}",
+        DB_USERNAME: "${DB_USERNAME}",
+        DB_PASSWORD: "${DB_PASSWORD}",
+        DB_SSL: "false",
       },
     }),
+    setupProfiles: [
+      localNodeProfile({
+        id: "readonly-local-stdio",
+        label: "Use local companion",
+        description: "Active read-only PostgreSQL MCP package through the companion.",
+        command: "npx",
+        args: ["-y", "@hovecapital/read-only-postgres-mcp-server"],
+        authMethod: "api_key",
+        credentialEnvKey: "DB_PASSWORD",
+        officialness: "community",
+        defaultWhenCompanionPresent: true,
+        env: {
+          DB_HOST: "localhost",
+          DB_PORT: "5432",
+          DB_DATABASE: "${DB_DATABASE}",
+          DB_USERNAME: "${DB_USERNAME}",
+          DB_PASSWORD: "${DB_PASSWORD}",
+          DB_SSL: "false",
+        },
+      }),
+    ],
     docsUrl: "https://github.com/modelcontextprotocol/servers",
     setupNotes: [
       "The add-in will still block non-read tools even if the underlying server exposes them.",
@@ -603,7 +1332,34 @@ const CATALOG: CatalogEntry[] = [
     capabilityHints: ["web search", "fetch results"],
     requirements: [],
     envHints: envHints(["TAVILY_API_KEY", "Tavily API key"]),
-    readPolicy: readPolicy(),
+    readPolicy: readPolicy(["(^|_)(crawl)(_|$)"]),
+    template: template({
+      transport: "remote_http",
+      url: "https://mcp.tavily.com/mcp/",
+    }),
+    setupProfiles: [
+      hostedProfile({
+        id: "tavily-hosted",
+        label: "Connect Tavily online",
+        description: "Official hosted Tavily MCP with API-key auth.",
+        endpoint: "https://mcp.tavily.com/mcp/",
+        authMethod: "api_key",
+        credentialEnvKey: "TAVILY_API_KEY",
+        defaultWhenCompanionAbsent: true,
+        defaultWhenCompanionPresent: true,
+        privacyNotes: ["Search queries, URLs, and included Office text go to Tavily."],
+      }),
+      localNodeProfile({
+        id: "tavily-local-stdio",
+        label: "Use local companion",
+        description: "Official Tavily MCP package through the companion.",
+        command: "npx",
+        args: ["-y", "tavily-mcp@latest"],
+        authMethod: "api_key",
+        credentialEnvKey: "TAVILY_API_KEY",
+        officialness: "official",
+      }),
+    ],
     docsUrl: "https://tavily.com",
   }),
 ];
