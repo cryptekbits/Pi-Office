@@ -1,5 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  CompanionConnectorOAuthStatusRequest,
+  CompanionConnectorOAuthStatusResponse,
   CompanionState,
   ConnectorAuditPreference,
   ConnectorCatalogItem,
@@ -89,6 +91,7 @@ interface IntegrationsSectionProps {
   onTestConnector: (request: ConnectorSetupRequest) => Promise<ConnectorTestResponse>;
   onReverifyConnector: (connectorId: string, scopeContext?: ConnectorScopeContext) => Promise<ConnectorTestResponse>;
   onStartOAuth: (connectorId: string) => Promise<ConnectorOAuthStartResponse>;
+  onCheckOAuthStatus: (request: CompanionConnectorOAuthStatusRequest) => Promise<CompanionConnectorOAuthStatusResponse>;
   onRemoveConnector: (storedConnectorId: string) => Promise<void>;
   onSetFavorite: (request: ConnectorFavoriteRequest) => Promise<void>;
   onUpdateScope: (request: ConnectorScopeUpdateRequest) => Promise<void>;
@@ -739,6 +742,7 @@ export function IntegrationsSection({
   onTestConnector,
   onReverifyConnector,
   onStartOAuth,
+  onCheckOAuthStatus,
   onRemoveConnector,
   onSetFavorite,
   onUpdateScope,
@@ -1204,6 +1208,73 @@ export function IntegrationsSection({
     });
   }, [statuses]);
 
+  useEffect(() => {
+    const pendingEntries = Object.entries(pendingOAuth);
+    if (!pendingEntries.length) return;
+
+    let cancelled = false;
+    let inFlight = false;
+    async function checkPendingOAuth(): Promise<void> {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        for (const [connectorId, pending] of pendingEntries) {
+          if (cancelled) return;
+          if (Date.parse(pending.expiresAt) <= Date.now()) {
+            setPendingOAuth((current) => {
+              const next = { ...current };
+              delete next[connectorId];
+              return next;
+            });
+            continue;
+          }
+          const status = await onCheckOAuthStatus({ connectorId, state: pending.state });
+          if (cancelled) return;
+          if (status.error) {
+            setPendingOAuth((current) => {
+              const next = { ...current };
+              delete next[connectorId];
+              return next;
+            });
+            setError(status.error);
+            continue;
+          }
+          if (!status.connected) continue;
+          setPendingOAuth((current) => {
+            const next = { ...current };
+            delete next[connectorId];
+            return next;
+          });
+          setLiveMessage("Connector sign-in complete. Checking connection...");
+          try {
+            const verified = await onReverifyConnector(connectorId, scopeContext);
+            if (cancelled) return;
+            setResult(verified);
+            setLogs(await onLoadLogs(connectorId));
+            setLiveMessage(verified.ok ? "Connector sign-in complete and verified." : "Connector sign-in complete. Check connection still needs attention.");
+          } catch (reason) {
+            if (!cancelled) {
+              setError(reason instanceof Error ? reason.message : String(reason));
+            }
+          }
+        }
+      } catch (reason) {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    void checkPendingOAuth();
+    const interval = window.setInterval(() => void checkPendingOAuth(), 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [onCheckOAuthStatus, onLoadLogs, onReverifyConnector, pendingOAuth, scopeContext]);
+
   const selectedPendingOAuth = selectedStatus ? pendingOAuth[selectedStatus.id] : undefined;
   const panelOpen = Boolean(selectedKey && selectedConnector);
 
@@ -1478,7 +1549,7 @@ export function IntegrationsSection({
                           {working === "oauth" ? "Opening..." : (status.healthState === "auth_expired" || status.healthState === "auth_required" ? "Sign in" : "Re-auth")}
                         </button>
                         {pendingOAuth[status.id] && (
-                          <span className="settings-note">Waiting for a verified OAuth callback.</span>
+                          <span className="settings-note">Waiting for verified sign-in; checking automatically.</span>
                         )}
                       </div>
                     )}
@@ -1857,7 +1928,7 @@ export function IntegrationsSection({
                           </div>
                           {selectedPendingOAuth && (
                             <p className="settings-note">
-                              Waiting for a verified OAuth callback. Manual completion is disabled; sign-in expires at{" "}
+                              Waiting for the verified OAuth callback. Pi-Office checks the companion automatically; sign-in expires at{" "}
                               {new Date(selectedPendingOAuth.expiresAt).toLocaleTimeString()}.
                               {selectedPendingOAuth.url ? (
                                 <>

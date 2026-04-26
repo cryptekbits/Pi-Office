@@ -2,6 +2,7 @@ import type {
   CompanionConnectorDefinition,
   CompanionDiscoveryAttempt,
   CompanionConnectorOAuthStartRequest,
+  CompanionConnectorOAuthStatusRequest,
   CompanionConnectorOAuthStatusResponse,
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
@@ -367,7 +368,7 @@ export class CompanionClient {
     });
   }
 
-  async getConnectorOAuthStatus(state: string): Promise<CompanionConnectorOAuthStatusResponse> {
+  async getConnectorOAuthStatus(request: CompanionConnectorOAuthStatusRequest): Promise<CompanionConnectorOAuthStatusResponse> {
     await this.ensureInitialized();
     if (this.state.status !== "connected" || !this.state.endpoint) {
       throw new Error("Optional companion is not connected for connector sign-in.");
@@ -375,7 +376,7 @@ export class CompanionClient {
 
     return fetchJsonWithTimeout(`${this.state.endpoint}/v1/connectors/oauth/status`, {
       method: "POST",
-      body: JSON.stringify({ state }),
+      body: JSON.stringify(request),
     });
   }
 

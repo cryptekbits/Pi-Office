@@ -935,6 +935,8 @@ export interface CompanionConnectorOAuthStatusResponse {
   pending: boolean;
   expiresAt?: string | undefined;
   error?: string | undefined;
+  status?: ConnectorStatus | undefined;
+  diagnostics?: ConnectorDiagnostic[] | undefined;
 }
 
 export interface ConnectorOAuthCredentialHandoff {

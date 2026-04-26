@@ -3669,6 +3669,11 @@ class InProcessKernel {
         throw new Error("connectorId is required.");
       }
       const companion = await this.getCompanionState();
+      const definition = this.connectorRuntime.buildCompanionConnectorDefinition(connectorId);
+      if (definition?.oauth?.broker === "companion" && companion.status === "connected") {
+        const companionStatus = await this.companionClient.getConnectorOAuthStatus({ connectorId });
+        await this.connectorRuntime.syncCompanionOAuthStatus({ connectorId }, companionStatus, request?.scopeContext);
+      }
       const response = await this.connectorRuntime.reverifyConnector(connectorId, request?.scopeContext);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
       let probe: {
@@ -3676,7 +3681,6 @@ class InProcessKernel {
         status: ConnectorStatus;
         diagnostics: ConnectorDiagnostic[];
       } | undefined;
-      const definition = this.connectorRuntime.buildCompanionConnectorDefinition(connectorId);
       try {
         probe = definition ? await this.companionClient.probeConnector(definition) : undefined;
       } catch (error) {
@@ -3718,6 +3722,25 @@ class InProcessKernel {
         return (await this.connectorRuntime.markCompanionOAuthStarted(connectorId, started) as ConnectorOAuthStartResponse) as T;
       }
       return (await this.connectorRuntime.startOAuth(connectorId) as ConnectorOAuthStartResponse) as T;
+    }
+    if (method === "POST" && path === "/v1/connectors/oauth/status") {
+      const request = body as { connectorId?: string; state?: string; scopeContext?: ConnectorScopeContext } | undefined;
+      const connectorId = String(request?.connectorId ?? "");
+      const state = String(request?.state ?? "");
+      const definition = connectorId ? this.connectorRuntime.buildCompanionConnectorDefinition(connectorId) : undefined;
+      if (definition?.oauth?.broker === "companion") {
+        const companion = await this.getCompanionState();
+        if (companion.status !== "connected") {
+          return this.connectorRuntime.getOAuthStatus({ connectorId, state }, request?.scopeContext) as T;
+        }
+        const companionStatus = await this.companionClient.getConnectorOAuthStatus({ connectorId, state });
+        return (await this.connectorRuntime.syncCompanionOAuthStatus(
+          { connectorId, state },
+          companionStatus,
+          request?.scopeContext,
+        )) as T;
+      }
+      return this.connectorRuntime.getOAuthStatus({ connectorId, state }, request?.scopeContext) as T;
     }
     if (method === "POST" && path === "/v1/connectors/oauth/callback") {
       return (await this.connectorRuntime.completeOAuth(body as ConnectorOAuthCallbackRequest) as ConnectorOAuthCallbackResponse) as T;

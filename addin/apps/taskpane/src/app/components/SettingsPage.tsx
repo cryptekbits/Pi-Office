@@ -9,6 +9,8 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
+  CompanionConnectorOAuthStatusRequest,
+  CompanionConnectorOAuthStatusResponse,
   ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
@@ -136,6 +138,7 @@ interface SettingsPageProps {
   onTestConnector: (request: ConnectorSetupRequest) => Promise<ConnectorTestResponse>;
   onReverifyConnector: (connectorId: string, scopeContext?: ConnectorScopeContext) => Promise<ConnectorTestResponse>;
   onStartConnectorOAuth: (connectorId: string) => Promise<ConnectorOAuthStartResponse>;
+  onCheckConnectorOAuthStatus: (request: CompanionConnectorOAuthStatusRequest) => Promise<CompanionConnectorOAuthStatusResponse>;
   onRemoveConnector: (storedConnectorId: string) => Promise<void>;
   onSetConnectorFavorite: (request: ConnectorFavoriteRequest) => Promise<void>;
   onUpdateConnectorScope: (request: ConnectorScopeUpdateRequest) => Promise<void>;
@@ -181,6 +184,7 @@ export function SettingsPage({
   onTestConnector,
   onReverifyConnector,
   onStartConnectorOAuth,
+  onCheckConnectorOAuthStatus,
   onRemoveConnector,
   onSetConnectorFavorite,
   onUpdateConnectorScope,
@@ -314,6 +318,7 @@ export function SettingsPage({
               onTestConnector={onTestConnector}
               onReverifyConnector={onReverifyConnector}
               onStartOAuth={onStartConnectorOAuth}
+              onCheckOAuthStatus={onCheckConnectorOAuthStatus}
               onRemoveConnector={onRemoveConnector}
               onSetFavorite={onSetConnectorFavorite}
               onUpdateScope={onUpdateConnectorScope}

@@ -482,6 +482,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] The anonymous/free profile remains available separately and uses the non-OAuth `/mcp` endpoint.
   - Notes/Evidence: First-party Parallel docs checked 2026-04-27: Search MCP free endpoint is `https://search.parallel.ai/mcp`; OAuth/ZDR/account-attributed endpoint is `https://search.parallel.ai/mcp-oauth`; the OAuth provider metadata is available at `https://platform.parallel.ai/.well-known/oauth-authorization-server` and supports DCR with CORS for `https://localhost:3443` in local validation.
 
+- [x] BUG-017: Companion-brokered OAuth callback does not update taskpane connector state
+  - Category: Bug
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 stakeholder Word smoke: Granola system-browser sign-in completed at the companion callback URL but the Word add-in still showed "Waiting for verified OAuth callback."
+  - Details: `FEATURE-019` completed DCR, PKCE, callback, and token exchange in the companion, but the taskpane only recorded a pending OAuth state and never polled the companion status route. The taskpane also treated OAuth as incomplete unless it held an access token locally, which is intentionally false for companion-brokered connectors because tokens must stay in the companion.
+  - Dependencies: FEATURE-019, SECURITY-001.
+  - Subtasks:
+    - [x] Add a taskpane route that asks the companion for OAuth status and syncs completed brokered sign-in into local connector state.
+    - [x] Treat companion-brokered OAuth as connected without copying provider tokens into the taskpane.
+    - [x] Poll pending OAuth state from the Integrations UI and re-run verification after companion callback completion.
+    - [x] Preserve companion-brokered connected state across taskpane reloads.
+  - Acceptance Criteria:
+    - [x] After the companion callback page says sign-in complete, the add-in automatically clears the waiting message and runs connector verification.
+    - [x] Granola remains tokenless in taskpane storage while `needsCredential` becomes false after the companion reports a token.
+    - [x] Reloading the taskpane does not regress a companion-brokered connector back to missing local OAuth credentials.
+  - Notes/Evidence: Closed 2026-04-27 by adding `/v1/connectors/oauth/status` handling in the in-process kernel, `BrowserConnectorRuntime.syncCompanionOAuthStatus`, companion-broker-aware credential checks/storage normalization, UI polling for pending OAuth states, and regression coverage that proves a Granola companion callback activates connector state without taskpane token storage.
+
 ### Features
 
 - [x] FEATURE-019: Add connector OAuth broker for system-browser sign-in and CORS-blocked DCR providers

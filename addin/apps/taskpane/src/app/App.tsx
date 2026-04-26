@@ -43,6 +43,8 @@ import type {
   ThinkingLevel,
   AskUserRequest,
   AskUserQuestionAnswer,
+  CompanionConnectorOAuthStatusRequest,
+  CompanionConnectorOAuthStatusResponse,
   ProviderDescriptor,
   SessionStatsResponse,
 } from "@pi-office/pi-office-pack/protocol";
@@ -1589,6 +1591,24 @@ export function App() {
     }
   }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
 
+  const handleCheckConnectorOAuthStatus = useCallback(async (request: CompanionConnectorOAuthStatusRequest) => {
+    try {
+      const response = await postJson<CompanionConnectorOAuthStatusResponse>("/v1/connectors/oauth/status", {
+        ...request,
+        scopeContext: connectorScopeContext,
+      });
+      if (response.connected || response.error) {
+        await refreshConnectorState(connectorScopeContext);
+        await syncCurrentSessionState();
+      }
+      return response;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      pushErrorMessage(`Connector sign-in status check failed: ${message}`);
+      throw error;
+    }
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
+
   useEffect(() => {
     function handleOAuthMessage(event: MessageEvent): void {
       if (event.origin !== window.location.origin) return;
@@ -1865,6 +1885,7 @@ export function App() {
           onTestConnector={handleTestConnector}
           onReverifyConnector={handleReverifyConnector}
           onStartConnectorOAuth={handleStartConnectorOAuth}
+          onCheckConnectorOAuthStatus={handleCheckConnectorOAuthStatus}
           onRemoveConnector={handleRemoveConnector}
           onSetConnectorFavorite={handleSetConnectorFavorite}
           onUpdateConnectorScope={handleUpdateConnectorScope}

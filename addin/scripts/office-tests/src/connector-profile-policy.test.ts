@@ -259,6 +259,61 @@ test("Parallel ZDR profile updates an existing connector to OAuth sign-in", asyn
   assert.match(started.url ?? "", /code_challenge=/);
 });
 
+test("companion-brokered OAuth status activates connector without copying tokens into taskpane", async () => {
+  const Runtime = await loadBrowserConnectorRuntime();
+  const runtime = new Runtime();
+  await runtime.ready;
+
+  const saved = await runtime.connectConnector({
+    connectorId: "granola",
+    setupProfileId: "granola-hosted-oauth",
+    name: "Granola",
+    enabled: true,
+    authMethod: "oauth",
+    transport: "remote_http",
+    credentialSource: "oauth",
+    url: "https://mcp.granola.ai/mcp",
+  });
+  assert.equal(saved.status.healthState, "auth_required");
+
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const started = await runtime.markCompanionOAuthStarted(saved.status.id, {
+    ok: true,
+    connectorId: saved.status.id,
+    state: "companion-state",
+    expiresAt,
+    url: "https://mcp-auth.granola.ai/oauth2/authorize?state=companion-state",
+    callbackUrl: "https://localhost:3444/v1/connectors/oauth/callback",
+    broker: "companion",
+    openMode: "system_browser",
+  });
+  assert.equal(started.broker, "companion");
+  assert.equal(runtime.getOAuthStatus({ connectorId: saved.status.id, state: "companion-state" }).pending, true);
+
+  const synced = await runtime.syncCompanionOAuthStatus(
+    { connectorId: saved.status.id, state: "companion-state" },
+    {
+      ok: true,
+      connectorId: saved.status.id,
+      state: "companion-state",
+      connected: true,
+      pending: false,
+      expiresAt,
+    },
+  );
+
+  assert.equal(synced.connected, true);
+  assert.equal(synced.status?.needsCredential, false);
+  assert.equal(synced.status?.healthState, "unverified");
+  assert.equal(runtime.getOAuthStatus({ connectorId: saved.status.id, state: "companion-state" }).pending, false);
+
+  const reloaded = new Runtime();
+  await reloaded.ready;
+  const restored = reloaded.getOAuthStatus({ connectorId: saved.status.id });
+  assert.equal(restored.connected, true);
+  assert.equal(restored.status?.needsCredential, false);
+});
+
 test("granola OAuth is companion-brokered and does not attempt browser-side DCR", async () => {
   const Runtime = await loadBrowserConnectorRuntime();
   const runtime = new Runtime();

@@ -1,5 +1,7 @@
 import type {
   CompanionConnectorDefinition,
+  CompanionConnectorOAuthStatusRequest,
+  CompanionConnectorOAuthStatusResponse,
   ConnectorAuditPreference,
   ConnectorAuditPreferenceResponse,
   ConnectorAuthMethod,
@@ -1541,6 +1543,109 @@ export class BrowserConnectorRuntime {
     };
   }
 
+  private recordUsesCompanionOAuthBroker(record: StoredConnectorRecord): boolean {
+    const catalog = record.source === "library"
+      ? getConnectorCatalogItem(record.connectorId)
+      : buildCustomConnectorCatalogItem(record.name);
+    const profile = profileForConnector(catalog ?? buildCustomConnectorCatalogItem(record.name), record.setupProfileId);
+    return profileUsesCompanionOAuthBroker(profile);
+  }
+
+  private findOAuthStatusTarget(request: CompanionConnectorOAuthStatusRequest): {
+    record?: StoredConnectorRecord | undefined;
+    flow?: StoredOAuthFlow | undefined;
+  } {
+    const state = trimString(request.state);
+    const connectorId = trimString(request.connectorId);
+    const flow = state
+      ? this.state.oauthFlows.find((entry) => entry.state === state)
+      : undefined;
+    const record = flow
+      ? this.state.connectors.find((entry) => entry.id === flow.connectorId)
+      : connectorId
+        ? this.state.connectors.find((entry) => entry.id === connectorId)
+        : undefined;
+    return { record, flow };
+  }
+
+  getOAuthStatus(request: CompanionConnectorOAuthStatusRequest, scopeContext?: ConnectorScopeContext): CompanionConnectorOAuthStatusResponse {
+    const { record, flow } = this.findOAuthStatusTarget(request);
+    if (!record) {
+      return {
+        ok: true,
+        connectorId: trimString(request.connectorId),
+        state: trimString(request.state),
+        connected: false,
+        pending: false,
+        error: "OAuth connector state was not found.",
+      };
+    }
+    const status = this.toStatus(record, scopeContext);
+    return {
+      ok: true,
+      connectorId: record.id,
+      state: flow?.state ?? trimString(request.state),
+      connected: record.credentialSource === "oauth" && record.oauthConnected === true && !this.needsCredential(record),
+      pending: Boolean(flow && Date.parse(flow.expiresAt) > Date.now() && record.oauthConnected !== true),
+      expiresAt: flow?.expiresAt ?? record.oauthExpiresAt,
+      error: record.oauthLastAuthError,
+      status,
+    };
+  }
+
+  async syncCompanionOAuthStatus(
+    request: CompanionConnectorOAuthStatusRequest,
+    companionStatus: CompanionConnectorOAuthStatusResponse,
+    scopeContext?: ConnectorScopeContext,
+  ): Promise<CompanionConnectorOAuthStatusResponse> {
+    const { record, flow } = this.findOAuthStatusTarget(request);
+    if (!record) {
+      return companionStatus;
+    }
+    if (record.authMethod !== "oauth" || !this.recordUsesCompanionOAuthBroker(record)) {
+      return this.getOAuthStatus(request, scopeContext);
+    }
+
+    const now = nowIso();
+    if (companionStatus.connected) {
+      record.credentialSource = "oauth";
+      record.secret = undefined;
+      record.oauthConnected = true;
+      record.oauthLastAuthAt = now;
+      record.oauthLastAuthError = undefined;
+      record.oauthExpiresAt = companionStatus.expiresAt;
+      record.oauthRefreshToken = undefined;
+      record.oauthTokenType = undefined;
+      record.oauthScope = undefined;
+      record.oauthClientId = undefined;
+      record.oauthTokenEndpoint = undefined;
+      record.lastError = undefined;
+      record.updatedAt = now;
+      this.state.oauthFlows = this.state.oauthFlows.filter((entry) =>
+        !(entry.connectorId === record.id && (!flow || entry.state === flow.state))
+      );
+      this.upsertRecord(record);
+      this.appendLog({
+        connectorId: record.id,
+        connectorName: record.name,
+        kind: "setup",
+        level: "info",
+        message: "Companion-brokered OAuth sign-in completed.",
+        healthState: this.toStatus(record, scopeContext).healthState,
+      });
+      await this.persist();
+    } else if (companionStatus.error) {
+      await this.markOAuthIncomplete(record.id, companionStatus.error);
+    }
+
+    return {
+      ...companionStatus,
+      connectorId: record.id,
+      state: flow?.state ?? companionStatus.state ?? trimString(request.state),
+      status: this.toStatus(record, scopeContext),
+    };
+  }
+
   private toStatus(record: StoredConnectorRecord, scopeContext?: ConnectorScopeContext): ConnectorStatus {
     const { activeScope, enabled, scopeStates } = this.computeScope(record, scopeContext);
     const needsCredential = this.needsCredential(record);
@@ -1655,6 +1760,11 @@ export class BrowserConnectorRuntime {
     if (record.credentialSource === "env") return !trimString(record.secretEnvKey);
     if (record.credentialSource === "detected_env") return !trimString(record.useDetectedEnvKey);
     if (record.credentialSource === "oauth") {
+      if (this.recordUsesCompanionOAuthBroker(record)) {
+        if (record.oauthConnected !== true) return true;
+        if (record.oauthExpiresAt && Date.parse(record.oauthExpiresAt) <= Date.now()) return true;
+        return false;
+      }
       if (!trimString(record.secret)) return true;
       if (record.oauthConnected !== true) return true;
       if (record.oauthExpiresAt && Date.parse(record.oauthExpiresAt) <= Date.now()) return true;
@@ -2370,11 +2480,12 @@ export class BrowserConnectorRuntime {
           };
         }
 
-        const hasCredential = Boolean(trimString(record.secret));
+        const companionBroker = this.recordUsesCompanionOAuthBroker(record);
+        const hasCredential = companionBroker ? record.oauthConnected === true : Boolean(trimString(record.secret));
         const connected = hasCredential && record.oauthConnected === true;
         return {
           ...normalized,
-          secret: hasCredential ? record.secret : undefined,
+          secret: companionBroker ? undefined : (hasCredential ? record.secret : undefined),
           oauthConnected: connected,
           oauthExpiresAt: connected ? record.oauthExpiresAt : undefined,
           oauthLastAuthAt: connected ? record.oauthLastAuthAt : undefined,
