@@ -199,6 +199,10 @@ function connectionTypeUserLabel(transport: ConnectorSetupRequest["transport"]):
   return transport === "local_stdio" ? "Local command (stdio)" : "Hosted URL (Streamable HTTP)";
 }
 
+function connectionTypeChipLabel(transport: ConnectorSetupRequest["transport"]): string {
+  return transport === "local_stdio" ? "STDIO" : "HTTP";
+}
+
 function badgeLabel(connector: ConnectorCatalogItem): string {
   if (connector.maturity === "ready") return "Ready";
   if (connector.maturity === "beta") return "Beta";
@@ -382,11 +386,33 @@ function buildRequest(draft: ConnectorDraftState, scopeContext: ConnectorScopeCo
   };
 }
 
-function renderDiagnostics(items: ConnectorDiagnostic[] | undefined): React.JSX.Element | null {
+function renderDiagnostics(
+  items: ConnectorDiagnostic[] | undefined,
+  transport?: ConnectorSetupRequest["transport"],
+  companion?: CompanionState | undefined,
+): React.JSX.Element | null {
   if (!items?.length) return null;
+  const coalesceLocalCompanionWarnings =
+    transport === "local_stdio" &&
+    !companionIsOnline(companion) &&
+    items.some((item) => item.code === "local_stdio_requires_companion" || item.code === "local_stdio_companion_unavailable");
+
+  const visibleItems = coalesceLocalCompanionWarnings
+    ? [
+        ...items.filter((item) => item.code !== "local_stdio_requires_companion" && item.code !== "local_stdio_companion_unavailable"),
+        {
+          level: "warning" as const,
+          code: "local_stdio_companion_required",
+          title: "Companion required",
+          message: "STDIO connectors verify and execute through the optional companion. Start it from the Companion tab, then run Check connection.",
+        },
+      ]
+    : items;
+
+  if (!visibleItems.length) return null;
   return (
     <div className="integration-diagnostic-notes">
-      {items.map((item) => (
+      {visibleItems.map((item) => (
         <p key={`${item.code}-${item.message}`} className={`settings-note integration-note integration-note-${item.level}`}>
           <strong>{item.title}</strong> {item.message}
         </p>
@@ -897,7 +923,7 @@ export function IntegrationsSection({
                       <p className="integration-library-description">{connector.officeValue}</p>
                       <div className="integration-library-meta">
                         <div className="integration-badges">
-                          <span className="integration-pill">{connectionTypeUserLabel(connector.transport)}</span>
+                          <span className="integration-pill">{connectionTypeChipLabel(connector.transport)}</span>
                           <span className="integration-pill">{authLabel(connector.authMethod)}</span>
                           <span className="integration-pill">{difficultyLabel(connector.setupDifficulty)}</span>
                         </div>
@@ -934,7 +960,7 @@ export function IntegrationsSection({
                   </div>
                   <div className="integration-badges">
                     <span className="integration-pill">{scopeLabel(status.activeScope)}</span>
-                    <span className="integration-pill">{connectionTypeUserLabel(status.transport)}</span>
+                    <span className="integration-pill">{connectionTypeChipLabel(status.transport)}</span>
                     <span className="integration-pill">{authLabel(status.authMethod)}</span>
                   </div>
                   <div className="settings-actions">
@@ -1093,9 +1119,8 @@ export function IntegrationsSection({
                       <h4>Check</h4>
                       <p className="settings-note">{selectedConnector.officeValue}</p>
                       <div className="integration-badges">
-                        <span className="integration-pill">{connectionTypeUserLabel(draft.transport)}</span>
+                        <span className="integration-pill">{connectionTypeChipLabel(draft.transport)}</span>
                         <span className="integration-pill">{difficultyLabel(selectedConnector.setupDifficulty)}</span>
-                        <span className="integration-pill">{selectedConnector.recommendedHosts.join(" / ")}</span>
                       </div>
                       <div className="connector-wizard-doc-links">
                         {selectedConnector.docsUrl && (
@@ -1109,7 +1134,7 @@ export function IntegrationsSection({
                           </a>
                         )}
                       </div>
-                      {renderDiagnostics(prepare?.diagnostics ?? diagnostics?.diagnostics)}
+                      {renderDiagnostics(prepare?.diagnostics ?? diagnostics?.diagnostics, draft.transport, companion)}
                     </div>
                   )}
 

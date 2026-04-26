@@ -562,6 +562,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Responsive CSS stacks row metadata and audit actions without horizontal overlap on narrow viewports.
   - Notes/Evidence: Implemented in `addin/apps/taskpane/src/app/components/IntegrationsSection.tsx` and `addin/apps/taskpane/src/app/styles.css` by adding `integration-library-*` row classes, centering `.integrations-search`, constraining `.button svg`, and adding compact diagnostics/audit layouts. Browser verification at `https://localhost:3443/` confirmed Library rows, centered search, non-overlapping `Supermemory`/`CUSTOM`, and compact Diagnostics buttons. Validation: `npm run typecheck:addin`; `npm run test:office` passed with 144 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`.
 
+- [x] IMPROVEMENT-008: Compact connector list rows and wizard check messaging
+  - Category: Improvement
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 browser diff comments after `IMPROVEMENT-007`; user wanted tighter Library rows, description text to use available width, compact HTTP/STDIO transport labels, no host-list chip in Check, and cleaner Check-step warning spacing.
+  - Details: The first list-row pass still gave Library rows too much vertical weight and capped descriptions at `68ch`, causing early wrapping despite available horizontal space. Transport chips still used long labels like "Local command (stdio)" and "Hosted URL (Streamable HTTP)". The connector setup Check step also showed a `word / excel / powerpoint` chip and rendered local runtime plus optional companion warnings as adjacent boxes for local STDIO connectors in browser-only mode.
+  - Dependencies: IMPROVEMENT-007.
+  - Subtasks:
+    - [x] Add compact transport labels for row/check metadata: `STDIO` and `HTTP`.
+    - [x] Remove the recommended-host chip from the wizard Check step while leaving host metadata available for catalog sorting.
+    - [x] Coalesce local STDIO browser-only and companion-unavailable diagnostics into one Check-step companion-required note.
+    - [x] Tighten Library row padding, gaps, icon size, and description width behavior.
+  - Acceptance Criteria:
+    - [x] Library rows are visually tighter without returning to card tiles.
+    - [x] Connector descriptions use available row width and avoid premature wrapping on desktop.
+    - [x] Transport chips show only `STDIO` or `HTTP`.
+    - [x] The wizard Check step no longer shows `word / excel / powerpoint`.
+    - [x] The Check-step warning area avoids duplicate adjacent local-runtime/companion warnings.
+  - Notes/Evidence: Implemented in `addin/apps/taskpane/src/app/components/IntegrationsSection.tsx` and `addin/apps/taskpane/src/app/styles.css` by adding `connectionTypeChipLabel`, using compact chips in Library/Connected/Check metadata, removing the recommended-host Check chip, coalescing local STDIO companion diagnostics in `renderDiagnostics`, and reducing row spacing/icon sizes while removing the fixed description max width. Browser verification at `https://localhost:3443/` confirmed denser Library rows, centered search, one-line GitHub desktop description, `STDIO` / `HTTP` chips, no Check-step host chip, and one coalesced `Companion required` warning. A 390px headless Edge pass reported no page or row overflow. Validation: `npm run typecheck:addin`; `npm run test:office` passed with 144 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`.
+
 - [ ] IMPROVEMENT-002: Clarify release packaging and runtime assumptions after the independent taskpane transition
   - Category: Improvement
   - Status: open

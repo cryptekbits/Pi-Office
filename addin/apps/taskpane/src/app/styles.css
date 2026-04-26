@@ -1943,17 +1943,17 @@ select:focus, input:focus, textarea:focus {
 
 .integration-library-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 .integration-library-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 12px;
+  padding: 9px 10px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: inset 0 0 0 1px var(--line);
   background: rgba(255, 255, 255, 0.72);
   cursor: pointer;
@@ -1972,19 +1972,23 @@ select:focus, input:focus, textarea:focus {
 }
 .integration-library-content {
   display: grid;
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
 }
 .integration-library-mainline {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
+}
+.integration-library-mainline .integration-state {
+  justify-self: end;
+  align-self: start;
 }
 .integration-library-heading {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 .integration-library-heading strong {
@@ -2002,9 +2006,9 @@ select:focus, input:focus, textarea:focus {
 }
 .integration-library-description {
   margin: 0;
-  max-width: 68ch;
-  font-size: 0.78rem;
-  line-height: 1.42;
+  width: 100%;
+  font-size: 0.76rem;
+  line-height: 1.35;
   color: var(--muted);
 }
 .integration-library-meta {
@@ -2012,18 +2016,23 @@ select:focus, input:focus, textarea:focus {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
   min-width: 0;
 }
 .integration-library-row .connector-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
 }
 .integration-library-row .connector-logo-mark svg,
 .integration-library-row .connector-logo-image img {
-  width: 23px;
-  height: 23px;
+  width: 20px;
+  height: 20px;
+}
+.integration-library-row .integration-pill {
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 0.68rem;
 }
 
 .connector-logo {
@@ -2313,6 +2322,10 @@ select:focus, input:focus, textarea:focus {
   box-shadow: inset 0 0 0 1px rgba(16, 124, 16, 0.2);
   background: rgba(16, 124, 16, 0.08);
 }
+.integration-diagnostic-notes {
+  display: grid;
+  gap: 8px;
+}
 
 .connector-wizard-backdrop {
   z-index: 80;
@@ -2477,6 +2490,7 @@ select:focus, input:focus, textarea:focus {
   padding: 9px 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.64);
+  line-height: 1.45;
 }
 .integration-note-info { box-shadow: inset 0 0 0 1px rgba(24, 90, 189, 0.16); }
 .integration-note-warning { box-shadow: inset 0 0 0 1px rgba(180, 83, 9, 0.18); }
@@ -2525,12 +2539,14 @@ select:focus, input:focus, textarea:focus {
     grid-template-columns: auto minmax(0, 1fr);
     padding: 10px;
   }
-  .integration-library-mainline,
   .integration-library-meta,
   .integration-audit-card {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: flex-start;
+  }
+  .integration-library-mainline {
+    gap: 8px;
   }
   .integration-diagnostics-actions {
     width: 100%;
