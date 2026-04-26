@@ -828,7 +828,10 @@ export function IntegrationsSection({
                 <div className="integration-diagnostics-list">
                   {(diagnostics?.runtimes ?? []).map((check) => (
                     <div key={check.key} className={`integration-diagnostic-row ${check.ok ? "integration-diagnostic-ok" : ""}`}>
-                      <span>{check.label}</span>
+                      <span>
+                        {check.label}
+                        <small>{check.detail}</small>
+                      </span>
                       <span>{check.ok ? "Ready" : "Missing"}</span>
                     </div>
                   ))}

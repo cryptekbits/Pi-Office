@@ -218,9 +218,9 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Secrets are not printed in diagnostics, status cards, logs, or exported connector bundles.
   - Notes/Evidence: Review pointed to `companion/src/connector-bridge.ts` computing credentials but building local runtime without credential injection. 2026-04-26 trace confirmed the installed MCP SDK merges `getDefaultEnvironment()` with supplied stdio env; Pi-Office now also explicitly builds the stdio env from the SDK safe inherited key list, merges connector env, and injects manual/env/detected credentials only under the intended env variable. Manual local credentials with no env target now stay `auth_required` with `credential_env_key_required`, and taskpane setup preserves the local env target for manual secrets. Regression coverage added in `addin/scripts/office-tests/src/companion-connector-bridge.test.ts`; validation passed with `npm run typecheck:companion`, `npm run typecheck:taskpane`, `npm run test:office`, `npm run build`, `npm run validate:manifests`, and `npm run check:bundle`.
 
-- [ ] BUG-004: Office state refresh race and deduping follow-up
+- [x] BUG-004: Office state refresh race and deduping follow-up
   - Category: Bug
-  - Status: in_progress
+  - Status: done
   - Priority: P2
   - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS5 and observation mapping.
   - Details: The transition plan called out office state refresh race potential during the independent taskpane migration. Selection-change handlers, polling, and session state sync can overlap in Office hosts, especially Word desktop, leading to noisy refresh failures or stale document/selection state.
@@ -233,8 +233,8 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Acceptance Criteria:
     - [x] Rapid selection changes do not produce recurring "Office state refresh failed" noise.
     - [x] Stale refresh responses cannot replace newer session state.
-    - [ ] Word desktop smoke testing confirms selection/context updates remain stable.
-  - Notes/Evidence: Transition plan lists "Office state refresh race potential" under WS5. 2026-04-26 automated hardening traced the active refresh path to `subscribeToOfficeChanges()` in `addin/apps/taskpane/src/lib/office/shared.ts` and the async listener in `App.tsx`. The taskpane now issues monotonically increasing refresh attempt tokens, applies Office state/session sync responses only when they are still the latest active attempt for the same session, suppresses stale errors from older attempts, and dedupes repeated transient refresh failures for 15 seconds. Focused regression coverage in `addin/scripts/office-tests/src/office-refresh-policy.test.ts` proves latest-only session matching and error deduping. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 124 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`. Real Word desktop smoke remains open under this task and `TESTING-002`.
+    - [x] Word desktop smoke testing confirms selection/context updates remain stable.
+  - Notes/Evidence: Transition plan lists "Office state refresh race potential" under WS5. 2026-04-26 automated hardening traced the active refresh path to `subscribeToOfficeChanges()` in `addin/apps/taskpane/src/lib/office/shared.ts` and the async listener in `App.tsx`. The taskpane now issues monotonically increasing refresh attempt tokens, applies Office state/session sync responses only when they are still the latest active attempt for the same session, suppresses stale errors from older attempts, and dedupes repeated transient refresh failures for 15 seconds. Focused regression coverage in `addin/scripts/office-tests/src/office-refresh-policy.test.ts` proves latest-only session matching and error deduping. Validation passed: `npm run typecheck:addin`, `npm run test:office` with 124 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`. 2026-04-26 Word desktop smoke from stakeholder passed taskpane load/reconnect, rapid selection refresh, focus/keyboard behavior, streaming scroll, and non-mutating review/visual-honesty checks. Stakeholder noted selection freshness and review adherence remain partly model-dependent, but the Office refresh layer updated to the latest selection through a follow-up context call and did not show recurring refresh-failure noise. Connector validation failed separately and is tracked in `BUG-011`.
 
 - [x] BUG-005: Provider readiness reports stored credentials as ready without validating usability
   - Category: Bug
@@ -346,6 +346,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] `npm run check:bundle` passes with the main JS bundle below budget.
     - [x] Existing typecheck, manifest validation, and Office regression tests still pass.
   - Notes/Evidence: Fixed by moving sideload scripts to pinned `npx --yes office-addin-debugging@6.0.7`, making manifest validation invoke pinned `office-addin-manifest@2.1.3` on demand, moving `mermaid` to the add-in root with a taskpane peer and `uuid@14.0.0` override, upgrading taskpane Vite to `8.0.10`, making Mermaid rendering a dynamic import, and resolving `vscode-jsonrpc` aliases through Node resolution after the clean lockfile changed hoisting. Validation on 2026-04-26: `npm ci --prefix addin` found 0 vulnerabilities; `npm audit --prefix addin --audit-level=low` found 0 vulnerabilities; `npm run typecheck:addin` passed; `npm run build:addin` passed with `index` 1,465.43 kB and no large-chunk warning; `npm run check:bundle` passed with `main.js=1431.1 KiB`; `npm run validate:manifests` validated Word, Excel, and PowerPoint; `npm run test:office` passed with 98 tests.
+
+- [x] BUG-011: Companion discovery and MCP connector execution are unavailable in real Office taskpane sessions
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-26 Word desktop manual smoke: stakeholder reported Test 6 failed after configuring the Parallel Web MCP connector; the model said no web connector/local companion was available. Stakeholder also reported companion discovery failed even while the companion server was running and Integrations diagnostics showed Node.js, npm, and npx as missing.
+  - Details: The optional companion runs on `https://localhost:3444` while the taskpane runs on `https://localhost:3443`, but the companion server did not emit loopback CORS headers, so a real Office webview could fail browser fetches to companion health/session routes even when the Node process was running. Connector diagnostics also came from the browser runtime and always marked local runtimes missing, even when companion diagnostics should represent the machine environment. Finally, connector save/reverify/scope changes refreshed Settings status but did not immediately resync the active Pi session, so newly verified MCP tools could remain absent from the model until an Office-state refresh/reopen. Remote HTTP MCP connectors such as Parallel Web were still browser setup-only despite the companion bridge already supporting remote HTTP/SSE MCP transports.
+  - Dependencies: BUG-002, BUG-003, SECURITY-006.
+  - Subtasks:
+    - [x] Add loopback CORS handling to the companion so the taskpane origin can call health, diagnostics, session, file, shell, and MCP routes.
+    - [x] Add companion runtime diagnostics for Node.js, npm, npx, Python, uv, Docker, and Git and route Integrations diagnostics through companion checks when connected.
+    - [x] Resync the active session after connector save, reverify, scope, favorite, import, and removal changes so model tool inventory updates without a Word restart.
+    - [x] Route verified remote HTTP MCP connectors through the optional companion instead of marking them browser-executable or permanently setup-only.
+    - [x] Update README and regression tests to describe the companion-routed MCP execution contract.
+  - Acceptance Criteria:
+    - [x] A real taskpane can discover a running loopback companion from `https://localhost:3443`.
+    - [x] Integrations diagnostics show companion machine runtime checks instead of browser-only missing Node/npm/npx state when the companion is connected.
+    - [x] Local stdio and remote HTTP MCP connectors can become model-visible only after companion verification exposes read-safe tool names.
+    - [x] Connector setup changes update the active session tool inventory without requiring a Word restart.
+  - Notes/Evidence: Implemented `companion/src/http.ts` for loopback CORS, `companion/src/runtime-diagnostics.ts` plus `/v1/diagnostics`, taskpane `CompanionClient.getConnectorDiagnostics()`, companion-routed diagnostics in `inprocess-kernel.ts`, connector-session resync calls in `App.tsx`, remote-HTTP companion connector definitions in `browser-connectors.ts`, and visible diagnostic details in `IntegrationsSection.tsx`. Regression coverage added in `addin/scripts/office-tests/src/companion-discovery.test.ts` and updated in `external-context-gaps.test.ts`. Validation passed: `npm run typecheck:companion`, `npm run typecheck:addin`, `npm run test:office` with 131 tests, `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
 ### Features
 
@@ -586,20 +606,20 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Priority: P1
   - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` validation matrix.
   - Details: The automated validation matrix was marked complete in the transition plan, but the manual Word desktop first scenarios remain unchecked. These scenarios matter because Office taskpane focus, scroll, OAuth, connector execution, checkpoint rewind, and viewport capture behavior can differ in the real desktop host from browser or unit-test behavior.
-  - Dependencies: BUG-001, BUG-002, SECURITY-001, and BUG-003 for meaningful connector/OAuth validation.
+  - Dependencies: BUG-001, BUG-002, BUG-003, BUG-011, and SECURITY-001 for meaningful connector/OAuth validation.
   - Subtasks:
-    - [ ] Validate taskpane load and reconnect behavior after Word restart.
-    - [ ] Validate chat input focus, keyboard handling, and vertical scrolling during long responses.
+    - [x] Validate taskpane load and reconnect behavior after Word restart.
+    - [x] Validate chat input focus, keyboard handling, and vertical scrolling during long responses.
     - [ ] Validate model switch and thinking-level updates.
     - [ ] Validate OAuth onboarding flow after SECURITY-001 is fixed.
     - [ ] Validate connector setup/test/use flow with at least two connector types after BUG-002 and BUG-003 are fixed.
     - [ ] Validate rewind with checkpoint persistence across refresh/reopen.
     - [ ] Validate viewport capture scenario for formatting/layout prompts.
   - Acceptance Criteria:
-    - [ ] Manual validation results are recorded in this backlog or a linked tracking doc with date, host, and outcome.
-    - [ ] Any failed manual scenario creates or links a separate bug task.
+    - [x] Manual validation results are recorded in this backlog or a linked tracking doc with date, host, and outcome.
+    - [x] Any failed manual scenario creates or links a separate bug task.
     - [ ] Word desktop first validation is complete before claiming release readiness.
-  - Notes/Evidence: Transition plan manual matrix lines remain unchecked.
+  - Notes/Evidence: 2026-04-26 stakeholder Word desktop smoke results: Test 1 taskpane load/reconnect passed; Test 2 rapid selection refresh passed with caveat that final answer quality depends on the model, while Office context refresh did pick up the updated selection; Test 3 focus/keyboard passed; Test 4 streaming scroll passed; Test 5 non-mutating review/visual honesty passed with model-adherence caveat; Test 6 connector failed because Parallel Web MCP was not available to the model and companion discovery/diagnostics were misleading. The connector failure created and closed `BUG-011` with CORS, companion diagnostics, session-resync, and companion-routed remote MCP fixes. Remaining manual items: model/thinking switch, OAuth flow, at least two connector types after `BUG-011`, rewind persistence, and a more explicit viewport capture scenario.
 
 ## Done Or Obsolete Tasks
 

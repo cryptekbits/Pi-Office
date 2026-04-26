@@ -325,7 +325,6 @@ export class BrowserConnectorRuntime {
   buildCompanionSessionConnectors(scopeContext?: ConnectorScopeContext): CompanionConnectorDefinition[] {
     this.dropExpiredOAuthFlows();
     return this.state.connectors
-      .filter((record) => record.transport === "local_stdio")
       .filter((record) => this.computeScope(record, scopeContext).enabled)
       .map((record) => this.toCompanionConnectorDefinition(record))
       .filter((record): record is CompanionConnectorDefinition => Boolean(record));
@@ -333,15 +332,12 @@ export class BrowserConnectorRuntime {
 
   buildCompanionConnectorDefinitionFromSetup(request: ConnectorSetupRequest): CompanionConnectorDefinition | undefined {
     const record = this.buildRecordFromRequest(request, false);
-    if (record.transport !== "local_stdio") {
-      return undefined;
-    }
     return this.toCompanionConnectorDefinition(record);
   }
 
   buildCompanionConnectorDefinition(storedConnectorId: string): CompanionConnectorDefinition | undefined {
     const record = this.state.connectors.find((entry) => entry.id === storedConnectorId);
-    if (!record || record.transport !== "local_stdio") {
+    if (!record) {
       return undefined;
     }
     return this.toCompanionConnectorDefinition(record);
@@ -1177,7 +1173,7 @@ export class BrowserConnectorRuntime {
         key: "git",
         label: "Remote connector execution",
         ok: false,
-        detail: "Remote HTTP connectors can be configured in browser mode but are not exposed to the agent until remote MCP execution is implemented.",
+        detail: "Remote HTTP connectors are browser setup-only until the optional companion verifies read-safe MCP tools.",
       },
     ];
   }

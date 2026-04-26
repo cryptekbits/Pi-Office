@@ -5,8 +5,8 @@ Pi-Office keeps Office.js execution inside the active Office taskpane. Network c
 ## What Leaves The Machine
 
 - AI provider requests can include the user's prompt, selected Office context, generated-image prompts, model/tool results, and any document snippets the taskpane attaches for the current request.
-- Remote HTTP connectors can send connector-specific requests to the configured service endpoint. Remote connector execution is setup-only until browser remote-MCP execution is implemented.
-- Local stdio connectors run through the optional companion when connected. The companion is designed for read-only local MCP execution.
+- Remote HTTP connectors can send connector-specific requests to the configured service endpoint after the optional companion verifies read-safe MCP tools.
+- Local stdio connectors also run through the optional companion when connected. The companion is designed for read-only MCP execution.
 - The optional companion runs on loopback and receives saved-document context only when a saved document is bound to the session.
 
 ## What Stays In Browser Storage

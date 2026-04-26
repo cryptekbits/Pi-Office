@@ -235,7 +235,7 @@ test("connector refresh stays runtime/UI scoped through reverify route with save
   );
 });
 
-test("remote HTTP connectors are marked setup-only until browser execution exists", async () => {
+test("remote HTTP connectors are companion-routed and not browser-executable", async () => {
   const runtime = await loadKernelModule();
   const setup = await runtime.dispatchKernelRequest("/v1/connectors/setup/connect", {
     method: "POST",
@@ -261,7 +261,7 @@ test("remote HTTP connectors are marked setup-only until browser execution exist
   };
 
   assert.equal(setup.ok, true);
-  assert.equal(setup.status.executionEnvironment, "browser");
+  assert.equal(setup.status.executionEnvironment, "companion");
   assert.equal(setup.status.executionAvailable, false);
 
   const statuses = await runtime.dispatchKernelRequest("/v1/connectors/status", {
@@ -277,7 +277,7 @@ test("remote HTTP connectors are marked setup-only until browser execution exist
 
   const saved = statuses.connectors.find((connector) => connector.id === setup.status.id);
   assert.ok(saved, "saved remote connector should be returned by status route");
-  assert.equal(saved.executionEnvironment, "browser");
+  assert.equal(saved.executionEnvironment, "companion");
   assert.equal(saved.executionAvailable, false);
 });
 

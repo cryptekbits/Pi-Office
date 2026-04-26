@@ -1513,6 +1513,7 @@ export function App() {
     try {
       const response = await postJson<ConnectorSetupResponse>("/v1/connectors/setup/connect", request);
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
       pushSystemMessage(`Saved connector: ${response.status.name}.`);
       return response;
     } catch (error) {
@@ -1520,7 +1521,7 @@ export function App() {
       pushErrorMessage(`Connector save failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleTestConnector = useCallback(async (request: ConnectorSetupRequest) => {
     try {
@@ -1536,13 +1537,14 @@ export function App() {
     try {
       const response = await postJson<ConnectorTestResponse>("/v1/connectors/reverify", { connectorId, scopeContext });
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
       return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Connector re-verification failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleStartConnectorOAuth = useCallback(async (connectorId: string) => {
     try {
@@ -1561,13 +1563,14 @@ export function App() {
     try {
       await deleteJson<{ ok: true }>(`/v1/connectors/${storedConnectorId}`);
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
       pushSystemMessage("Connector removed.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Connector removal failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleClearConnectorData = useCallback(async () => {
     try {
@@ -1586,23 +1589,25 @@ export function App() {
     try {
       await postJson<{ ok: true; status: ConnectorStatus }>("/v1/connectors/favorite", request);
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Favorite update failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleUpdateConnectorScope = useCallback(async (request: ConnectorScopeUpdateRequest) => {
     try {
       await postJson<{ ok: true; status: ConnectorStatus }>("/v1/connectors/scope", request);
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Scope update failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleLoadConnectorLogs = useCallback(async (connectorId: string) => {
     try {
@@ -1638,13 +1643,14 @@ export function App() {
     try {
       const response = await postJson<ConnectorImportApplyResponse>("/v1/connectors/import/apply", { bundle, resolutions });
       await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
       return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Connector import failed: ${message}`);
       throw error;
     }
-  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState]);
+  }, [connectorScopeContext, pushErrorMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleSetConnectorAuditPreference = useCallback(async (preference: ConnectorAuditPreference) => {
     try {

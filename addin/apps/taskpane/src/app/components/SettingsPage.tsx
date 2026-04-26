@@ -85,7 +85,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   grep: "Search file contents from the saved document folder through the optional companion.",
   find: "Find files by name inside the saved document folder through the optional companion.",
   ls: "List directory contents from the saved document folder through the optional companion.",
-  mcp: "Execute a verified read-only local MCP tool through the optional companion.",
+  mcp: "Execute a verified read-only MCP tool through the optional companion.",
   bash: "Execute a companion-sandboxed shell command only after isolation detection and destructive probes pass.",
 };
 
@@ -537,7 +537,7 @@ function CompanionSection({
         </button>
       </div>
       <p className="settings-note">
-        Pi-Office works without the companion. The companion adds read-only local file access and read-only local MCP execution. Sandboxed shell stays hidden unless isolation detection and destructive probes pass.
+        Pi-Office works without the companion. The companion adds read-only local file access and read-only MCP execution. Sandboxed shell stays hidden unless isolation detection and destructive probes pass.
       </p>
 
       <div className="settings-card-grid">
@@ -554,7 +554,7 @@ function CompanionSection({
           <p>
             Files: {companion.capabilities.fileRead ? "Read-only ready" : "Unavailable"}
             <br />
-            Local MCP: {companion.capabilities.localMcp ? "Read-only ready" : "Unavailable"}
+            MCP: {companion.capabilities.localMcp ? "Read-only ready" : "Unavailable"}
             <br />
             Shell: {companion.capabilities.shell?.state === "available"
               ? "Sandbox ready"
@@ -616,7 +616,7 @@ function CompanionSection({
         </div>
         <div className="settings-card">
           <span className="label">3. Use</span>
-          <p>When discovery succeeds, saved documents gain read-only file tools and local stdio MCP execution. Sandboxed shell appears only after the companion policy passes. Without it, the add-in still works normally.</p>
+          <p>When discovery succeeds, saved documents gain read-only file tools plus verified local stdio and remote HTTP MCP execution. Sandboxed shell appears only after the companion policy passes. Without it, the add-in still works normally.</p>
         </div>
       </div>
     </section>
@@ -1164,8 +1164,8 @@ function ToolsSection({
           {documentState !== "saved"
             ? "Save the document first to expose document-folder context. Local file tools stay disabled until the optional companion also connects."
             : companion.status === "connected" && companion.capabilities.localMcp
-              ? "The companion is connected, but no read-only local MCP tools are verified for this session yet."
-              : "The add-in is running without companion-backed local tools. Read-only local files and local MCP execution become available only when the optional companion connects."}
+              ? "The companion is connected, but no read-only MCP tools are verified for this session yet."
+              : "The add-in is running without companion-backed local tools. Read-only local files and MCP execution become available only when the optional companion connects."}
         </p>
       )}
       {showCompanionFileTools && (

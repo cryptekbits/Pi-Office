@@ -14,6 +14,8 @@ import type {
 import { loadConfig, type CompanionConfig } from "./config.js";
 import { CompanionConnectorBridge } from "./connector-bridge.js";
 import { executeFileTool } from "./file-tools.js";
+import { companionCorsMiddleware } from "./http.js";
+import { createCompanionRuntimeDiagnostics } from "./runtime-diagnostics.js";
 import { CompanionShellSandbox } from "./shell-sandbox.js";
 
 interface SessionRecord {
@@ -69,6 +71,7 @@ export class CompanionServer {
     mkdirSync(this.config.dataDir, { recursive: true });
 
     const app = express();
+    app.use(companionCorsMiddleware);
     app.use(express.json({ limit: "10mb" }));
     this.mountRoutes(app);
 
@@ -99,6 +102,10 @@ export class CompanionServer {
         },
       };
       response.json(body);
+    });
+
+    app.get("/v1/diagnostics", (_request, response) => {
+      response.json(createCompanionRuntimeDiagnostics());
     });
 
     app.get("/v1/shell/capability", (_request, response) => {

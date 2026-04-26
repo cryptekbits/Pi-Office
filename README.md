@@ -7,7 +7,7 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 - `addin/apps/taskpane`
   Shared React taskpane app served over `https://localhost:3443`
 - `companion`
-  Optional local HTTPS companion for read-only local file access and read-only local MCP execution
+  Optional local HTTPS companion for read-only local file access and read-only MCP execution
 - `addin/packages/pi-office-pack`
   Internal Pi package with Office-specific tools, prompts, and skills
 - `addin/manifests`
@@ -23,10 +23,9 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 
 - Office hosts the taskpane UI and runs `Office.js`
 - The taskpane runtime is self-contained for chat, providers, models, Office tools, and browser-safe connectors
-- The optional companion is a separate capability provider on `https://localhost:3444`
+- The optional companion is a separate loopback capability provider on `https://localhost:3444`
 - Saved documents provide folder context, but local file tools stay disabled until the optional companion connects
-- Remote HTTP connectors can be configured in browser mode, but agent execution is setup-only until the browser remote-MCP execution path is implemented
-- Local stdio connectors require the optional companion and stay read-only
+- Remote HTTP and local stdio MCP connectors require the optional companion for read-only agent execution
 - Multiple Office windows can reuse one machine-local companion while keeping logical taskpane sessions isolated
 - Privacy and storage behavior, including local credential limits and clear-data controls, is documented in [`docs/privacy-and-storage.md`](docs/privacy-and-storage.md)
 
@@ -106,16 +105,17 @@ If Word launches with a blank document during debugging, open the target saved d
 ## Companion Notes
 
 - Pi-Office works without the companion
-- Without the companion, local files and local stdio MCP connectors are unavailable
+- Without the companion, local files plus local stdio and remote HTTP MCP connector execution are unavailable
 - With the companion connected, Pi-Office enables read-only `read`, `grep`, `find`, and `ls` for the saved document folder
+- With the companion connected, verified read-safe local stdio and remote HTTP MCP tools can be exposed through the generic `mcp` tool
 - Shell/bash access is hidden unless the companion shell sandbox reports an available isolation backend and passing destructive probes; there is no raw host shell fallback
 - The companion does not host providers, auth, models, or the taskpane
-- Remote HTTP connectors are currently setup-only; do not present them as usable agent tools until the runtime exposes verified read-only remote MCP execution
+- Remote HTTP connectors are browser setup-only until the optional companion verifies and exposes read-safe MCP tools for the active session
 - Packaging for `dist/binaries`, zip, and npm distribution is planned later
 
 ## Notes
 
 - Pi is consumed as a dependency. This repo does not copy Pi source from `pi-mono`.
 - `npm run dev` means "start the local taskpane web host for sideload development."
-- The optional companion is intentionally read-only for v1 local access.
+- The optional companion is intentionally read-only for v1 file and MCP access.
 - Contributor originality rules live in [`CONTRIBUTING.md`](CONTRIBUTING.md), with release provenance tracked in [`docs/provenance.md`](docs/provenance.md).

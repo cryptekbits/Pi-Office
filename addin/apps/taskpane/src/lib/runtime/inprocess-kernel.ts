@@ -478,9 +478,9 @@ function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: b
       "Verified companion MCP tools: " + companion.connectorToolNames.join(", "),
     );
   } else if (companion.status === "connected" && companion.capabilities.localMcp) {
-    lines.push("Local MCP execution is available through the companion when configured read-only connectors are ready.");
+    lines.push("MCP execution is available through the companion when configured read-only connectors are verified.");
   } else {
-    lines.push("Local MCP execution is unavailable in this session.");
+    lines.push("MCP execution is unavailable in this session.");
   }
 
   const shellCapability = companion.capabilities.shell;
@@ -2904,9 +2904,9 @@ class BrowserOfficeSession {
     if (this.hasCompanionConnectorTools()) {
       tools.push({
         name: "mcp",
-        label: "Local MCP Connector",
+        label: "MCP Connector",
         description:
-          "Execute a verified read-only local MCP tool through the optional companion. Use one of the exact tool names listed in the companion inventory.",
+          "Execute a verified read-only MCP tool through the optional companion. Use one of the exact tool names listed in the companion inventory.",
         parameters: Type.Object({
           toolName: Type.String({
             description: "Exact verified companion connector tool name to execute.",
@@ -3146,27 +3146,17 @@ class InProcessKernel {
     transport: ConnectorSetupRequest["transport"],
     companion: CompanionState,
   ): ConnectorDiagnostic[] {
-    if (transport !== "local_stdio") {
-      return [
-        ...diagnostics,
-        {
-          level: "info",
-          code: "remote_http_setup_only",
-          title: "Remote connector setup-only",
-          message:
-            "Remote HTTP connectors can be configured in the taskpane, but agent execution is disabled until the browser remote-MCP execution path is implemented.",
-        },
-      ];
-    }
-
     if (companion.status === "connected") {
+      const isLocal = transport === "local_stdio";
       return [
         ...diagnostics,
         {
           level: "info",
-          code: "local_stdio_companion_connected",
+          code: isLocal ? "local_stdio_companion_connected" : "remote_http_companion_connected",
           title: "Optional companion connected",
-          message: "Read-only local connector execution is available through the optional companion.",
+          message: isLocal
+            ? "Read-only local connector execution is available through the optional companion."
+            : "Read-only remote MCP connector execution is available through the optional companion after verification.",
         },
       ];
     }
@@ -3175,10 +3165,11 @@ class InProcessKernel {
       ...diagnostics,
       {
         level: "warning",
-        code: "local_stdio_companion_unavailable",
+        code: transport === "local_stdio" ? "local_stdio_companion_unavailable" : "remote_http_companion_unavailable",
         title: "Optional companion unavailable",
-        message:
-          "Local stdio connectors need the optional companion to verify and execute. Remote HTTP connectors are setup-only until browser remote-MCP execution is implemented.",
+        message: transport === "local_stdio"
+          ? "Local stdio connectors need the optional companion to verify and execute."
+          : "Remote HTTP MCP connectors need the optional companion to verify and execute.",
       },
     ];
   }
@@ -3187,18 +3178,12 @@ class InProcessKernel {
     status: ConnectorStatusResponse["connectors"][number],
     overlay?: ConnectorStatus | undefined,
   ): ConnectorStatus {
-    const companion = this.companionClient.getState();
-    const isLocalConnector = status.transport === "local_stdio";
+    const usesCompanion = status.transport === "local_stdio" || status.transport === "remote_http";
     return {
       ...status,
       ...(overlay ?? {}),
-      executionEnvironment: isLocalConnector
-        ? "companion"
-        : "browser",
-      executionAvailable: overlay?.executionAvailable
-        ?? (isLocalConnector
-          ? companion.status === "connected"
-          : false),
+      executionEnvironment: usesCompanion ? "companion" : "browser",
+      executionAvailable: overlay?.executionAvailable ?? false,
     };
   }
 
@@ -3249,7 +3234,7 @@ class InProcessKernel {
     }
   }
 
-  private async probeLocalConnector(request: ConnectorSetupRequest): Promise<{
+  private async probeConnectorThroughCompanion(request: ConnectorSetupRequest): Promise<{
     ok: boolean;
     status: ConnectorStatus;
     diagnostics: ConnectorDiagnostic[];
@@ -3341,23 +3326,38 @@ class InProcessKernel {
     if (method === "GET" && path === "/v1/connectors/diagnostics") {
       const companion = await this.getCompanionState();
       const diagnostics = this.connectorRuntime.getDiagnostics();
+      const companionDiagnostics = companion.status === "connected"
+        ? await this.companionClient.getConnectorDiagnostics().catch((error): ConnectorDiagnosticsResponse => ({
+            generatedAt: new Date().toISOString(),
+            runtimes: diagnostics.runtimes,
+            envSuggestions: [],
+            diagnostics: [{
+              level: "warning",
+              code: "companion_diagnostics_unavailable",
+              title: "Companion diagnostics unavailable",
+              message: error instanceof Error ? error.message : String(error),
+            }],
+          }))
+        : undefined;
       return {
         ...diagnostics,
+        generatedAt: companionDiagnostics?.generatedAt ?? diagnostics.generatedAt,
+        runtimes: companionDiagnostics?.runtimes ?? diagnostics.runtimes,
         diagnostics: [
-          ...diagnostics.diagnostics,
+          ...(companionDiagnostics?.diagnostics ?? diagnostics.diagnostics),
           companion.status === "connected"
             ? {
                 level: "info",
                 code: "optional_companion_connected",
                 title: "Optional companion connected",
-                message: `Read-only local file tools and local stdio MCP connectors are available through ${companion.endpoint}.`,
+                message: `Read-only local file tools plus local stdio and remote HTTP MCP connectors are available through ${companion.endpoint}.`,
               }
             : {
                 level: companion.status === "error" ? "warning" : "info",
                 code: "optional_companion_unavailable",
                 title: "Optional companion not connected",
                 message:
-                  "Local stdio connectors need the optional companion to verify and execute. Remote HTTP connectors are setup-only until browser remote-MCP execution is implemented.",
+                  "Local stdio and remote HTTP MCP connectors need the optional companion to verify and execute.",
               },
         ],
       } as T;
@@ -3401,9 +3401,9 @@ class InProcessKernel {
       const companion = await this.getCompanionState();
       const response = await this.connectorRuntime.connectConnector(request);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
-      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeLocalConnector"]>>;
+      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeConnectorThroughCompanion"]>>;
       try {
-        probe = await this.probeLocalConnector({ ...request, existingId: response.status.id });
+        probe = await this.probeConnectorThroughCompanion({ ...request, existingId: response.status.id });
       } catch (error) {
         probeDiagnostics = [
           {
@@ -3430,9 +3430,9 @@ class InProcessKernel {
       const companion = await this.getCompanionState();
       const response = this.connectorRuntime.testConnector(request);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
-      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeLocalConnector"]>>;
+      let probe = undefined as Awaited<ReturnType<InProcessKernel["probeConnectorThroughCompanion"]>>;
       try {
-        probe = await this.probeLocalConnector(request);
+        probe = await this.probeConnectorThroughCompanion(request);
       } catch (error) {
         probeDiagnostics = [
           {

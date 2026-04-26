@@ -6,6 +6,7 @@ import type {
   CompanionShellExecuteResponse,
   CompanionSessionOpenResponse,
   CompanionState,
+  ConnectorDiagnosticsResponse,
   ConnectorDiagnostic,
   ConnectorStatus,
   OfficeStateUpdate,
@@ -244,6 +245,15 @@ export class CompanionClient {
       method: "POST",
       body: JSON.stringify(definition),
     });
+  }
+
+  async getConnectorDiagnostics(): Promise<ConnectorDiagnosticsResponse | undefined> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      return undefined;
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/diagnostics`);
   }
 
   async executeFileTool(
