@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 
 import { OFFICE_APPEND_SYSTEM_PROMPT } from "../../../packages/pi-office-pack/src/defaults.js";
@@ -428,4 +430,32 @@ test("web-grounded context closure stays on hard-read-only research connectors",
     assert.equal(connector.readPolicy.blockPromptPatterns?.includes(".*"), true);
     assert.ok((connector.readPolicy.allowToolPatterns ?? []).length > 0);
   }
+});
+
+test("raw shell tools stay unavailable until a companion sandbox is implemented", async () => {
+  const runtime = await loadKernelModule();
+  const openResponse = await runtime.dispatchKernelRequest("/v1/sessions/open", {
+    method: "POST",
+    body: JSON.stringify({
+      host: "word",
+      documentId: "doc-no-raw-shell",
+      saved: true,
+      title: "No Raw Shell",
+      documentPath: "C:/Users/manan/Documents/no-raw-shell.docx",
+    }),
+  }) as { sessionId: string };
+  const socket = runtime.createLocalBridgeSocket(openResponse.sessionId);
+  const session = (socket as unknown as { session: { agent: { state: { tools: Array<{ name: string }> } } } }).session;
+  const toolNames = new Set(session.agent.state.tools.map((tool) => tool.name));
+
+  assert.equal(toolNames.has("bash"), false);
+  assert.equal(toolNames.has("edit"), false);
+  assert.equal(toolNames.has("write"), false);
+  assert.equal(toolNames.has("read"), false, "External file tools require a connected companion and saved-folder session binding.");
+  socket.close();
+
+  const companionServer = readFileSync(join(process.cwd(), "apps", "companion", "src", "server.ts"), "utf8");
+  assert.doesNotMatch(companionServer, /\/v1\/sessions\/:sessionId\/(?:shell|bash|command|exec)/);
+  assert.doesNotMatch(companionServer, /executeShell|executeBash|BashOperations/);
+  assert.match(companionServer, /\/v1\/sessions\/:sessionId\/files\/:toolName/);
 });

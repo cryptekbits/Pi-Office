@@ -129,7 +129,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 - [ ] SECURITY-006: Design and enforce read-only companion shell sandbox before exposing bash
   - Category: Security
-  - Status: open
+  - Status: in_progress
   - Priority: P0
   - Source: 2026-04-26 plan implementation after user asked for Codex/OpenCode/pi sandbox analysis and a safe companion bridge design.
   - Details: SOTA coding models often use bash for analysis, but raw host bash from an Office chat can be prompt-injected into modifying files outside the document workspace. Pi-Office must not expose raw host bash. If shell capability is added, it must route through a companion-owned sandbox using Pi's pluggable tool operations, with user-selected roots mounted/readable only, writable scratch separated from user files, denied secret patterns, no network by default, timeouts/output caps, command audit logs, and fail-closed approvals. On Windows, prefer WSL2/Docker/Hyper-V-backed isolation until native sandbox behavior is proven.
@@ -143,7 +143,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] No raw host bash is available from the add-in or companion by default.
     - [ ] Shell commands cannot modify user workspace/document files outside the approved scratch path.
     - [ ] Sandbox probes prove denied filesystem, secret, and network operations fail closed before shell is enabled.
-  - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second.
+  - Notes/Evidence: Codex uses platform sandbox modes and Linux bubblewrap/read-only defaults; OpenCode uses permission-driven plan/build modes. Pi-Office should combine both lessons: OS/process isolation first, permission prompts second. 2026-04-26 first slice added `docs/companion-shell-sandbox.md` with the required policy, platform backends, protocol contract, and destructive probes; README now states shell/bash is unavailable until that policy is implemented; `scripts/office-tests/src/external-context-gaps.test.ts` asserts the active session does not expose `bash`, `edit`, or `write` tools and the companion server has no shell/bash/exec route. Full custom `BashOperations` backend, platform detection, and destructive sandbox probes remain open.
 
 - [ ] SECURITY-007: Audit third-party connector logo licensing and source provenance before public packaging
   - Category: Security
