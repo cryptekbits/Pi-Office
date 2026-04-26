@@ -527,6 +527,28 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Standard add-in, companion, Office-test, build, bundle, manifest, and browser checks pass.
   - Notes/Evidence: Initial research found multi-profile needs for Parallel `/mcp` vs `/mcp-oauth`, Parallel Task MCP, LaunchDarkly FM/AI Configs/Observability, Shopify Storefront/Customer/Dev, Microsoft Work IQ, GitHub read-only hosted/local, Atlassian hosted MCP, PostHog US/EU, and local-only Obsidian/PostgreSQL paths. Closed 2026-04-27 by adding `setupProfiles`, connector tool inventory/policy override protocol fields, curated profiles across the existing catalog, connected row expansion, warning-gated non-read tool enablement, companion-side full tool inventory classification, docs/provenance updates, and regression coverage. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (147 tests), `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and in-app browser screenshots for Integrations Library, setup wizard, and connected expansion at `https://localhost:3443/`.
 
+- [x] FEATURE-008: Make connector catalog provenance-driven and support browser-direct hosted MCP
+  - Category: Feature
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 stakeholder review of `FEATURE-007`; Granola exposed companion-only and API-key UI despite being an official hosted OAuth/DCR MCP, and similar honesty risks likely affect other connectors.
+  - Details: The current connector catalog is hardcoded in TypeScript and mixes official, community, local-only, experimental, and planned profiles without enough provenance metadata or UI gating. Remote HTTP MCP connectors are still generally treated as companion-verified/executed even when a hosted Streamable HTTP MCP supports browser CORS and standard MCP OAuth. OAuth profiles also inherit API-key/env controls that are confusing for nontechnical users. The catalog should move to a YAML source of truth with evidence fields, official/community/planned tags, and generated typed TS. Browser-compatible hosted MCP profiles should verify and execute in the taskpane without requiring the optional companion. Community profiles should warn before setup, and planned/unverified profiles should be visible but setup-disabled.
+  - Dependencies: FEATURE-007, SECURITY-001, BUG-011.
+  - Subtasks:
+    - [x] Add connector catalog YAML with generated typed TS and validation for provenance, auth, transport, availability, browser-direct support, and setup gating.
+    - [x] Re-curate existing connector profiles from official/current docs, including Granola OAuth-only, Perplexity official local STDIO/API-key, Obsidian community local-only, PostgreSQL reference/community local-only, and Google Drive planned/unverified.
+    - [x] Add browser-direct Streamable HTTP MCP verification/execution for compatible hosted connectors with read-safe tool classification and fail-closed disabled tools.
+    - [x] Implement generic MCP OAuth discovery/DCR/PKCE callback handling for hosted profiles and remove fake or disabled OAuth states from the wizard.
+    - [x] Update Integrations Library/wizard/connected expansion with official/community/planned badges, community warning suppression, simple OAuth/token paths, companion-only env controls, and advanced-only URL/header fields.
+    - [x] Record provenance notes for risky or ambiguous connector decisions and add regression/browser coverage.
+  - Acceptance Criteria:
+    - [x] Granola setup shows only official browser sign-in, no API-key/env/header simple fields, no companion warning, and browser-direct Verify works when OAuth is available.
+    - [x] Official, community, and planned/unverified profiles are visually distinct and setup-gated according to provenance.
+    - [x] Browser-direct verified hosted MCP tools become model-visible without the companion, while local STDIO/local HTTP profiles still require companion.
+    - [x] Write/destructive/unknown connector tools remain disabled by default and cannot execute directly unless explicitly enabled.
+    - [x] Catalog generation, runtime, UI, and browser tests cover the new behavior and standard validation passes.
+  - Notes/Evidence: Initial research evidence includes Granola docs for Streamable HTTP OAuth/DCR at `https://mcp.granola.ai/mcp`, Perplexity docs for local `@perplexity-ai/mcp-server` with `PERPLEXITY_API_KEY`, Airtable/Notion/Slack/Figma/LaunchDarkly/Stripe/PayPal/Tavily/Exa/GitHub/GitLab/Qdrant official MCP docs, and the absence of sufficient first-party evidence for the exact Google Drive endpoint in the current catalog. Closed 2026-04-27 by moving connector setup data to `addin/packages/pi-office-pack/src/connector-catalog.yaml`, adding generated typed catalog validation, implementing browser-direct Streamable HTTP MCP probing/execution plus MCP OAuth discovery/DCR/PKCE/callback handling, gating execution by read-safe tool classification, and updating Integrations UI for provenance badges, planned/community gating, Granola OAuth-only setup, and companion-only env controls. Browser QA verified Library badges/disabled states, Granola browser-direct OAuth wizard, community warning with suppression, and connected details/tool inventory at `https://localhost:3443/`; live Granola account sign-in was not completed. Validation: `npm --prefix addin run check:connector-catalog`, `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (148 tests), `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
+
 ### Improvements
 
 - [x] IMPROVEMENT-001: Clean up worktree hygiene for untracked archive and generated artifacts

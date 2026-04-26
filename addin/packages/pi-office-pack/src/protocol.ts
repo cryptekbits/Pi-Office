@@ -519,7 +519,17 @@ export interface ConnectorConfigTemplate {
   env?: Record<string, string> | undefined;
 }
 
-export type ConnectorSetupProfileOfficialness = "official" | "community" | "deprecated" | "experimental";
+export type ConnectorSetupProfileOfficialness =
+  | "official"
+  | "official_preview"
+  | "community"
+  | "provider_reference"
+  | "deprecated"
+  | "experimental"
+  | "planned";
+
+export type ConnectorSetupProfileAvailability = "available" | "needs_companion" | "planned" | "advanced";
+export type ConnectorBrowserDirectSupport = "supported" | "unsupported" | "unknown";
 
 export interface ConnectorSetupProfile {
   id: string;
@@ -539,6 +549,14 @@ export interface ConnectorSetupProfile {
   credentialEnvKey?: string | undefined;
   requiresCompanion: boolean;
   officialness: ConnectorSetupProfileOfficialness;
+  availability?: ConnectorSetupProfileAvailability | undefined;
+  browserDirect?: ConnectorBrowserDirectSupport | undefined;
+  docsUrl?: string | undefined;
+  endpointEvidenceUrl?: string | undefined;
+  authEvidenceUrl?: string | undefined;
+  checkedAt?: string | undefined;
+  setupDisabled?: boolean | undefined;
+  riskNotes?: string[] | undefined;
   defaultWhenCompanionAbsent?: boolean | undefined;
   defaultWhenCompanionPresent?: boolean | undefined;
   privacyNotes?: string[] | undefined;
@@ -868,6 +886,7 @@ export interface ConnectorOAuthStartResponse {
   ok: true;
   connectorId: string;
   url?: string | undefined;
+  callbackUrl?: string | undefined;
   state: string;
   expiresAt: string;
 }
@@ -882,8 +901,9 @@ export interface ConnectorOAuthCredentialHandoff {
 }
 
 export interface ConnectorOAuthCallbackRequest {
-  connectorId: string;
+  connectorId?: string | undefined;
   state: string;
+  code?: string | undefined;
   error?: string | undefined;
   credential?: ConnectorOAuthCredentialHandoff | undefined;
   expiresAt?: string | undefined;

@@ -18,6 +18,7 @@ import type {
   ConnectorImportApplyResponse,
   ConnectorImportPreviewResponse,
   ConnectorLogResponse,
+  ConnectorOAuthCallbackResponse,
   ConnectorOAuthStartResponse,
   ConnectorPrepareResponse,
   ConnectorScopeContext,
@@ -1587,6 +1588,44 @@ export function App() {
       throw error;
     }
   }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
+
+  useEffect(() => {
+    function handleOAuthMessage(event: MessageEvent): void {
+      if (event.origin !== window.location.origin) return;
+      const payload = event.data as { type?: string } | undefined;
+      if (payload?.type !== "pi-office-connector-oauth-complete") return;
+      void refreshConnectorState(connectorScopeContext).then(() => syncCurrentSessionState());
+    }
+    window.addEventListener("message", handleOAuthMessage);
+    return () => window.removeEventListener("message", handleOAuthMessage);
+  }, [connectorScopeContext, refreshConnectorState, syncCurrentSessionState]);
+
+  useEffect(() => {
+    if (window.location.pathname !== "/connector-oauth-callback") return;
+    const params = new URLSearchParams(window.location.search);
+    const state = params.get("state") ?? "";
+    const code = params.get("code") ?? undefined;
+    const error = params.get("error_description") ?? params.get("error") ?? undefined;
+    let cancelled = false;
+    void postJson<ConnectorOAuthCallbackResponse>("/v1/connectors/oauth/callback", { state, code, error })
+      .then(async () => {
+        if (cancelled) return;
+        pushSystemMessage("Connector sign-in completed.");
+        await refreshConnectorState(connectorScopeContext);
+        await syncCurrentSessionState();
+        window.opener?.postMessage({ type: "pi-office-connector-oauth-complete" }, window.location.origin);
+        window.history.replaceState({}, document.title, "/");
+        window.close();
+      })
+      .catch((callbackError) => {
+        if (cancelled) return;
+        pushErrorMessage(`Connector sign-in callback failed: ${callbackError instanceof Error ? callbackError.message : String(callbackError)}`);
+        window.opener?.postMessage({ type: "pi-office-connector-oauth-complete" }, window.location.origin);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState, syncCurrentSessionState]);
 
   const handleRemoveConnector = useCallback(async (storedConnectorId: string) => {
     try {

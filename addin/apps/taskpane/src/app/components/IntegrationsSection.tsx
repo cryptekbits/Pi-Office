@@ -17,6 +17,7 @@ import type {
   ConnectorScopeUpdateRequest,
   ConnectorSetupRequest,
   ConnectorSetupResponse,
+  ConnectorSetupProfile,
   ConnectorStatus,
   ConnectorTestResponse,
   ConnectorToolClassification,
@@ -40,7 +41,7 @@ import {
 
 type IntegrationsView = "library" | "connected" | "custom" | "diagnostics";
 type WizardStep = 1 | 2 | 3 | 4;
-type CredentialMode = "detected" | "env" | "manual" | "none";
+type CredentialMode = "detected" | "env" | "manual" | "oauth" | "none";
 type ToolFilter = "all" | "enabled" | "read" | "sensitive" | "disabled" | "advanced";
 
 interface ConnectorDraftState {
@@ -148,6 +149,12 @@ const CUSTOM_CONNECTOR_CARD: ConnectorCatalogItem = {
       authMethod: "none",
       requiresCompanion: true,
       officialness: "community",
+      availability: "needs_companion",
+      browserDirect: "unsupported",
+      docsUrl: "https://modelcontextprotocol.io/docs/concepts/transports",
+      endpointEvidenceUrl: "https://modelcontextprotocol.io/docs/concepts/transports",
+      checkedAt: "2026-04-27",
+      riskNotes: ["Custom local commands require the companion and should be reviewed before enabling."],
       defaultWhenCompanionPresent: true,
       simpleFields: ["Local companion", "Launch command"],
       advancedFields: ["Arguments", "Working directory", "Environment variables", "Tool policy"],
@@ -161,6 +168,13 @@ const CUSTOM_CONNECTOR_CARD: ConnectorCatalogItem = {
       authMethod: "bearer_token",
       requiresCompanion: true,
       officialness: "community",
+      availability: "advanced",
+      browserDirect: "unknown",
+      docsUrl: "https://modelcontextprotocol.io/docs/concepts/transports",
+      endpointEvidenceUrl: "https://modelcontextprotocol.io/docs/concepts/transports",
+      authEvidenceUrl: "https://modelcontextprotocol.io/docs/concepts/transports",
+      checkedAt: "2026-04-27",
+      riskNotes: ["Custom hosted MCP endpoints are advanced and should be reviewed before enabling."],
       defaultWhenCompanionAbsent: true,
       simpleFields: ["Connector URL", "Access token"],
       advancedFields: ["HTTP headers", "Environment-backed headers", "Tool policy"],
@@ -221,12 +235,50 @@ function parsePassthroughLines(text: string): string[] {
     .filter(Boolean);
 }
 
-function mcpTransportNeedsCompanion(transport: ConnectorSetupRequest["transport"] | undefined): boolean {
-  return transport === "local_stdio" || transport === "remote_http";
-}
-
 function companionIsOnline(companion: CompanionState | undefined): boolean {
   return companion?.status === "connected";
+}
+
+function setupProfileNeedsCompanion(profile: ConnectorSetupProfile | undefined, transport: ConnectorSetupRequest["transport"] | undefined): boolean {
+  if (profile?.requiresCompanion === true) return true;
+  if (transport === "local_stdio" || profile?.transport === "local_stdio") return true;
+  return false;
+}
+
+function setupProfileIsBrowserDirect(profile: ConnectorSetupProfile | undefined): boolean {
+  return profile?.transport === "remote_http" && profile.browserDirect === "supported" && profile.requiresCompanion !== true && profile.setupDisabled !== true;
+}
+
+function setupProfileDisabled(profile: ConnectorSetupProfile | undefined): boolean {
+  return profile?.setupDisabled === true || profile?.availability === "planned" || profile?.officialness === "planned";
+}
+
+function profileBadgeLabel(profile: ConnectorSetupProfile | undefined): string {
+  switch (profile?.officialness) {
+    case "official":
+      return "Official";
+    case "official_preview":
+      return "Official preview";
+    case "community":
+      return "Community";
+    case "provider_reference":
+      return "Reference";
+    case "deprecated":
+      return "Deprecated";
+    case "experimental":
+      return "Advanced";
+    case "planned":
+      return "Planned";
+    default:
+      return "MCP";
+  }
+}
+
+function profileNeedsCommunityWarning(profile: ConnectorSetupProfile | undefined): boolean {
+  return profile?.officialness === "community" ||
+    profile?.officialness === "provider_reference" ||
+    profile?.officialness === "deprecated" ||
+    profile?.officialness === "experimental";
 }
 
 function selectSetupProfile(
@@ -382,14 +434,19 @@ function buildDraft(
   const envSuggestions = prepare?.envSuggestions ?? diagnostics?.envSuggestions ?? [];
   const existingDraft = prepare?.draft;
   const selectedProfile = selectSetupProfile(connector, existingDraft?.setupProfileId ?? status?.setupProfileId, companion);
-  const detectedKey = existingDraft?.useDetectedEnvKey ?? envSuggestions.find((item) => item.present)?.key ?? "";
+  const canUseCompanionCredentialHints = companionIsOnline(companion);
+  const detectedKey = canUseCompanionCredentialHints
+    ? (existingDraft?.useDetectedEnvKey ?? envSuggestions.find((item) => item.present)?.key ?? "")
+    : "";
   const authMethod = existingDraft?.authMethod ?? selectedProfile?.authMethod ?? connector.authMethod;
   const credentialMode: CredentialMode =
     authMethod === "none"
       ? "none"
-      : detectedKey
+      : authMethod === "oauth"
+        ? "oauth"
+        : detectedKey
         ? "detected"
-        : existingDraft?.secretEnvKey
+        : existingDraft?.secretEnvKey && canUseCompanionCredentialHints
           ? "env"
           : "manual";
 
@@ -405,7 +462,9 @@ function buildDraft(
     transport: existingDraft?.transport ?? selectedProfile?.transport ?? connector.transport,
     credentialMode,
     detectedEnvKey: detectedKey,
-    secretEnvKey: existingDraft?.secretEnvKey ?? selectedProfile?.credentialEnvKey ?? connector.envHints[0]?.key ?? "",
+    secretEnvKey: canUseCompanionCredentialHints
+      ? (existingDraft?.secretEnvKey ?? selectedProfile?.credentialEnvKey ?? connector.envHints[0]?.key ?? "")
+      : "",
     secret: "",
     preserveStoredSecret: status?.credentialSource === "manual",
     url: existingDraft?.url ?? selectedProfile?.endpoint ?? connector.template?.url ?? "",
@@ -430,7 +489,12 @@ function buildDraft(
   };
 }
 
-function connectStepValidationMessage(d: ConnectorDraftState, scopeContext: ConnectorScopeContext | undefined): string | undefined {
+function connectStepValidationMessage(
+  d: ConnectorDraftState,
+  scopeContext: ConnectorScopeContext | undefined,
+  profile: ConnectorSetupProfile | undefined,
+): string | undefined {
+  if (setupProfileDisabled(profile)) return profile?.riskNotes?.[0] ?? "This connector profile is not available yet.";
   if (!d.name.trim()) return "Enter a name for this connector.";
   if ((d.scopeTarget === "workspace" || d.scopeTarget === "document") && scopeContext && !scopeContext.documentSaved) {
     return "Save the Office file to use folder or document scope.";
@@ -455,10 +519,10 @@ function buildRequest(draft: ConnectorDraftState, scopeContext: ConnectorScopeCo
       ? "detected_env"
       : draft.credentialMode === "env"
         ? "env"
-        : draft.credentialMode === "manual"
-          ? draft.authMethod === "oauth"
-            ? "oauth"
-            : "manual"
+        : draft.credentialMode === "oauth"
+          ? "oauth"
+          : draft.credentialMode === "manual"
+            ? "manual"
           : "none";
 
   return {
@@ -610,6 +674,14 @@ export function IntegrationsSection({
   const [toolFilter, setToolFilter] = useState<ToolFilter>("all");
   const [pendingToolEnable, setPendingToolEnable] = useState<{ status: ConnectorStatus; tool: ConnectorToolInventoryItem }>();
   const [suppressToolWarning, setSuppressToolWarning] = useState(false);
+  const [pendingCommunityConnector, setPendingCommunityConnector] = useState<{ connector: ConnectorCatalogItem; profile: ConnectorSetupProfile }>();
+  const [suppressCommunityWarning, setSuppressCommunityWarning] = useState(() => {
+    try {
+      return localStorage.getItem("pi-office-community-connector-warning-suppressed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [error, setError] = useState<string>();
   const [liveMessage, setLiveMessage] = useState("");
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -668,6 +740,12 @@ export function IntegrationsSection({
     return connectors.find((connector) => connector.id === selectedKey);
   }, [connectors, prepare?.connector, selectedKey, selectedStatus?.source]);
 
+  const selectedDraftProfile = useMemo(
+    () => selectedConnector ? selectSetupProfile(selectedConnector, draft?.setupProfileId ?? selectedStatus?.setupProfileId, companion) : undefined,
+    [companion, draft?.setupProfileId, selectedConnector, selectedStatus?.setupProfileId],
+  );
+  const selectedDraftNeedsCompanion = setupProfileNeedsCompanion(selectedDraftProfile, draft?.transport);
+
   useEffect(() => {
     if (!selectedKey) return;
     let active = true;
@@ -716,14 +794,32 @@ export function IntegrationsSection({
     };
   }, [onLoadLogs, selectedStatus?.id]);
 
+  function openConnectorWizard(connector: ConnectorCatalogItem): void {
+    setSelectedKey(connector.id);
+    setWizardStep(1);
+  }
+
+  function acceptCommunityConnector(): void {
+    if (!pendingCommunityConnector) return;
+    if (suppressCommunityWarning) {
+      try {
+        localStorage.setItem("pi-office-community-connector-warning-suppressed", "true");
+      } catch {
+        // Ignore storage errors in Office webview mode.
+      }
+    }
+    openConnectorWizard(pendingCommunityConnector.connector);
+    setPendingCommunityConnector(undefined);
+  }
+
   async function handleTest() {
     if (!draft) return;
-    const message = connectStepValidationMessage(draft, scopeContext);
+    const message = connectStepValidationMessage(draft, scopeContext, selectedDraftProfile);
     if (message) {
       setError(message);
       return;
     }
-    if (mcpTransportNeedsCompanion(draft.transport) && !companionIsOnline(companion)) {
+    if (selectedDraftNeedsCompanion && !companionIsOnline(companion)) {
       setError("Connect the optional companion on the Companion tab, then try again.");
       return;
     }
@@ -745,7 +841,7 @@ export function IntegrationsSection({
 
   async function handleSaveConnector() {
     if (!draft) return;
-    const message = connectStepValidationMessage(draft, scopeContext);
+    const message = connectStepValidationMessage(draft, scopeContext, selectedDraftProfile);
     if (message) {
       setError(message);
       return;
@@ -780,11 +876,11 @@ export function IntegrationsSection({
         credentialMode: nextAuthMethod === "none"
           ? "none"
           : nextAuthMethod === "oauth"
-            ? "manual"
+            ? "oauth"
             : current.credentialMode === "none"
               ? "manual"
               : current.credentialMode,
-        secretEnvKey: profile.credentialEnvKey ?? current.secretEnvKey,
+        secretEnvKey: companionIsOnline(companion) ? (profile.credentialEnvKey ?? current.secretEnvKey) : "",
         url: profile.transport === "remote_http" ? (profile.endpoint ?? current.url) : current.url,
         command: profile.transport === "local_stdio" ? (profile.command ?? current.command) : current.command,
         argsText: profile.transport === "local_stdio" ? formatArgs(profile.args) : current.argsText,
@@ -824,7 +920,9 @@ export function IntegrationsSection({
   async function handleReverify(targetId?: string) {
     const target = targetId ? statuses.find((status) => status.id === targetId) : selectedStatus;
     if (!target) return;
-    if (mcpTransportNeedsCompanion(target.transport) && !companionIsOnline(companion)) {
+    const catalog = connectors.find((connector) => connector.id === target.connectorId);
+    const profile = catalog ? selectSetupProfile(catalog, target.setupProfileId, companion) : undefined;
+    if (setupProfileNeedsCompanion(profile, target.transport) && !companionIsOnline(companion)) {
       setError("Connect the optional companion on the Companion tab, then try again.");
       return;
     }
@@ -843,10 +941,26 @@ export function IntegrationsSection({
   }
 
   async function handleStartOAuth(targetId?: string) {
-    const connectorId = targetId ?? selectedStatus?.id;
+    let connectorId = targetId ?? selectedStatus?.id;
     if (!connectorId) {
-      setError("Save this connector first, then start browser sign-in.");
-      return;
+      if (!draft) {
+        setError("Choose a connector before starting sign-in.");
+        return;
+      }
+      const message = connectStepValidationMessage(draft, scopeContext, selectedDraftProfile);
+      if (message) {
+        setError(message);
+        return;
+      }
+      try {
+        const saved = await onConnectConnector(buildRequest(draft, scopeContext));
+        connectorId = saved.status.id;
+        setSelectedKey(saved.status.id);
+        setPrepareNonce((n) => n + 1);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+        return;
+      }
     }
     setWorking("oauth");
     setError(undefined);
@@ -972,7 +1086,7 @@ export function IntegrationsSection({
       return;
     }
     if (wizardStep === 2) {
-      const message = connectStepValidationMessage(draft, scopeContext);
+      const message = connectStepValidationMessage(draft, scopeContext, selectedDraftProfile);
       if (message) {
         setError(message);
         return;
@@ -1007,9 +1121,10 @@ export function IntegrationsSection({
   const checkConnectionDisabled =
     !draft ||
     working === "testing" ||
-    (mcpTransportNeedsCompanion(draft.transport) && !companionIsOnline(companion));
+    (selectedDraftNeedsCompanion && !companionIsOnline(companion)) ||
+    setupProfileDisabled(selectedDraftProfile);
 
-  const saveConnectorDisabled = !draft || working === "saving" || working === "testing";
+  const saveConnectorDisabled = !draft || working === "saving" || working === "testing" || setupProfileDisabled(selectedDraftProfile);
 
   return (
     <div className="settings-section integrations-shell">
@@ -1069,17 +1184,26 @@ export function IntegrationsSection({
                 const status = statuses.find((entry) => entry.connectorId === connector.id);
                 const localOnlyDisabled = connectorIsLocalOnly(connector) && !companionIsOnline(companion);
                 const profile = selectSetupProfile(connector, status?.setupProfileId, companion);
+                const profileDisabled = setupProfileDisabled(profile);
+                const disabledReason = profileDisabled
+                  ? (profile?.riskNotes?.[0] ?? "Setup is planned but not available yet.")
+                  : localOnlyDisabled
+                    ? "Disabled until the local companion is connected because this connector requires a local command/stdio MCP server."
+                    : undefined;
                 return (
                   <button
                     key={connector.id}
                     type="button"
-                    className={`integration-library-row ${selectedKey === connector.id ? "integration-library-row-active" : ""} ${localOnlyDisabled ? "integration-library-row-disabled" : ""}`}
-                    title={localOnlyDisabled ? "Disabled until the local companion is connected because this connector requires a local command/stdio MCP server." : undefined}
-                    aria-disabled={localOnlyDisabled}
+                    className={`integration-library-row ${selectedKey === connector.id ? "integration-library-row-active" : ""} ${localOnlyDisabled || profileDisabled ? "integration-library-row-disabled" : ""}`}
+                    title={disabledReason}
+                    aria-disabled={localOnlyDisabled || profileDisabled}
                     onClick={() => {
-                      if (localOnlyDisabled) return;
-                      setSelectedKey(connector.id);
-                      setWizardStep(1);
+                      if (localOnlyDisabled || profileDisabled) return;
+                      if (profileNeedsCommunityWarning(profile) && !suppressCommunityWarning && profile) {
+                        setPendingCommunityConnector({ connector, profile });
+                        return;
+                      }
+                      openConnectorWizard(connector);
                     }}
                   >
                     <ConnectorBrandIcon iconKey={connector.iconKey} label={connector.name} />
@@ -1096,8 +1220,11 @@ export function IntegrationsSection({
                         <div className="integration-badges">
                           <span className="integration-pill">{connectionTypeChipLabel(profile?.transport ?? connector.transport)}</span>
                           <span className="integration-pill">{authLabel(profile?.authMethod ?? connector.authMethod)}</span>
+                          <span className={`integration-pill integration-profile-${profile?.officialness ?? "unknown"}`}>{profileBadgeLabel(profile)}</span>
+                          {setupProfileIsBrowserDirect(profile) && <span className="integration-pill">Browser-direct</span>}
                           <span className="integration-pill">{difficultyLabel(connector.setupDifficulty)}</span>
                           {localOnlyDisabled && <span className="integration-pill integration-pill-warning">Companion required</span>}
+                          {profileDisabled && <span className="integration-pill integration-pill-warning">Planned</span>}
                         </div>
                         {status && (
                           <div className="integration-status-row">
@@ -1383,13 +1510,17 @@ export function IntegrationsSection({
                   {wizardStep === 2 && (
                     <div className="connector-wizard-section">
                       <h4>Connect</h4>
-                      {mcpTransportNeedsCompanion(draft.transport) ? (
+                      {selectedDraftNeedsCompanion ? (
                         <div className={`settings-note integration-note ${companionIsOnline(companion) ? "integration-note-info" : "integration-note-warning"}`}>
                           <strong>Optional companion</strong>{" "}
                           {companionIsOnline(companion)
                             ? "Connected. You can verify MCP connectors and expose read-safe tools to the model."
                             : "Not connected. Save settings anytime; use the Companion tab to start discovery, then run Check connection."}
-                          {draft.transport === "local_stdio" ? " Local stdio MCP always runs on this PC through the companion process." : " Hosted MCP URLs are called from the companion so credentials stay off the Office webview where possible."}
+                          {draft.transport === "local_stdio" ? " Local stdio MCP always runs on this PC through the companion process." : " This profile needs companion-side verification before it can run."}
+                        </div>
+                      ) : setupProfileIsBrowserDirect(selectedDraftProfile) ? (
+                        <div className="settings-note integration-note integration-note-info">
+                          <strong>Browser sign-in</strong> This hosted MCP can be verified and used directly from the taskpane after sign-in.
                         </div>
                       ) : null}
                       {(selectedConnector.setupProfiles?.length ?? 0) > 1 && (
@@ -1403,10 +1534,13 @@ export function IntegrationsSection({
                               <button
                                 key={profile.id}
                                 type="button"
-                                className={`integration-profile-option ${draft.setupProfileId === profile.id ? "integration-profile-option-active" : ""}`}
+                                className={`integration-profile-option ${draft.setupProfileId === profile.id ? "integration-profile-option-active" : ""} ${setupProfileDisabled(profile) ? "integration-profile-option-disabled" : ""}`}
+                                disabled={setupProfileDisabled(profile)}
+                                title={setupProfileDisabled(profile) ? profile.riskNotes?.[0] : undefined}
                                 onClick={() => applySetupProfile(profile.id)}
                               >
                                 <strong>{profile.label}</strong>
+                                <span className="integration-profile-badge-line">{profileBadgeLabel(profile)}{setupProfileIsBrowserDirect(profile) ? " - Browser-direct" : ""}</span>
                                 <span>{profile.description}</span>
                               </button>
                             ))}
@@ -1468,7 +1602,11 @@ export function IntegrationsSection({
                         <div className="field">
                           <span>Connection</span>
                           <p className="settings-note">
-                            {connectionTypeUserLabel(draft.transport)} — verified and executed through the optional Pi-Office companion on this device.
+                            {connectionTypeUserLabel(draft.transport)} — {setupProfileIsBrowserDirect(selectedDraftProfile)
+                              ? "verified and executed directly from the taskpane after sign-in."
+                              : selectedDraftNeedsCompanion
+                                ? "verified and executed through the optional Pi-Office companion on this device."
+                                : "saved in the taskpane profile."}
                           </p>
                         </div>
                       )}
@@ -1499,27 +1637,33 @@ export function IntegrationsSection({
                           </div>
                         </div>
                       )}
-                      {draft.authMethod !== "none" && (
+                      {draft.authMethod !== "none" && draft.authMethod !== "oauth" && (
                         <div className="field">
                           <span>Credentials</span>
                           <p className="settings-note connector-wizard-field-hint">
-                            Prefer environment variables on the companion machine. Values you paste here are stored in this add-in&apos;s local profile (see Privacy), not the OS keychain.
+                            {companionIsOnline(companion)
+                              ? "You can use a companion environment variable or paste a credential. Pasted values are stored in this add-in's local profile, not the OS keychain."
+                              : "Paste the API key or token. Environment variable detection is shown only when the companion is connected."}
                           </p>
                           <div className="integration-choice-row connector-wizard-credential-row">
-                            <button
-                              type="button"
-                              className={`button ${draft.credentialMode === "detected" ? "button-solid" : ""}`}
-                              onClick={() => setDraft((current) => (current ? { ...current, credentialMode: "detected" } : current))}
-                            >
-                              Use detected key
-                            </button>
-                            <button
-                              type="button"
-                              className={`button ${draft.credentialMode === "env" ? "button-solid" : ""}`}
-                              onClick={() => setDraft((current) => (current ? { ...current, credentialMode: "env" } : current))}
-                            >
-                              Use env var
-                            </button>
+                            {companionIsOnline(companion) && (
+                              <>
+                                <button
+                                  type="button"
+                                  className={`button ${draft.credentialMode === "detected" ? "button-solid" : ""}`}
+                                  onClick={() => setDraft((current) => (current ? { ...current, credentialMode: "detected" } : current))}
+                                >
+                                  Use detected key
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`button ${draft.credentialMode === "env" ? "button-solid" : ""}`}
+                                  onClick={() => setDraft((current) => (current ? { ...current, credentialMode: "env" } : current))}
+                                >
+                                  Use env var
+                                </button>
+                              </>
+                            )}
                             <button
                               type="button"
                               className={`button ${draft.credentialMode === "manual" ? "button-solid" : ""}`}
@@ -1557,13 +1701,10 @@ export function IntegrationsSection({
                       {draft.authMethod === "oauth" && (
                         <div className="connector-wizard-oauth-block">
                           <div className="settings-actions connector-wizard-oauth-actions">
-                            <button type="button" className="button" onClick={() => void handleStartOAuth()} disabled={!selectedStatus || working === "oauth"}>
-                              {working === "oauth" ? "Opening..." : "Open browser sign-in"}
+                            <button type="button" className="button button-solid" onClick={() => void handleStartOAuth()} disabled={working === "oauth" || setupProfileDisabled(selectedDraftProfile)}>
+                              {working === "oauth" ? "Opening..." : `Sign in with ${selectedConnector.vendor}`}
                             </button>
                           </div>
-                          {!selectedStatus && (
-                            <p className="settings-note">Save this connector first, then start OAuth sign-in.</p>
-                          )}
                           {selectedPendingOAuth && (
                             <p className="settings-note">
                               Waiting for a verified OAuth callback. Manual completion is disabled; sign-in expires at{" "}
@@ -1572,7 +1713,16 @@ export function IntegrationsSection({
                           )}
                         </div>
                       )}
-                      {draft.transport === "remote_http" && (
+                      {selectedConnector.id !== "custom" && draft.transport === "remote_http" && (
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => setDraft((current) => (current ? { ...current, advanced: !current.advanced } : current))}
+                        >
+                          {draft.advanced ? "Hide advanced" : "Show advanced"}
+                        </button>
+                      )}
+                      {draft.transport === "remote_http" && (selectedConnector.id === "custom" || draft.advanced) && (
                         <>
                           <div className="field">
                             <span>MCP service URL</span>
@@ -1585,7 +1735,7 @@ export function IntegrationsSection({
                           </div>
                           <div className="field">
                             <span>HTTP headers</span>
-                            <p className="settings-note connector-wizard-field-hint">Static headers sent on every MCP request (companion).</p>
+                            <p className="settings-note connector-wizard-field-hint">Static headers sent on every MCP request.</p>
                             {draft.remoteHttpHeaders.map((row, index) => (
                               <div key={`hdr-${index}`} className="connector-wizard-kv-row">
                                 <input
@@ -1649,6 +1799,7 @@ export function IntegrationsSection({
                               + Add header
                             </button>
                           </div>
+                          {companionIsOnline(companion) && (
                           <div className="field">
                             <span>Headers from environment variables</span>
                             <p className="settings-note connector-wizard-field-hint">Header values are read from the companion process environment.</p>
@@ -1717,6 +1868,7 @@ export function IntegrationsSection({
                               + Add header from env
                             </button>
                           </div>
+                          )}
                         </>
                       )}
                       {draft.transport === "local_stdio" && (
@@ -1821,11 +1973,15 @@ export function IntegrationsSection({
                     <div className="connector-wizard-section">
                       <h4>Verify</h4>
                       <p className="settings-note">
-                        Save persists configuration on this device. Check connection runs a read-safe verification through the companion and activates the connector for chat when it succeeds.
+                        Save persists configuration on this device. Check connection discovers tools, disables unsafe ones, and activates the connector for chat when verification succeeds.
                       </p>
-                      {draft && mcpTransportNeedsCompanion(draft.transport) && !companionIsOnline(companion) ? (
+                      {draft && selectedDraftNeedsCompanion && !companionIsOnline(companion) ? (
                         <div className="settings-note integration-note integration-note-warning">
                           Companion is offline. Start discovery on the Companion tab, then use Check connection.
+                        </div>
+                      ) : setupProfileIsBrowserDirect(selectedDraftProfile) ? (
+                        <div className="settings-note integration-note integration-note-info">
+                          Verification will use the hosted MCP directly from the taskpane.
                         </div>
                       ) : null}
                       <p className="settings-note">Only verified read-safe tools and resource helpers become available to the model.</p>
@@ -2011,6 +2167,42 @@ export function IntegrationsSection({
                 onClick={() => void handleToolPolicyToggle(pendingToolEnable.status, pendingToolEnable.tool, true, true)}
               >
                 Enable tool
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingCommunityConnector && (
+        <div className="modal-backdrop connector-wizard-backdrop" role="presentation">
+          <div className="connector-tool-warning" role="dialog" aria-modal="true" aria-labelledby="connector-community-warning-title">
+            <div className="connector-wizard-header">
+              <div>
+                <strong id="connector-community-warning-title">Use community connector?</strong>
+                <p className="settings-note">
+                  {pendingCommunityConnector.connector.name} is marked {profileBadgeLabel(pendingCommunityConnector.profile).toLowerCase()}.
+                  Pi-Office will keep it read-only by default, but you should trust the package or endpoint before continuing.
+                </p>
+              </div>
+              <button type="button" className="icon-button connector-wizard-close" aria-label="Close warning" onClick={() => setPendingCommunityConnector(undefined)}>
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="connector-wizard-body">
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={suppressCommunityWarning}
+                  onChange={(event) => setSuppressCommunityWarning(event.target.checked)}
+                />
+                <span>Do not show this again</span>
+              </label>
+            </div>
+            <div className="connector-wizard-footer">
+              <button type="button" className="button" onClick={() => setPendingCommunityConnector(undefined)}>Cancel</button>
+              <span className="connector-wizard-footer-grow" />
+              <button type="button" className="button button-solid" onClick={acceptCommunityConnector}>
+                Continue
               </button>
             </div>
           </div>

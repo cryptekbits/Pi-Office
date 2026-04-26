@@ -48,7 +48,8 @@ Findings:
 | Taskpane chat and streaming UX | Claude/ChatGPT/Copilot user expectations | Original React taskpane and Pi agent runtime | `addin/apps/taskpane/src/app`, `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` | Original copy and component structure; no competitor text found. |
 | Next-prompt suggestions | ChatGPT/Codex-style follow-up affordances | Original prompt-suggestion parser and Pi-Office context rules | `addin/packages/pi-office-pack/src/prompt-suggestions.ts`, `addin/apps/taskpane/src/app/PromptSuggestionStrip.tsx` | Original parser and UI copy; source tests cover behavior. |
 | Permission and autonomy model | Codex/OpenCode-style approval concepts | Original categories in Pi-Office protocol plus user preferences | `TOOL_CATEGORY_MAP`, `AUTONOMY_LEVEL_AUTO_APPROVE`, tool permission popup | Original implementation; no copied permission prompt text. |
-| Connector marketplace/setup UX | Connector marketplaces and MCP ecosystem expectations | Original connector catalog, public MCP docs, per-connector setup research, read-only policy | `addin/apps/taskpane/src/lib/runtime/connector-catalog.ts`, `IntegrationsSection.tsx`, `companion/src/connector-bridge.ts` | Original profile-based setup flow and tool-safety UX; connector brand assets accepted for the current release path by stakeholder decision. |
+| Connector marketplace/setup UX | Connector marketplaces and MCP ecosystem expectations | Original connector catalog, public MCP docs, per-connector setup research, read-only policy | `addin/packages/pi-office-pack/src/connector-catalog.yaml`, `addin/apps/taskpane/src/lib/runtime/connector-catalog-generated.ts`, `IntegrationsSection.tsx`, `companion/src/connector-bridge.ts` | Original profile-based setup flow and tool-safety UX; connector brand assets accepted for the current release path by stakeholder decision. |
+| Browser-direct hosted MCP setup | MCP OAuth/DCR and Streamable HTTP ecosystem | First-party MCP docs and original Pi-Office browser MCP client | `connector-catalog.yaml`, `browser-mcp-client.ts`, `browser-connectors.ts`, `IntegrationsSection.tsx` | `FEATURE-008` records first-party provenance per setup profile. Granola is enabled as browser-direct OAuth-only; Perplexity is official local STDIO/API-key; Obsidian and PostgreSQL Reader are community/reference local-only; Google Drive exact endpoint is planned/unverified until first-party evidence is attached. |
 | Visual/image generation workflows | ChatGPT image workflows and Office visual-assistant expectations | OpenAI Images API where configured, Office.js insertion paths | `generate_image`, `ImageBlock`, image model catalog | Original implementation; provider support honesty tracked separately in `BUG-006`. |
 | Rewind/checkpoint workflow | AI editor undo/review expectations | Original browser checkpoint store and Office snapshot contracts | `BrowserCheckpointStore`, taskpane rewind UI | Original implementation; Excel formula fidelity tracked in `BUG-008`. |
 | Companion sandbox direction | Codex/OpenCode safety patterns | Original companion architecture and future sandbox policy | `AGENTS.md`, `SECURITY-006` | No raw shell implementation is present; detailed sandbox design remains a separate P0 task. |
@@ -67,6 +68,13 @@ Findings:
 - Any copied-looking UI text, prompt language, image, icon, or interaction should be rewritten in Pi-Office language before review.
 - Do not commit local capture files, downloaded competitor bundles, private endpoint traces, or generated screenshots unless a maintainer explicitly marks them as non-release research material.
 - Third-party brand marks need a source/license note or a fallback neutral badge before public release packaging.
+
+## Connector Curation Notes
+
+- Connector setup facts now live in `addin/packages/pi-office-pack/src/connector-catalog.yaml`; the generated TypeScript catalog is checked by `npm --prefix addin run check:connector-catalog`.
+- Every setup profile carries officialness, availability, docs/evidence URLs, checked date, browser-direct support, companion requirement, and risk notes.
+- Profiles marked `planned` or `setupDisabled` stay visible as roadmap entries but cannot be configured from the wizard.
+- Community/reference profiles are intentionally available only behind an extra warning and remain subject to read-only tool classification.
 
 ## Release Gate
 

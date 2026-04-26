@@ -117,6 +117,7 @@ import {
 import { executeOfficeTool } from "../office-tools";
 import { isBrowserDebugOfficeState } from "../office/shared";
 import { BrowserConnectorRuntime } from "./browser-connectors";
+import { getConnectorCatalogItem } from "./connector-catalog";
 import { CompanionClient, type CompanionSessionBinding } from "./companion-client";
 
 type JsonRecord = Record<string, unknown>;
@@ -1356,6 +1357,8 @@ class BrowserOfficeSession {
     private readonly getPreferences: () => UserPreferences,
     private readonly executeCompanionFileTool: (sessionId: string, toolName: "read" | "grep" | "find" | "ls", params: Record<string, unknown>) => Promise<unknown>,
     private readonly executeCompanionMcpTool: (sessionId: string, toolName: string, params: Record<string, unknown>) => Promise<unknown>,
+    private readonly getBrowserMcpToolNames: (scopeContext: ConnectorScopeContext) => string[],
+    private readonly executeBrowserMcpTool: (toolName: string, params: Record<string, unknown>, scopeContext: ConnectorScopeContext) => Promise<unknown>,
     private readonly executeCompanionShellCommand: (sessionId: string, request: CompanionShellExecuteRequest) => Promise<unknown>,
     private readonly executeCompanionNativeCapture: (sessionId: string, request: CompanionNativeCaptureRequest) => Promise<CompanionNativeCaptureResponse>,
     request: OfficeSessionOpenRequest,
@@ -1838,8 +1841,26 @@ class BrowserOfficeSession {
     return [...(this.companionState.connectorToolNames ?? [])];
   }
 
-  private hasCompanionConnectorTools(): boolean {
-    return this.isCapabilityAvailable("mcp_connectors") && this.getCompanionConnectorToolNames().length > 0;
+  private connectorScopeContext(): ConnectorScopeContext {
+    return {
+      host: this.officeState.host,
+      documentId: this.officeState.document.id,
+      documentTitle: this.officeState.document.title,
+      documentSaved: this.officeState.document.saved,
+      documentUrl: this.officeState.document.documentUrl ?? this.officeState.document.documentPath,
+      workspaceId: this.officeState.document.workspaceDir,
+    };
+  }
+
+  private getBrowserConnectorToolNames(): string[] {
+    return this.getBrowserMcpToolNames(this.connectorScopeContext());
+  }
+
+  private hasMcpConnectorTools(): boolean {
+    return (
+      (this.isCapabilityAvailable("mcp_connectors") && this.getCompanionConnectorToolNames().length > 0) ||
+      this.getBrowserConnectorToolNames().length > 0
+    );
   }
 
   private canUseCompanionShellTools(): boolean {
@@ -3011,12 +3032,12 @@ class BrowserOfficeSession {
       }
     }
 
-    if (this.hasCompanionConnectorTools()) {
+    if (this.hasMcpConnectorTools()) {
       tools.push({
         name: "mcp",
         label: "MCP Connector",
         description:
-          "Execute a verified read-only MCP tool through the optional companion. Use one of the exact tool names listed in the companion inventory.",
+          "Execute a verified read-only MCP tool through a browser-direct or companion connector. Use one of the exact tool names listed in the connector inventory.",
         parameters: Type.Object({
           toolName: Type.String({
             description: "Exact verified companion connector tool name to execute.",
@@ -3032,6 +3053,18 @@ class BrowserOfficeSession {
           const toolName = String(typed.toolName ?? "").trim();
           if (!toolName) {
             throw new Error("toolName is required.");
+          }
+          if (this.getBrowserConnectorToolNames().includes(toolName)) {
+            return normalizeExternalToolResult(
+              await this.executeBrowserMcpTool(
+                toolName,
+                normalizeToolParams(typed.arguments),
+                this.connectorScopeContext(),
+              ),
+            );
+          }
+          if (!this.getCompanionConnectorToolNames().includes(toolName)) {
+            throw new Error(`Connector tool "${toolName}" is not enabled.`);
           }
 
           return normalizeExternalToolResult(
@@ -3255,7 +3288,11 @@ class InProcessKernel {
     diagnostics: ConnectorDiagnostic[],
     transport: ConnectorSetupRequest["transport"],
     companion: CompanionState,
+    requiresCompanion = transport === "local_stdio",
   ): ConnectorDiagnostic[] {
+    if (!requiresCompanion) {
+      return diagnostics;
+    }
     if (companion.status === "connected") {
       const isLocal = transport === "local_stdio";
       return [
@@ -3288,12 +3325,17 @@ class InProcessKernel {
     status: ConnectorStatusResponse["connectors"][number],
     overlay?: ConnectorStatus | undefined,
   ): ConnectorStatus {
-    const usesCompanion = status.transport === "local_stdio" || status.transport === "remote_http";
+    const catalog = getConnectorCatalogItem(status.connectorId);
+    const profile = catalog?.setupProfiles?.find((entry) => entry.id === status.setupProfileId)
+      ?? catalog?.setupProfiles?.find((entry) => entry.defaultWhenCompanionAbsent)
+      ?? catalog?.setupProfiles?.[0];
+    const browserDirect = profile?.transport === "remote_http" && profile.browserDirect === "supported" && profile.requiresCompanion !== true;
+    const usesCompanion = !browserDirect && (profile?.requiresCompanion === true || status.transport === "local_stdio" || status.transport === "remote_http");
     return {
       ...status,
       ...(overlay ?? {}),
-      executionEnvironment: usesCompanion ? "companion" : "browser",
-      executionAvailable: overlay?.executionAvailable ?? false,
+      executionEnvironment: browserDirect ? "browser" : (usesCompanion ? "companion" : "browser"),
+      executionAvailable: overlay?.executionAvailable ?? (browserDirect && status.healthState === "ready" && Boolean(status.capabilities?.allowedTools.length)),
     };
   }
 
@@ -3460,14 +3502,14 @@ class InProcessKernel {
                 level: "info",
                 code: "optional_companion_connected",
                 title: "Optional companion connected",
-                message: `Read-only local file tools plus local stdio and remote HTTP MCP connectors are available through ${companion.endpoint}.`,
+                message: `Read-only local file tools plus companion-required MCP connectors are available through ${companion.endpoint}.`,
               }
             : {
                 level: companion.status === "error" ? "warning" : "info",
                 code: "optional_companion_unavailable",
                 title: "Optional companion not connected",
                 message:
-                  "Local stdio and remote HTTP MCP connectors need the optional companion to verify and execute.",
+                  "Local STDIO, local HTTP, and unverified hosted MCP profiles need the optional companion to verify and execute.",
               },
         ],
       } as T;
@@ -3499,10 +3541,13 @@ class InProcessKernel {
       }
       const companion = await this.getCompanionState();
       const response = this.connectorRuntime.prepareConnector(connectorId, request?.scopeContext);
+      const selectedProfile = response.connector.setupProfiles?.find((profile) => profile.id === response.draft?.setupProfileId)
+        ?? response.connector.setupProfiles?.[0];
+      const requiresCompanion = selectedProfile?.requiresCompanion === true || selectedProfile?.transport === "local_stdio";
       return {
         ...response,
-        diagnostics: this.addCompanionDiagnostics(response.diagnostics, response.connector.transport, companion),
-        executionEnvironment: response.connector.transport === "local_stdio" || response.connector.transport === "remote_http"
+        diagnostics: this.addCompanionDiagnostics(response.diagnostics, selectedProfile?.transport ?? response.connector.transport, companion, requiresCompanion),
+        executionEnvironment: requiresCompanion
           ? "companion"
           : "browser",
         executionAvailable: false,
@@ -3514,8 +3559,9 @@ class InProcessKernel {
       const response = await this.connectorRuntime.connectConnector(request);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
       let probe = undefined as Awaited<ReturnType<InProcessKernel["probeConnectorThroughCompanion"]>>;
+      const definition = this.connectorRuntime.buildCompanionConnectorDefinitionFromSetup({ ...request, existingId: response.status.id });
       try {
-        probe = await this.probeConnectorThroughCompanion({ ...request, existingId: response.status.id });
+        probe = definition ? await this.probeConnectorThroughCompanion({ ...request, existingId: response.status.id }) : undefined;
       } catch (error) {
         probeDiagnostics = [
           {
@@ -3534,17 +3580,19 @@ class InProcessKernel {
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
           companion,
+          Boolean(definition),
         ),
       } as T;
     }
     if (method === "POST" && path === "/v1/connectors/setup/test") {
       const request = body as ConnectorSetupRequest;
       const companion = await this.getCompanionState();
-      const response = this.connectorRuntime.testConnector(request);
+      const response = await this.connectorRuntime.testConnector(request);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
       let probe = undefined as Awaited<ReturnType<InProcessKernel["probeConnectorThroughCompanion"]>>;
+      const definition = this.connectorRuntime.buildCompanionConnectorDefinitionFromSetup(request);
       try {
-        probe = await this.probeConnectorThroughCompanion(request);
+        probe = definition ? await this.probeConnectorThroughCompanion(request) : undefined;
       } catch (error) {
         probeDiagnostics = [
           {
@@ -3563,6 +3611,7 @@ class InProcessKernel {
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
           companion,
+          Boolean(definition),
         ),
       } as T;
     }
@@ -3601,6 +3650,7 @@ class InProcessKernel {
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
           companion,
+          Boolean(definition),
         ),
       } as T;
     }
@@ -3661,6 +3711,8 @@ class InProcessKernel {
           () => this.userPreferences,
           (sessionId, toolName, params) => this.companionClient.executeFileTool(sessionId, toolName, params),
           (sessionId, toolName, params) => this.companionClient.executeMcpTool(sessionId, toolName, params),
+          (scopeContext) => this.connectorRuntime.getBrowserConnectorToolNames(scopeContext),
+          (toolName, params, scopeContext) => this.connectorRuntime.executeBrowserMcpTool(toolName, params, scopeContext),
           (sessionId, request) => this.companionClient.executeShellCommand(sessionId, request),
           (sessionId, request) => this.companionClient.captureNativeViewport(sessionId, request),
           request,

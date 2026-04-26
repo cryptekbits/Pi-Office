@@ -29,6 +29,8 @@
     "preflight:dev": "node ./scripts/preflight-dev-runtime.mjs",
     "preflight:sideload": "node ./scripts/preflight-sideload.mjs",
     "check:bundle": "node ./scripts/check-bundle-budget.mjs",
+    "generate:connector-catalog": "node ./scripts/generate-connector-catalog.mjs",
+    "check:connector-catalog": "node ./scripts/generate-connector-catalog.mjs --check",
     "generate:provider-models": "node ./scripts/generate-provider-model-preferences.mjs",
     "check:provider-models": "node ./scripts/generate-provider-model-preferences.mjs --check",
     "generate:icons": "node ./scripts/generate-brand-icons.mjs",
