@@ -1002,23 +1002,41 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Optional companion limitations are explicit and do not conflict with taskpane-first architecture.
   - Notes/Evidence: Transition plan lists "Release packaging/runtime assumptions unclear" under WS6.
 
-- [ ] IMPROVEMENT-003: Consolidate Office tool contracts and user-facing descriptions
+- [x] IMPROVEMENT-003: Consolidate Office tool contracts and user-facing descriptions
   - Category: Improvement
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: 2026-04-26 Office-host and competitor/inspiration review.
   - Details: Tool contracts and descriptions are duplicated across `addin/packages/pi-office-pack`, the in-process kernel, the Office bridge, and Settings UI. This creates drift: for example, Settings calls `office_capture_snapshot` a visual screenshot while the actual implementation is selection/context snapshots plus metadata, and PowerPoint `edit_slide_master` wording is broader than its current apply-layout behavior. A single source or generated registry would make capability honesty easier to preserve.
   - Dependencies: BUG-007 and BUG-009 for known contract mismatches.
   - Subtasks:
-    - [ ] Inventory all Office tool names, labels, descriptions, categories, parameters, and runtime support paths.
-    - [ ] Choose a canonical registry or generation path for tool metadata used by prompts, Settings, and runtime registration.
-    - [ ] Add drift tests that fail when Settings/prompt descriptions disagree with implemented support.
-    - [ ] Update misleading descriptions found during the 2026-04-26 review.
+    - [x] Inventory all Office tool names, labels, descriptions, categories, parameters, and runtime support paths.
+    - [x] Choose a canonical registry or generation path for tool metadata used by prompts, Settings, and runtime registration.
+    - [x] Add drift tests that fail when Settings/prompt descriptions disagree with implemented support.
+    - [x] Update misleading descriptions found during the 2026-04-26 review.
   - Acceptance Criteria:
-    - [ ] Each Office tool has one canonical capability description consumed by the UI and runtime where feasible.
-    - [ ] Tests catch obvious drift between advertised and executable tool behavior.
-    - [ ] User-facing copy clearly marks host-only, metadata-only, experimental, or escape-hatch tools.
-  - Notes/Evidence: Review pointed to `addin/packages/pi-office-pack/src/extension.ts`, `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `addin/apps/taskpane/src/lib/office-bridge.ts`, and `addin/apps/taskpane/src/app/components/SettingsPage.tsx`.
+    - [x] Each Office tool has one canonical capability description consumed by the UI and runtime where feasible.
+    - [x] Tests catch obvious drift between advertised and executable tool behavior.
+    - [x] User-facing copy clearly marks host-only, metadata-only, experimental, or escape-hatch tools.
+  - Notes/Evidence: Review pointed to `addin/packages/pi-office-pack/src/extension.ts`, `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `addin/apps/taskpane/src/lib/office-bridge.ts`, and `addin/apps/taskpane/src/app/components/SettingsPage.tsx`. Closed 2026-04-27 by moving in-process Office tool metadata/schemas into host-specific registries under `addin/apps/taskpane/src/lib/office/tools/`, making `inprocess-kernel.ts` consume the registry and host support rules, splitting the taskpane bridge into common/Word/Excel/PowerPoint executors under `addin/apps/taskpane/src/lib/office/bridge/`, and adding drift coverage in `shared-tool-contracts-parity.test.ts` so every protocol Office tool has exactly one registry definition, category, host-support rule, and bridge dispatch handler. The same pass restored runtime-only `ask_user` and `generate_image` tools outside the Office registry, kept browser preview Office tools hidden, and started feature-domain action extraction with Excel formatting/table-filter helpers plus PowerPoint icon catalog separation. Validation passed: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` with 158 tests, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
+- [ ] IMPROVEMENT-009: Continue splitting large Office action executors by feature domain
+  - Category: Improvement
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 Office tool modularization refactor follow-up.
+  - Details: The first modularization pass removed the largest tool-registry and bridge monoliths and extracted initial Excel/PowerPoint action domains, but `excel-actions.ts` and `powerpoint-actions.ts` still contain many feature families in single files. Continue moving chart, pivot, worksheet structure, table, media, slide structure, OOXML, and verification handlers into focused modules so upcoming Word/Excel/PowerPoint features can land without recreating a monolith.
+  - Dependencies: IMPROVEMENT-003.
+  - Subtasks:
+    - [ ] Split Excel chart and pivot helpers/actions into `excel-actions/` domain modules.
+    - [ ] Split Excel worksheet/range/table structure handlers from formatting/filter handlers.
+    - [ ] Split PowerPoint OOXML/package, chart/notes, media/image, table, and slide-structure handlers into `powerpoint-actions/` modules.
+    - [ ] Add or extend drift tests so action-domain handlers stay reachable from the host executor facade.
+  - Acceptance Criteria:
+    - [ ] `excel-actions.ts` and `powerpoint-actions.ts` become thin dispatch/facade files rather than primary implementation stores.
+    - [ ] Each extracted module owns a cohesive Office.js feature family with typed inputs/outputs or clear helper contracts.
+    - [ ] Existing Office tests, build, bundle, manifests, and diff whitespace checks remain green.
+  - Notes/Evidence: After `IMPROVEMENT-003`, the remaining action files are still large enough to slow feature work, even though Excel formatting/table-filter helpers and the PowerPoint icon catalog have been extracted.
 
 - [ ] IMPROVEMENT-004: Build a professional PowerPoint visual asset and icon pipeline
   - Category: Improvement
