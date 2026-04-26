@@ -4,12 +4,20 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createOfficeToolExecutor } from "../../../apps/taskpane/src/lib/office-bridge.js";
+import {
+  getOfficeToolDefinitionsForHost,
+  OFFICE_TOOL_DEFINITIONS,
+  officeToolSupportsHost,
+  type OfficeToolDefinition,
+} from "../../../apps/taskpane/src/lib/office/tools/index.js";
 import { createOfficeExtension } from "../../../packages/pi-office-pack/src/extension.js";
 import {
+  OFFICE_HOSTS,
   OFFICE_TOOL_NAMES,
   TOOL_CATEGORY_MAP,
   type AskUserRequest,
   type AskUserResponse,
+  type OfficeHost,
   type OfficeToolRequest,
 } from "../../../packages/pi-office-pack/src/protocol.js";
 
@@ -44,13 +52,41 @@ class MemoryStorage {
 
 const RUNTIME_ONLY_AGENT_TOOLS = ["ask_user", "generate_image"] as const;
 const FINAL_AGENT_TOOL_INVENTORY = [...OFFICE_TOOL_NAMES, ...RUNTIME_ONLY_AGENT_TOOLS] as const;
-const DEFAULT_TASKPANE_AGENT_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
-  (toolName) => toolName !== "office_capture_viewport",
-);
 const REQUIRED_VALIDATION_COMMANDS = ["typecheck", "build", "check:bundle", "validate:manifests", "test:office"] as const;
+const BRIDGE_DISPATCH_SOURCE_FILES = [
+  "apps/taskpane/src/lib/office/bridge/common-executor.ts",
+  "apps/taskpane/src/lib/office/bridge/word.ts",
+  "apps/taskpane/src/lib/office/bridge/excel.ts",
+  "apps/taskpane/src/lib/office/bridge/powerpoint.ts",
+] as const;
+const VALID_EXECUTOR_KINDS = new Set<OfficeToolDefinition["executor"]>([
+  "office-bridge",
+  "reviewable-word-edit",
+  "companion-native-capture",
+]);
 
 function sorted(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function readProjectFile(path: string): string {
+  return readFileSync(join(process.cwd(), path), "utf8");
+}
+
+function getDefaultTaskpaneAgentToolInventory(host: OfficeHost): readonly string[] {
+  return [
+    ...getOfficeToolDefinitionsForHost(host)
+      .filter((definition) => definition.executor !== "companion-native-capture")
+      .map((definition) => definition.name),
+    ...RUNTIME_ONLY_AGENT_TOOLS,
+  ];
+}
+
+function getBridgeDispatchedToolNames(): string[] {
+  return BRIDGE_DISPATCH_SOURCE_FILES.flatMap((path) => {
+    const source = readProjectFile(path);
+    return Array.from(source.matchAll(/request\.toolName === "([^"]+)"/g), (match) => match[1]!);
+  });
 }
 
 function installRuntimePolyfills(): void {
@@ -195,6 +231,58 @@ test("final inventory stays synchronized across protocol exports and tool-catego
   assert.equal(TOOL_CATEGORY_MAP.generate_image, "write-doc");
 });
 
+test("office tool registry has one definition, category, host rule, and executable owner per protocol tool", () => {
+  const protocolToolNames = sorted(OFFICE_TOOL_NAMES);
+  const registryToolNames = OFFICE_TOOL_DEFINITIONS.map((definition) => definition.name);
+  assert.deepEqual(sorted(registryToolNames), protocolToolNames);
+  assert.equal(registryToolNames.length, OFFICE_TOOL_DEFINITIONS.length, "Office tool registry has duplicate names.");
+
+  const validHosts = new Set<string>(OFFICE_HOSTS);
+  const bridgeDispatchNames = getBridgeDispatchedToolNames();
+  assert.equal(bridgeDispatchNames.length, sorted(bridgeDispatchNames).length, "Bridge dispatch has duplicate tool handlers.");
+  assert.deepEqual(sorted(bridgeDispatchNames), protocolToolNames);
+
+  const kernelSource = readProjectFile("apps/taskpane/src/lib/runtime/inprocess-kernel.ts");
+  assert.match(kernelSource, /getOfficeToolDefinitionsForHost\(this\.officeState\.host\)/);
+  assert.match(kernelSource, /definition\.executor === "reviewable-word-edit"/);
+  assert.match(kernelSource, /executeCompanionNativeCapture/);
+
+  for (const toolName of OFFICE_TOOL_NAMES) {
+    const matchingDefinitions = OFFICE_TOOL_DEFINITIONS.filter((definition) => definition.name === toolName);
+    assert.equal(matchingDefinitions.length, 1, `${toolName} should have exactly one registry definition.`);
+
+    const definition = matchingDefinitions[0]!;
+    assert.equal(definition.category, TOOL_CATEGORY_MAP[toolName], `${toolName} category drifted from TOOL_CATEGORY_MAP.`);
+    assert.ok(definition.label.trim(), `${toolName} is missing a registry label.`);
+    assert.ok(definition.description.trim(), `${toolName} is missing a registry description.`);
+    assert.ok(definition.parameters, `${toolName} is missing a JSON schema.`);
+    assert.ok(VALID_EXECUTOR_KINDS.has(definition.executor), `${toolName} has an unknown executor kind.`);
+
+    if (definition.hosts !== "all") {
+      assert.ok(definition.hosts.length > 0, `${toolName} must support at least one host.`);
+      for (const host of definition.hosts) {
+        assert.ok(validHosts.has(host), `${toolName} has unsupported host rule ${host}.`);
+      }
+    }
+
+    const supportedHosts = OFFICE_HOSTS.filter((host) => officeToolSupportsHost(definition, host));
+    assert.ok(supportedHosts.length > 0, `${toolName} is not supported by any host.`);
+    assert.equal(
+      bridgeDispatchNames.filter((dispatchedToolName) => dispatchedToolName === toolName).length,
+      1,
+      `${toolName} must have exactly one taskpane bridge dispatch handler.`,
+    );
+  }
+
+  for (const host of OFFICE_HOSTS) {
+    assert.deepEqual(
+      sorted(getOfficeToolDefinitionsForHost(host).map((definition) => definition.name)),
+      sorted(OFFICE_TOOL_DEFINITIONS.filter((definition) => officeToolSupportsHost(definition, host)).map((definition) => definition.name)),
+      `${host} host registry helper drifted from host support rules.`,
+    );
+  }
+});
+
 test("extension registration and runtime-published tools stay synchronized with the final inventory", async () => {
   const registeredByExtension = new Set<string>();
   const extensionFactory = createOfficeExtension({
@@ -249,15 +337,11 @@ test("extension registration and runtime-published tools stay synchronized with 
   socket.close();
 
   assert.deepEqual(sorted(registeredByExtension), sorted(FINAL_AGENT_TOOL_INVENTORY));
-  assert.deepEqual(sorted(runtimeTools), sorted(DEFAULT_TASKPANE_AGENT_TOOL_INVENTORY));
+  assert.deepEqual(sorted(runtimeTools), sorted(getDefaultTaskpaneAgentToolInventory("word")));
 });
 
 test("taskpane bridge dispatch cases stay in sync with supported Office tools", async () => {
-  const bridgeSource = readFileSync(join(process.cwd(), "apps/taskpane/src/lib/office-bridge.ts"), "utf8");
-  const dispatchedToolNames = Array.from(
-    bridgeSource.matchAll(/request\.toolName === "([^"]+)"/g),
-    (match) => match[1]!,
-  );
+  const dispatchedToolNames = getBridgeDispatchedToolNames();
   assert.deepEqual(sorted(dispatchedToolNames), sorted(OFFICE_TOOL_NAMES));
 
   const executeOfficeTool = createOfficeToolExecutor({

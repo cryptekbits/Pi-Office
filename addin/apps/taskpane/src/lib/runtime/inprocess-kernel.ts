@@ -28,7 +28,6 @@ import {
   AUTONOMY_LEVEL_AUTO_APPROVE,
   DEFAULT_USER_PREFERENCES,
   EDIT_REJECT_REASON_LABELS,
-  OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH,
   OFFICE_TOOL_NAMES,
   TOOL_CATEGORY_MAP,
   type AskUserQuestion,
@@ -116,6 +115,7 @@ import {
   getProviderSettingsPreference,
 } from "@pi-office/pi-office-pack/provider-model-preferences";
 import { executeOfficeTool } from "../office-tools";
+import { getOfficeToolDefinition, getOfficeToolDefinitionsForHost, type OfficeToolDefinition } from "../office/tools/index.js";
 import { isBrowserDebugOfficeState } from "../office/shared";
 import { BrowserConnectorRuntime } from "./browser-connectors";
 import { getConnectorCatalogItem } from "./connector-catalog";
@@ -1994,831 +1994,100 @@ class BrowserOfficeSession {
     }
   }
 
-  private buildTools(): AgentTool[] {
-    const availableToolNames = getAvailableToolNames(this.resolveCapabilities());
-    const isToolAvailable = (toolName: string) => availableToolNames.has(toolName);
+  private createOfficeAgentTool(definition: OfficeToolDefinition): AgentTool {
+    const base = {
+      name: definition.name,
+      label: definition.label,
+      description: definition.description,
+      parameters: definition.parameters,
+    };
 
-    const getContextParams = Type.Object({
-      scope: Type.Optional(
-        Type.String({
-          description:
-            "Optional context hint (selection, document, worksheet, workbook, slide, presentation). Scope filtering is currently strongest for Excel and may be treated as a hint for Word/PowerPoint.",
-        }),
-      ),
-    });
+    if (definition.executor === "reviewable-word-edit") {
+      return {
+        ...base,
+        execute: async (_toolCallId, params) => {
+          const result = await this.invokeOfficeTool(definition.name, normalizeToolParams(params));
+          const resultObj = result as JsonRecord | undefined;
+          if (!resultObj || !Array.isArray(resultObj.edits) || typeof resultObj.summary !== "string") {
+            return {
+              content: toToolContent(result),
+              details: result,
+            };
+          }
 
-    const applyEditParams = Type.Object({
-      mode: Type.Optional(Type.String({ description: "Legacy edit mode such as replaceSelection, insertAfterSelection, or setRangeValues." })),
-      content: Type.Optional(Type.String({ description: "Legacy text, HTML, or JSON matrix payload to insert into Office." })),
-      text: Type.Optional(Type.String({ description: "Alias for legacy text content. Use when operation/type is insertText." })),
-      html: Type.Optional(Type.String({ description: "Alias for legacy HTML content. Use when operation/type is insertHtml." })),
-      format: Type.Optional(Type.String({ description: "Legacy content format such as text, html, or matrix." })),
-      operation: Type.Optional(Type.String({ description: "Top-level action type alias, e.g., insertText, insertHtml, setRangeValues." })),
-      type: Type.Optional(Type.String({ description: "Top-level action type alias when not wrapping with action.type." })),
-      values: Type.Optional(Type.Any({ description: "2D array of values for setRangeValues actions." })),
-      action: Type.Optional(
-        Type.Any({
-          description:
-            "Structured host action. Prefer this over legacy mode/content for workbook, slide, comment, shape image, chart, table, and navigation-aware edits. Destructive actions should set action.options.confirmDestructive=true.",
-        }),
-      ),
-    });
+          const proposal: OfficeEditProposal = {
+            requestId: crypto.randomUUID(),
+            edits: resultObj.edits as OfficeEditProposal["edits"],
+            summary: resultObj.summary,
+          };
 
-    const navigateParams = Type.Object({
-      target: Type.Optional(Type.String({ description: "Legacy anchor label or text to navigate to." })),
-      kind: Type.Optional(
-        Type.String({
-          description:
-            "heading, comment, revision, footnote, endnote, paragraph, field, contentControl, cell, range, sheet, workbook, slide, notesRegion, layout, slideMaster, shape, chart, or pivotTable.",
-        }),
-      ),
-      anchor: Type.Optional(
-        Type.Any({
-          description: "Structured navigation anchor. Prefer this when sheet names, range addresses, slide IDs, or paragraph IDs are known.",
-        }),
-      ),
-    });
+          const decision = await this.invokeEditProposal(proposal);
+          const accepted = decision.decisions.filter((entry) => entry.accepted);
+          const rejected = decision.decisions.filter((entry) => !entry.accepted);
 
-    const captureSnapshotParams = Type.Object({
-      scope: Type.Optional(
-        Type.String({
-          description:
-            "Optional context hint (selection, document, worksheet, workbook, slide, shape). Scope is currently most effective for Excel and may be treated as a hint in Word/PowerPoint.",
-        }),
-      ),
-      includeFormatting: Type.Optional(Type.Boolean({ description: "Include formatting and layout metadata alongside the visuals." })),
-      maxImages: Type.Optional(Type.Number({ minimum: 0, maximum: 4, description: "Maximum number of visual snapshots to include." })),
-    });
+          const lines: string[] = [
+            `Edit proposal reviewed: ${accepted.length} accepted, ${rejected.length} rejected out of ${proposal.edits.length} edits.`,
+          ];
 
-    const captureViewportParams = Type.Object({
-      includeFormatting: Type.Optional(
-        Type.Boolean({ description: "Include companion native capture metadata alongside the screenshot when available." }),
-      ),
-      includeWindowFrame: Type.Optional(
-        Type.Boolean({
-          description:
-            "Capture the full foreground Office window frame through the companion native backend when available.",
-        }),
-      ),
-    });
+          if (decision.applicationResult) {
+            const resultSummary = decision.applicationResult;
+            if (resultSummary.failed > 0) {
+              lines.push(
+                `Application result: ${resultSummary.applied} applied, ${resultSummary.failed} failed. Errors: ${resultSummary.errors.join("; ")}`,
+              );
+            } else if (resultSummary.applied > 0) {
+              lines.push(`All ${resultSummary.applied} accepted edit${resultSummary.applied === 1 ? "" : "s"} applied successfully.`);
+            } else {
+              lines.push("No edits were applied.");
+            }
+          } else {
+            lines.push(accepted.length ? "Accepted edits were applied to the document." : "No edits were applied.");
+          }
 
-    const readSectionParams = Type.Object({
-      startIndex: Type.Optional(Type.Number({ description: "Zero-based paragraph start index (inclusive)." })),
-      endIndex: Type.Optional(Type.Number({ description: "Zero-based paragraph end index (exclusive). Defaults to startIndex + 20." })),
-      start: Type.Optional(Type.Number({ description: "Alias for startIndex." })),
-      end: Type.Optional(Type.Number({ description: "Alias for endIndex." })),
-      includeStyles: Type.Optional(Type.Boolean({ description: "Include paragraph styles and heading levels. Defaults to true." })),
-    });
+          if (rejected.length) {
+            lines.push("", "Rejected edits:");
+            for (const rejectedEdit of rejected) {
+              const reason = rejectedEdit.rejectReason
+                ? EDIT_REJECT_REASON_LABELS[rejectedEdit.rejectReason]
+                : "No reason given";
+              lines.push(`- ${rejectedEdit.editId}: ${reason}${rejectedEdit.rejectNote ? ` (note: ${rejectedEdit.rejectNote})` : ""}`);
+            }
+          }
 
-    const verifyDocParams = Type.Object({
-      scope: Type.Optional(
-        Type.String({
-          description: "Verification target for Word context capture (selection or document). Defaults to document-level verification context.",
-        }),
-      ),
-      includeFormatting: Type.Optional(
-        Type.Boolean({
-          description: "Include formatting and review metadata in the structured verification details. Defaults to true.",
-        }),
-      ),
-    });
+          if (decision.globalFeedback) {
+            lines.push("", `User feedback: "${decision.globalFeedback}"`);
+          }
 
-    const verifyDocVisualParams = Type.Object({
-      includeFormatting: Type.Optional(
-        Type.Boolean({
-          description: "Include viewport formatting metadata in the structured visual verification details. Defaults to true.",
-        }),
-      ),
-      includeWindowFrame: Type.Optional(
-        Type.Boolean({
-          description:
-            "Reserved for future native capture support. Browser-only runtime acknowledges this flag but cannot capture the full OS window frame.",
-        }),
-      ),
-    });
+          return {
+            content: [{ type: "text", text: lines.join("\n") }],
+            details: {
+              proposalId: proposal.requestId,
+              decisions: decision.decisions,
+              applicationResult: decision.applicationResult,
+            },
+          };
+        },
+      };
+    }
 
-    const getCellRangesParams = Type.Object({
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the range. Defaults to the active worksheet." })),
-      address: Type.Optional(Type.String({ description: "A1-style cell/range address. Defaults to the current selection." })),
-      includeValues: Type.Optional(Type.Boolean({ description: "Include range values in the response. Defaults to true." })),
-      includeText: Type.Optional(Type.Boolean({ description: "Include rendered text values in the response. Defaults to true." })),
-      includeFormulas: Type.Optional(Type.Boolean({ description: "Include range formulas in the response. Defaults to true." })),
-      includeNumberFormat: Type.Optional(Type.Boolean({ description: "Include number formats in the response. Defaults to true." })),
-    }, { additionalProperties: true });
+    if (definition.executor === "companion-native-capture") {
+      throw new Error(`${definition.name} must be registered through the companion native capture path.`);
+    }
 
-    const setCellRangeParams = Type.Object({
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the destination range. Defaults to active worksheet." })),
-      address: Type.Optional(Type.String({ description: "A1-style destination address. Defaults to current selection." })),
-      values: Type.Optional(Type.Any({ description: "2D matrix values to write into the target range." })),
-      content: Type.Optional(Type.String({ description: "JSON matrix alias when values is omitted." })),
-      options: Type.Optional(Type.Any({ description: "Additional write options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const clearCellRangeParams = Type.Object({
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the range to clear." })),
-      address: Type.Optional(Type.String({ description: "A1-style address to clear. Defaults to current selection." })),
-      applyTo: Type.Optional(
-        Type.String({
-          description: "Clear mode: all, contents, formats, hyperlinks, removeHyperlinks. Defaults to all.",
-        }),
-      ),
-      confirmDestructive: Type.Optional(
-        Type.Boolean({
-          description: "Set true to acknowledge this destructive clear operation.",
-        }),
-      ),
-      options: Type.Optional(Type.Any({ description: "Additional clear options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const resizeRangeParams = Type.Object({
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the source range." })),
-      address: Type.Optional(Type.String({ description: "A1-style source range address. Defaults to current selection." })),
-      rowCount: Type.Optional(Type.Number({ minimum: 1, description: "Final row count for the resized range." })),
-      columnCount: Type.Optional(Type.Number({ minimum: 1, description: "Final column count for the resized range." })),
-      rowDelta: Type.Optional(Type.Number({ description: "Relative row delta when rowCount is not provided." })),
-      columnDelta: Type.Optional(Type.Number({ description: "Relative column delta when columnCount is not provided." })),
-      activate: Type.Optional(Type.Boolean({ description: "Activate/select the resized range after resolving it." })),
-      options: Type.Optional(Type.Any({ description: "Additional resize options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const copyToParams = Type.Object({
-      sourceSheetName: Type.Optional(Type.String({ description: "Worksheet name for the source range. Defaults to active worksheet." })),
-      sourceAddress: Type.Optional(Type.String({ description: "A1-style source range address. Defaults to current selection." })),
-      destinationSheetName: Type.Optional(Type.String({ description: "Worksheet name for the destination range." })),
-      destinationAddress: Type.String({ description: "A1-style destination range address." }),
-      copyType: Type.Optional(
-        Type.String({
-          description: "Excel copy type: All, Formats, Formulas, Values, or Link.",
-        }),
-      ),
-      skipBlanks: Type.Optional(Type.Boolean({ description: "Skip blank cells while copying. Defaults to false." })),
-      transpose: Type.Optional(Type.Boolean({ description: "Transpose copied rows/columns. Defaults to false." })),
-      options: Type.Optional(Type.Any({ description: "Additional copy options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const modifySheetStructureParams = Type.Object({
-      operation: Type.String({
-        description: "Worksheet structure operation: create_worksheet, rename_worksheet, duplicate_worksheet, or delete_worksheet.",
-      }),
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name targeted by rename/duplicate/delete operations." })),
-      name: Type.Optional(Type.String({ description: "Worksheet name for create/rename/duplicate operations." })),
-      relativeTo: Type.Optional(Type.String({ description: "Worksheet name used as placement anchor for duplication." })),
-      positionType: Type.Optional(Type.String({ description: "Worksheet copy placement type when duplicating (before/after)." })),
-      confirmDestructive: Type.Optional(
-        Type.Boolean({
-          description: "Set true when performing destructive operations such as delete_worksheet.",
-        }),
-      ),
-      options: Type.Optional(Type.Any({ description: "Additional structure options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const modifyObjectParams = Type.Object({
-      operation: Type.String({
-        description:
-          "Excel object mutation operation (format_range, create_table, format_table, apply_table_filter, clear_table_filter, clear_table_filters, reapply_table_filters, create_chart, update_chart, create_pivot_table, update_pivot_table, sort_pivot_field, sort_pivot_by_labels, sort_pivot_by_values, refresh_pivot_table, set_worksheet_gridlines, set_worksheet_headings, set_print_area, set_data_validation, clear_data_validation, add_conditional_format, clear_conditional_formats, insert_inline_picture).",
-      }),
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name for range/table/chart/pivot operations." })),
-      address: Type.Optional(Type.String({ description: "A1-style range address when an operation targets a worksheet range." })),
-      tableName: Type.Optional(Type.String({ description: "Target table name for table-oriented operations." })),
-      chartName: Type.Optional(Type.String({ description: "Target chart name for chart-oriented operations." })),
-      pivotTableName: Type.Optional(Type.String({ description: "Target PivotTable name for pivot-oriented operations." })),
-      confirmDestructive: Type.Optional(Type.Boolean({ description: "Set true for destructive operations when required." })),
-      options: Type.Optional(Type.Any({ description: "Additional object-operation options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const getAllObjectsParams = Type.Object({
-      scope: Type.Optional(
-        Type.String({
-          description: "Inventory scope hint: selection, worksheet, or workbook. Defaults to workbook.",
-        }),
-      ),
-      includeFormatting: Type.Optional(
-        Type.Boolean({
-          description: "Include worksheet formatting metadata in addition to object inventory. Defaults to true.",
-        }),
-      ),
-      objectTypes: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "Optional object kinds to include (table, chart, pivotTable, namedItem, worksheet, cell).",
-        }),
-      ),
-    }, { additionalProperties: true });
-
-    const searchDataParams = Type.Object({
-      query: Type.String({ description: "Case-insensitive query used to search workbook/worksheet objects and cited cells." }),
-      scope: Type.Optional(
-        Type.String({
-          description: "Search scope hint: selection, worksheet, or workbook. Defaults to workbook.",
-        }),
-      ),
-      objectTypes: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "Object kinds to search: table, chart, pivotTable, namedItem, worksheet, or cell.",
-        }),
-      ),
-      limit: Type.Optional(Type.Number({ minimum: 1, maximum: 200, description: "Maximum number of matches to return." })),
-    }, { additionalProperties: true });
-
-    const getRangeAsCsvParams = Type.Object({
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the source range. Defaults to active worksheet." })),
-      address: Type.Optional(Type.String({ description: "A1-style source range address. Defaults to current selection." })),
-      delimiter: Type.Optional(Type.String({ description: "CSV delimiter. Defaults to comma." })),
-      quoteValues: Type.Optional(Type.Boolean({ description: "Wrap and escape all CSV cells in quotes. Defaults to false." })),
-      includeHeaders: Type.Optional(Type.Boolean({ description: "Include header row. Defaults to true." })),
-      includeFormulas: Type.Optional(
-        Type.Boolean({
-          description: "Export formulas instead of displayed values for auditable formula-first reviews. Defaults to false.",
-        }),
-      ),
-    }, { additionalProperties: true });
-
-    const readRangeImageParams = Type.Object({
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name hint for the range image capture context." })),
-      address: Type.Optional(Type.String({ description: "A1-style range address hint for the range image capture context." })),
-      scope: Type.Optional(
-        Type.String({
-          description: "Visual capture scope hint. Defaults to selection.",
-        }),
-      ),
-      includeFormatting: Type.Optional(Type.Boolean({ description: "Include formatting metadata in the visual payload. Defaults to true." })),
-      maxImages: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "Maximum number of range images to include." })),
-    }, { additionalProperties: true });
-
-    const extractChartXmlParams = Type.Object({
-      sheetName: Type.Optional(Type.String({ description: "Worksheet name that contains the chart. Defaults to active worksheet." })),
-      chartName: Type.Optional(Type.String({ description: "Chart name to extract. Required when chartId/chartIndex are not provided." })),
-      chartId: Type.Optional(Type.String({ description: "Optional chart id alias when chartName is unknown." })),
-      chartIndex: Type.Optional(Type.Number({ minimum: 1, description: "Optional one-based chart index when chartName is unknown." })),
-    }, { additionalProperties: true });
-
-    const getPresentationStructureParams = Type.Object({
-      maxSlides: Type.Optional(
-        Type.Number({
-          minimum: 1,
-          description: "Optional maximum number of slide previews to include. Defaults to a bounded preview size.",
-        }),
-      ),
-      includeSlideText: Type.Optional(
-        Type.Boolean({
-          description: "Include per-slide title/body text previews when available. Defaults to true.",
-        }),
-      ),
-    }, { additionalProperties: true });
-
-    const getSlideParams = Type.Object({
-      slideId: Type.Optional(Type.String({ description: "PowerPoint slide ID to read." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index to read." })),
-      includeShapes: Type.Optional(Type.Boolean({ description: "Include shape summaries for the resolved slide. Defaults to true." })),
-      includeSlideText: Type.Optional(Type.Boolean({ description: "Include title/body text previews for the resolved slide. Defaults to true." })),
-    }, { additionalProperties: true });
-
-    const listSlideShapesParams = Type.Object({
-      slideId: Type.Optional(Type.String({ description: "PowerPoint slide ID whose shapes should be listed." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index whose shapes should be listed." })),
-      maxShapes: Type.Optional(Type.Number({ minimum: 1, description: "Optional maximum number of shapes to return." })),
-    }, { additionalProperties: true });
-
-    const modifyPresentationStructureParams = Type.Object({
-      operation: Type.String({
-        description:
-          "Presentation structure operation (add_slide, move_slide, reorder_slides, delete_slide, apply_layout, select_slides, add_agenda_slide, add_transition_slide, combine_slides, import_slides_from_base64).",
-      }),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID for the operation." })),
-      slideIds: Type.Optional(Type.Array(Type.String(), { description: "Ordered list of slide IDs for multi-slide operations." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target." })),
-      targetSlideId: Type.Optional(Type.String({ description: "Insertion target slide ID where applicable." })),
-      formatting: Type.Optional(Type.String({ description: "PowerPoint insert formatting mode when supported." })),
-      confirmDestructive: Type.Optional(
-        Type.Boolean({
-          description: "Required for destructive operations such as delete_slide/delete_slides.",
-        }),
-      ),
-      content: Type.Optional(Type.String({ description: "Optional text payload used by supported slide-creation helpers." })),
-      options: Type.Optional(Type.Any({ description: "Additional operation-specific options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const duplicateSlideParams = Type.Object({
-      slideId: Type.Optional(Type.String({ description: "Single source slide ID to duplicate." })),
-      slideIds: Type.Optional(Type.Array(Type.String(), { description: "One or more source slide IDs to duplicate in order." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based source slide index when slideId is not known." })),
-      targetSlideId: Type.Optional(Type.String({ description: "Slide ID to insert duplicates after." })),
-      formatting: Type.Optional(Type.String({ description: "PowerPoint insert formatting mode when supported." })),
-      options: Type.Optional(Type.Any({ description: "Additional duplication options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const insertSlideElementParams = Type.Object({
-      operation: Type.String({
-        description:
-          "PowerPoint element insertion operation (add_text_box, add_geometric_shape, add_table, add_line, add_process_flow, add_simple_diagram, insert_inline_picture).",
-      }),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID for inserting the new element." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
-      shapeId: Type.Optional(Type.String({ description: "Optional shape target for grouped operations." })),
-      content: Type.Optional(Type.String({ description: "Primary text payload (or base64 image payload for insert_inline_picture)." })),
-      text: Type.Optional(Type.String({ description: "Alias for content when inserting text." })),
-      values: Type.Optional(Type.Any({ description: "Matrix payload for table insertion when applicable." })),
-      options: Type.Optional(Type.Any({ description: "Additional insertion options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const removeSlideElementParams = Type.Object({
-      operation: Type.String({
-        description:
-          "PowerPoint element removal operation (remove_shape, remove_shapes, clear_shape_text).",
-      }),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID for the removal operation." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
-      shapeId: Type.Optional(Type.String({ description: "Primary shape ID to remove or clear." })),
-      shapeIds: Type.Optional(Type.Array(Type.String(), { description: "One or more shape IDs for multi-shape removal." })),
-      confirmDestructive: Type.Optional(
-        Type.Boolean({
-          description: "Required for destructive operations such as remove_shape/remove_shapes.",
-        }),
-      ),
-      options: Type.Optional(Type.Any({ description: "Additional removal options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const editSlideTextParams = Type.Object({
-      operation: Type.Optional(
-        Type.String({
-          description:
-            "PowerPoint text-edit operation (set_shape_text, append_shape_text, clear_shape_text, insert_text). Defaults to set_shape_text when shapeId is provided, otherwise insert_text.",
-        }),
-      ),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID for text updates." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
-      shapeId: Type.Optional(Type.String({ description: "Shape ID whose text should be updated." })),
-      content: Type.Optional(Type.String({ description: "Text payload to apply." })),
-      text: Type.Optional(Type.String({ description: "Alias for content." })),
-      placement: Type.Optional(Type.String({ description: "Optional placement hint (replace or after)." })),
-      options: Type.Optional(Type.Any({ description: "Additional text-edit options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const editSlideXmlParams = Type.Object({
-      operation: Type.String({
-        description:
-          "PowerPoint XML/serialized operation (inspect_presentation_package, get_presentation_theme, get_slide_notes, set_slide_notes, replace_slide_notes, import_slides_from_base64, merge_presentation_from_base64, export_slides_as_base64).",
-      }),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID for slide-scoped XML operations." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
-      content: Type.Optional(Type.String({ description: "Text or base64 payload used by mutating XML operations." })),
-      base64: Type.Optional(Type.String({ description: "Alias for content when providing serialized PPTX payloads." })),
-      formatting: Type.Optional(Type.String({ description: "Insert formatting mode for base64 import operations when supported." })),
-      options: Type.Optional(Type.Any({ description: "Additional XML operation options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const editSlideMasterParams = Type.Object({
-      operation: Type.Optional(
-        Type.String({
-          description:
-            "PowerPoint layout operation. Currently supports apply_layout/set_layout only; this legacy-named tool does not edit slide masters.",
-        }),
-      ),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID whose layout should be updated." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
-      layoutId: Type.Optional(Type.String({ description: "Layout ID to apply." })),
-      layoutName: Type.Optional(Type.String({ description: "Layout name to apply." })),
-      slideMasterId: Type.Optional(Type.String({ description: "Optional slide master ID used only to resolve the requested layout." })),
-      slideMasterName: Type.Optional(Type.String({ description: "Optional slide master name used only to resolve the requested layout." })),
-      options: Type.Optional(Type.Any({ description: "Additional layout-application options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const editSlideChartParams = Type.Object({
-      operation: Type.Optional(
-        Type.String({
-          description:
-            "PowerPoint chart operation (get_slide_charts, add_slide_chart, update_slide_chart). Defaults to update_slide_chart when omitted.",
-        }),
-      ),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID for chart inspection or mutation." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
-      shapeId: Type.Optional(Type.String({ description: "Optional chart shape ID for precise chart targeting." })),
-      chartIndex: Type.Optional(Type.Number({ minimum: 1, description: "Optional one-based chart index within the target slide package." })),
-      shapeName: Type.Optional(Type.String({ description: "Optional chart shape name used to resolve chart edits." })),
-      title: Type.Optional(Type.String({ description: "Chart title for create/update operations." })),
-      categories: Type.Optional(Type.Any({ description: "Ordered category labels for chart create/update operations." })),
-      series: Type.Optional(Type.Any({ description: "Series payload for chart create/update operations." })),
-      replaceOriginal: Type.Optional(Type.Boolean({ description: "When true (default), replace the source slide after serialized chart updates." })),
-      formatting: Type.Optional(Type.String({ description: "Insert formatting mode when serialized chart updates insert replacement slides." })),
-      options: Type.Optional(Type.Any({ description: "Additional chart operation options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const copyImageBetweenSlidesParams = Type.Object({
-      sourceSlideId: Type.Optional(Type.String({ description: "Source slide ID that contains the image shape to copy." })),
-      sourceSlideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based source slide index when sourceSlideId is unknown." })),
-      sourceShapeId: Type.Optional(Type.String({ description: "Source image shape ID to copy from." })),
-      sourceImageBase64: Type.Optional(Type.String({ description: "Optional image base64 override when source shape export is unavailable." })),
-      targetSlideId: Type.Optional(Type.String({ description: "Destination slide ID for image placement/replacement." })),
-      targetSlideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based destination slide index when targetSlideId is unknown." })),
-      targetShapeId: Type.Optional(Type.String({ description: "Destination shape ID to update. If omitted, inserts a new image shape." })),
-      left: Type.Optional(Type.Number({ description: "Optional destination left position in points for inserted images." })),
-      top: Type.Optional(Type.Number({ description: "Optional destination top position in points for inserted images." })),
-      width: Type.Optional(Type.Number({ description: "Optional destination width in points for inserted images." })),
-      height: Type.Optional(Type.Number({ description: "Optional destination height in points for inserted images." })),
-      options: Type.Optional(Type.Any({ description: "Additional media-copy options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const searchIconsParams = Type.Object({
-      query: Type.String({ description: "Icon search query text." }),
-      maxResults: Type.Optional(Type.Number({ minimum: 1, maximum: 50, description: "Maximum number of icon matches to return." })),
-      style: Type.Optional(Type.String({ description: "Optional style/category hint used by the icon catalog search." })),
-      options: Type.Optional(Type.Any({ description: "Additional icon-search options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const insertIconParams = Type.Object({
-      iconId: Type.Optional(Type.String({ description: "Icon ID returned by search_icons." })),
-      iconName: Type.Optional(Type.String({ description: "Icon name alias when iconId is unknown." })),
-      query: Type.Optional(Type.String({ description: "Fallback query used when selecting an icon by search text." })),
-      slideId: Type.Optional(Type.String({ description: "Target slide ID for icon insertion." })),
-      slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based target slide index when slideId is unknown." })),
-      shapeId: Type.Optional(Type.String({ description: "Optional target shape ID for icon replacement workflows." })),
-      left: Type.Optional(Type.Number({ description: "Optional icon left position in points." })),
-      top: Type.Optional(Type.Number({ description: "Optional icon top position in points." })),
-      width: Type.Optional(Type.Number({ description: "Optional icon width in points." })),
-      height: Type.Optional(Type.Number({ description: "Optional icon height in points." })),
-      fillColor: Type.Optional(Type.String({ description: "Optional icon fill/text color (hex/rgb)." })),
-      lineColor: Type.Optional(Type.String({ description: "Optional icon outline color (hex/rgb)." })),
-      options: Type.Optional(Type.Any({ description: "Additional icon insertion options forwarded to the host adapter." })),
-    }, { additionalProperties: true });
-
-    const verifySlidesParams = Type.Object({
-      scope: Type.Optional(
-        Type.String({
-          description: "Structural verification scope for PowerPoint slides (presentation or selection). Defaults to presentation structure.",
-        }),
-      ),
-      maxSlides: Type.Optional(Type.Number({ minimum: 1, description: "Maximum number of slide previews to include in verification details." })),
-      includeSlideText: Type.Optional(Type.Boolean({ description: "Include bounded slide text previews in structural verification output." })),
-      includeFormatting: Type.Optional(Type.Boolean({ description: "Include layout/master metadata where supported. Defaults to true." })),
-    }, { additionalProperties: true });
-
-    const verifySlideVisualParams = Type.Object({
-      scope: Type.Optional(
-        Type.String({
-          description: "Visual verification scope. Defaults to slide selection snapshots.",
-        }),
-      ),
-      includeFormatting: Type.Optional(Type.Boolean({ description: "Include slide/shape formatting metadata in visual verification details. Defaults to true." })),
-      maxImages: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "Maximum number of slide/shape snapshot images to include." })),
-    }, { additionalProperties: true });
-
-    const executeJsParams = Type.Object({
-      code: Type.Optional(
-        Type.String({
-          description:
-            "Office.js code to execute. Must use the active host run function (Word.run, Excel.run, or PowerPoint.run). Return a JSON-serializable value. The runtime enforces a best-effort restricted subset (regex checks only, not an isolated sandbox) and blocks network, storage, eval, and system-access patterns.",
-        }),
-      ),
-      script: Type.Optional(Type.String({ description: "Alias for code." })),
-    });
-
-    const proposeEditsParams = Type.Object({
-      edits: Type.Array(
-        Type.Object({
-          kind: Type.String({ description: "insert, replace, or delete." }),
-          searchText: Type.Optional(Type.String({
-            maxLength: OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH,
-            description:
-              `Text to locate in the document for replace/delete. Must be under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters.`,
-          })),
-          oldText: Type.Optional(Type.String({ description: "Expected existing text (for replace/delete verification)." })),
-          newText: Type.Optional(Type.String({ description: "Replacement text (for insert/replace)." })),
-          anchor: Type.Optional(Type.String({ description: "Heading or paragraph label to scope the search." })),
-          paragraphId: Type.Optional(Type.String({ description: "Paragraph unique ID for precise targeting." })),
-          explanation: Type.Optional(Type.String({ description: "Brief rationale for this edit." })),
-        }),
-        { description: "Ordered list of proposed edits." },
-      ),
-      summary: Type.String({ description: "One-sentence summary of all proposed changes." }),
-    });
-
-    const simpleOfficeTool = (
-      toolName: OfficeToolName,
-      label: string,
-      description: string,
-      parameters: any = Type.Any(),
-    ): AgentTool => ({
-      name: toolName,
-      label,
-      description,
-      parameters,
+    return {
+      ...base,
       execute: async (_toolCallId, params) => {
-        const result = await this.invokeOfficeTool(toolName, normalizeToolParams(params));
+        const result = await this.invokeOfficeTool(definition.name, normalizeToolParams(params));
         return {
           content: toToolContent(result),
           details: result,
         };
       },
-    });
+    };
+  }
 
-    const reviewableWordEditTool = (
-      toolName: "office_propose_edits" | "edit_doc_list",
-      label: string,
-      description: string,
-    ): AgentTool => ({
-      name: toolName,
-      label,
-      description,
-      parameters: proposeEditsParams,
-      execute: async (_toolCallId, params) => {
-        const result = await this.invokeOfficeTool(toolName, normalizeToolParams(params));
-        const resultObj = result as JsonRecord | undefined;
-        if (!resultObj || !Array.isArray(resultObj.edits) || typeof resultObj.summary !== "string") {
-          return {
-            content: toToolContent(result),
-            details: result,
-          };
-        }
-
-        const proposal: OfficeEditProposal = {
-          requestId: crypto.randomUUID(),
-          edits: resultObj.edits as OfficeEditProposal["edits"],
-          summary: resultObj.summary,
-        };
-
-        const decision = await this.invokeEditProposal(proposal);
-        const accepted = decision.decisions.filter((entry) => entry.accepted);
-        const rejected = decision.decisions.filter((entry) => !entry.accepted);
-
-        const lines: string[] = [
-          `Edit proposal reviewed: ${accepted.length} accepted, ${rejected.length} rejected out of ${proposal.edits.length} edits.`,
-        ];
-
-        if (decision.applicationResult) {
-          const resultSummary = decision.applicationResult;
-          if (resultSummary.failed > 0) {
-            lines.push(
-              `Application result: ${resultSummary.applied} applied, ${resultSummary.failed} failed. Errors: ${resultSummary.errors.join("; ")}`,
-            );
-          } else if (resultSummary.applied > 0) {
-            lines.push(`All ${resultSummary.applied} accepted edit${resultSummary.applied === 1 ? "" : "s"} applied successfully.`);
-          } else {
-            lines.push("No edits were applied.");
-          }
-        } else {
-          lines.push(accepted.length ? "Accepted edits were applied to the document." : "No edits were applied.");
-        }
-
-        if (rejected.length) {
-          lines.push("", "Rejected edits:");
-          for (const rejectedEdit of rejected) {
-            const reason = rejectedEdit.rejectReason
-              ? EDIT_REJECT_REASON_LABELS[rejectedEdit.rejectReason]
-              : "No reason given";
-            lines.push(`- ${rejectedEdit.editId}: ${reason}${rejectedEdit.rejectNote ? ` (note: ${rejectedEdit.rejectNote})` : ""}`);
-          }
-        }
-
-        if (decision.globalFeedback) {
-          lines.push("", `User feedback: "${decision.globalFeedback}"`);
-        }
-
-        return {
-          content: [{ type: "text", text: lines.join("\n") }],
-          details: {
-            proposalId: proposal.requestId,
-            decisions: decision.decisions,
-            applicationResult: decision.applicationResult,
-          },
-        };
-      },
-    });
-
-    const browserDebugMode = this.isBrowserDebugMode();
-    const tools: AgentTool[] = ([
-      simpleOfficeTool(
-        "office_get_context",
-        "Office Context",
-        "Read the current Office document or selection context from the active host.",
-        getContextParams,
-      ),
-      simpleOfficeTool(
-        "office_apply_edit",
-        "Office Edit",
-        "Apply native edits to the active Office document, worksheet, or slide. Prefer action.type/action.content; legacy operation/text params are also supported.",
-        applyEditParams,
-      ),
-      simpleOfficeTool(
-        "edit_doc_text",
-        "Edit Word Text",
-        "Word-only first-class text editing. Use for direct clause/sentence updates through native Word actions when no per-edit review card is required.",
-        applyEditParams,
-      ),
-      simpleOfficeTool(
-        "office_navigate",
-        "Office Navigate",
-        "Move to an Office anchor such as heading, range, or slide.",
-        navigateParams,
-      ),
-      simpleOfficeTool(
-        "office_capture_snapshot",
-        "Office Snapshot",
-        "Capture visual snapshots and formatting metadata for the active Office surface.",
-        captureSnapshotParams,
-      ),
-      simpleOfficeTool(
-        "office_read_section",
-        "Read Document Section",
-        "Read a paginated range of Word paragraphs by paragraph index.",
-        readSectionParams,
-      ),
-      simpleOfficeTool(
-        "verify_doc",
-        "Verify Word Document",
-        "Collect a non-mutating, structured Word verification context with summary text and detailed anchors/snippets for document checks.",
-        verifyDocParams,
-      ),
-      simpleOfficeTool(
-        "verify_doc_visual",
-        "Verify Word Visual",
-        "Capture non-mutating Word visual verification context through the supported viewport path. Word-only; returns structured visual/details payloads.",
-        verifyDocVisualParams,
-      ),
-      simpleOfficeTool(
-        "get_cell_ranges",
-        "Get Cell Ranges",
-        "Excel-only first-class range read tool for cell/range values, text, formulas, and number formats.",
-        getCellRangesParams,
-      ),
-      simpleOfficeTool(
-        "set_cell_range",
-        "Set Cell Range",
-        "Excel-only first-class range write tool for setting values in a target cell/range.",
-        setCellRangeParams,
-      ),
-      simpleOfficeTool(
-        "clear_cell_range",
-        "Clear Cell Range",
-        "Excel-only first-class range clear tool. Destructive clears should set confirmDestructive=true.",
-        clearCellRangeParams,
-      ),
-      simpleOfficeTool(
-        "resize_range",
-        "Resize Range",
-        "Excel-only first-class range layout tool for computing/activating resized ranges by count or delta.",
-        resizeRangeParams,
-      ),
-      simpleOfficeTool(
-        "copy_to",
-        "Copy To Range",
-        "Excel-only first-class range copy tool that copies a source range into a destination range.",
-        copyToParams,
-      ),
-      simpleOfficeTool(
-        "modify_sheet_structure",
-        "Modify Sheet Structure",
-        "Excel-only first-class worksheet structure tool for create, rename, duplicate, and delete operations.",
-        modifySheetStructureParams,
-      ),
-      simpleOfficeTool(
-        "modify_object",
-        "Modify Excel Object",
-        "Excel-only first-class object mutation tool for table/chart/pivot/worksheet object operations through native workbook actions.",
-        modifyObjectParams,
-      ),
-      simpleOfficeTool(
-        "get_all_objects",
-        "Get Excel Objects",
-        "Excel-only first-class object inventory read for workbook/worksheet tables, charts, PivotTables, and named items.",
-        getAllObjectsParams,
-      ),
-      simpleOfficeTool(
-        "search_data",
-        "Search Excel Data",
-        "Excel-only first-class workbook/worksheet data search across tables, charts, PivotTables, named items, and cited cells.",
-        searchDataParams,
-      ),
-      simpleOfficeTool(
-        "get_range_as_csv",
-        "Export Range as CSV",
-        "Excel-only first-class CSV export for auditable range snapshots. Use includeFormulas=true when formula-first verification is required.",
-        getRangeAsCsvParams,
-      ),
-      simpleOfficeTool(
-        "read_range_image",
-        "Read Range Image",
-        "Excel-only first-class range imagery read for visual verification workflows on the active worksheet selection/range.",
-        readRangeImageParams,
-      ),
-      simpleOfficeTool(
-        "extract_chart_xml",
-        "Extract Chart XML",
-        "Excel-only first-class chart XML extraction that returns a runtime-generated chart metadata XML snapshot (not full package OOXML).",
-        extractChartXmlParams,
-      ),
-      simpleOfficeTool(
-        "get_presentation_structure",
-        "Read Presentation Structure",
-        "PowerPoint-only first-class presentation structure read. Returns slide order plus layout/master structure metadata and bounded slide previews.",
-        getPresentationStructureParams,
-      ),
-      simpleOfficeTool(
-        "get_slide",
-        "Read Slide",
-        "PowerPoint-only first-class per-slide read. Resolve a slide by slideId/slideIndex (or selection) and return structured slide details.",
-        getSlideParams,
-      ),
-      simpleOfficeTool(
-        "list_slide_shapes",
-        "List Slide Shapes",
-        "PowerPoint-only first-class shape inventory read. Returns structured shape summaries for the resolved slide.",
-        listSlideShapesParams,
-      ),
-      simpleOfficeTool(
-        "modify_presentation_structure",
-        "Modify Presentation Structure",
-        "PowerPoint-only first-class structure mutation tool for slide create/move/reorder/delete/layout operations through native host actions.",
-        modifyPresentationStructureParams,
-      ),
-      simpleOfficeTool(
-        "duplicate_slide",
-        "Duplicate Slide",
-        "PowerPoint-only first-class slide duplication tool supporting one or multiple source slides and optional insertion target/formatting controls.",
-        duplicateSlideParams,
-      ),
-      simpleOfficeTool(
-        "insert_slide_element",
-        "Insert Slide Element",
-        "PowerPoint-only first-class element insertion tool for explicit shape/table/diagram/picture authoring through native actions.",
-        insertSlideElementParams,
-      ),
-      simpleOfficeTool(
-        "remove_slide_element",
-        "Remove Slide Element",
-        "PowerPoint-only first-class element removal tool for explicit shape/text removal operations with destructive-action policy support.",
-        removeSlideElementParams,
-      ),
-      simpleOfficeTool(
-        "edit_slide_text",
-        "Edit Slide Text",
-        "PowerPoint-only first-class text editing for slide shapes/selection. Use this instead of generic office_apply_edit when the intent is text-focused slide authoring.",
-        editSlideTextParams,
-      ),
-      simpleOfficeTool(
-        "edit_slide_xml",
-        "Edit Slide XML",
-        "PowerPoint-only first-class serialized/XML editing tool for slide notes and package-level OOXML workflows, including base64 import/export paths.",
-        editSlideXmlParams,
-      ),
-      simpleOfficeTool(
-        "edit_slide_master",
-        "Apply Slide Layout",
-        "PowerPoint-only legacy-named tool for applying an existing slide layout. It does not mutate slide masters or layout definitions.",
-        editSlideMasterParams,
-      ),
-      simpleOfficeTool(
-        "edit_slide_chart",
-        "Edit Slide Chart",
-        "PowerPoint-only first-class chart workflow tool for chart inspection and serialized chart create/update paths.",
-        editSlideChartParams,
-      ),
-      simpleOfficeTool(
-        "copy_image_between_slides",
-        "Copy Image Between Slides",
-        "PowerPoint-only first-class media workflow tool that copies an image from a source slide/shape to a destination slide or shape.",
-        copyImageBetweenSlidesParams,
-      ),
-      simpleOfficeTool(
-        "search_icons",
-        "Search Slide Icons",
-        "PowerPoint-only first-class icon search. Returns icon matches from the supported runtime icon catalog without mutating slides.",
-        searchIconsParams,
-      ),
-      simpleOfficeTool(
-        "insert_icon",
-        "Insert Slide Icon",
-        "PowerPoint-only first-class icon insertion tool that inserts or updates an icon-like visual on the target slide.",
-        insertIconParams,
-      ),
-      simpleOfficeTool(
-        "verify_slides",
-        "Verify Slides",
-        "PowerPoint-only first-class structural verification. Returns a non-mutating summary/details payload for slide/layout/master checks.",
-        verifySlidesParams,
-      ),
-      simpleOfficeTool(
-        "verify_slide_visual",
-        "Verify Slide Visual",
-        "PowerPoint-only first-class visual verification using supported Office.js slide/shape snapshot paths (not slideshow-frame capture).",
-        verifySlideVisualParams,
-      ),
-      simpleOfficeTool(
-        "office_execute_js",
-        "Execute Office.js",
-        "Execute Office.js code as an escape hatch when structured tools are insufficient. This tool is a best-effort restricted subset enforced by regex checks (not an isolated sandbox) and blocks network, storage, eval, and system-access patterns.",
-        executeJsParams,
-      ),
-      reviewableWordEditTool(
-        "edit_doc_list",
-        "Edit Word List",
-        `Word-only first-class reviewable list editing. Keep each searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId/anchor locators when available.`,
-      ),
-      reviewableWordEditTool(
-        "office_propose_edits",
-        "Propose Document Edits",
-        `Propose a batch of text edits for user review before applying changes. ` +
-          `CRITICAL: each edit's searchText MUST be under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters. ` +
-          "Split large paragraph rewrites into multiple small, targeted edits.",
-      ),
+  private createRuntimeAgentTools(): AgentTool[] {
+    return [
       {
         name: "ask_user",
         label: "Ask User",
@@ -2985,15 +2254,28 @@ class BrowserOfficeSession {
           };
         },
       },
-    ] as AgentTool[]).filter((tool) => isToolAvailable(tool.name) && (!browserDebugMode || !OFFICE_TOOL_NAME_SET.has(tool.name)));
+    ];
+  }
+
+  private buildTools(): AgentTool[] {
+    const availableToolNames = getAvailableToolNames(this.resolveCapabilities());
+    const isToolAvailable = (toolName: string) => availableToolNames.has(toolName);
+    const browserDebugMode = this.isBrowserDebugMode();
+    const tools: AgentTool[] = getOfficeToolDefinitionsForHost(this.officeState.host)
+      .filter((definition) => definition.executor !== "companion-native-capture")
+      .filter((definition) => isToolAvailable(definition.name))
+      .map((definition) => this.createOfficeAgentTool(definition))
+      .filter((tool) => !browserDebugMode || !OFFICE_TOOL_NAME_SET.has(tool.name));
+
+    tools.push(...this.createRuntimeAgentTools().filter((tool) => isToolAvailable(tool.name)));
 
     if (this.canUseCompanionNativeCapture()) {
+      const definition = getOfficeToolDefinition("office_capture_viewport");
       tools.push({
-        name: "office_capture_viewport",
-        label: "Office Viewport Screenshot",
-        description:
-          "Capture a true viewport/window screenshot through the optional companion native capture backend. Office.js document reads/writes still run through the taskpane.",
-        parameters: captureViewportParams,
+        name: definition.name,
+        label: definition.label,
+        description: definition.description,
+        parameters: definition.parameters,
         execute: async (_toolCallId, params) => {
           const typed = normalizeToolParams(params);
           const response = await this.executeCompanionNativeCapture(this.sessionId, {
