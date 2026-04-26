@@ -824,6 +824,17 @@ export class BrowserConnectorRuntime {
     return { ok: true };
   }
 
+  async clearAll(): Promise<{ ok: true }> {
+    this.state = createConnectorState();
+    try {
+      localStorage.removeItem(CONNECTOR_STORAGE_KEY);
+      localStorage.removeItem(CONNECTOR_CRYPTO_KEY_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors in browser sandbox.
+    }
+    return { ok: true };
+  }
+
   async setFavorite(request: ConnectorFavoriteRequest, scopeContext?: ConnectorScopeContext): Promise<{ ok: true; status: ConnectorStatus }> {
     const record = this.state.connectors.find((entry) => entry.id === request.connectorId);
     if (!record) {

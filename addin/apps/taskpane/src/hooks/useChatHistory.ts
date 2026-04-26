@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import type { OfficeStateUpdate } from "@pi-office/pi-office-pack/protocol";
 import type { ChatEntry } from "../lib/helpers";
 
-const STORAGE_KEY = "pi-office-chat-history";
+export const CHAT_HISTORY_STORAGE_KEY = "pi-office-chat-history";
 const MAX_ENTRIES = 50;
 const MAX_MESSAGES_PER_CHAT = 100;
 
@@ -22,7 +22,7 @@ export interface ChatHistoryEntry {
 
 function loadHistory(): ChatHistoryEntry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
     if (!raw) return [];
     return JSON.parse(raw) as ChatHistoryEntry[];
   } catch {
@@ -32,9 +32,17 @@ function loadHistory(): ChatHistoryEntry[] {
 
 function persistHistory(entries: ChatHistoryEntry[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(entries));
   } catch {
     // quota exceeded
+  }
+}
+
+export function clearStoredChatHistory(): void {
+  try {
+    localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
+  } catch {
+    // Storage may be unavailable in restricted hosts.
   }
 }
 
@@ -117,6 +125,11 @@ export function useChatHistory() {
     });
   }, []);
 
+  const clearHistory = useCallback(() => {
+    clearStoredChatHistory();
+    setEntries([]);
+  }, []);
+
   const listChats = useCallback(
     (scope: HistoryScope, officeState: OfficeStateUpdate | undefined): ChatHistoryEntry[] => {
       return entries
@@ -136,5 +149,5 @@ export function useChatHistory() {
     });
   }, []);
 
-  return { entries, saveChat, loadChat, deleteChat, listChats, updateSubject } as const;
+  return { entries, saveChat, loadChat, deleteChat, clearHistory, listChats, updateSubject } as const;
 }

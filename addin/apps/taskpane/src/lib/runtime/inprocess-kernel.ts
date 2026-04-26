@@ -658,6 +658,16 @@ class BrowserAuthStore {
     await this.persist();
   }
 
+  async clearAll(): Promise<void> {
+    this.store.clear();
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem(AUTH_CRYPTO_KEY_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors in browser sandbox.
+    }
+  }
+
   private async load(): Promise<void> {
     try {
       const raw = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -2979,6 +2989,11 @@ class InProcessKernel {
       throw new Error("OAuth sign-in is unavailable in browser-only mode. Use API keys in Settings.");
     }
 
+    if (method === "DELETE" && path === "/v1/auth") {
+      await this.authStore.clearAll();
+      return { ok: true } as T;
+    }
+
     const authDeleteMatch = method === "DELETE" ? path.match(/^\/v1\/auth\/([^/]+)$/) : null;
     if (authDeleteMatch) {
       await this.authStore.remove(decodeURIComponent(authDeleteMatch[1] ?? ""));
@@ -3041,6 +3056,9 @@ class InProcessKernel {
     }
     if (method === "POST" && path === "/v1/connectors/audit") {
       return (await this.connectorRuntime.setAuditPreference(body as ConnectorAuditPreference)) as T;
+    }
+    if (method === "DELETE" && path === "/v1/connectors") {
+      return (await this.connectorRuntime.clearAll()) as T;
     }
     if (method === "GET" && path === "/v1/connectors/export") {
       return this.connectorRuntime.getExportBundle() as T;

@@ -28,6 +28,7 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 - Remote HTTP connectors can be configured in browser mode, but agent execution is setup-only until the browser remote-MCP execution path is implemented
 - Local stdio connectors require the optional companion and stay read-only
 - Multiple Office windows can reuse one machine-local companion while keeping logical taskpane sessions isolated
+- Privacy and storage behavior, including local credential limits and clear-data controls, is documented in [`docs/privacy-and-storage.md`](docs/privacy-and-storage.md)
 
 ## Local Setup
 
@@ -94,11 +95,11 @@ npm run validate:manifests
 
 ## Sideload Flow
 
-Use the XML files in [`addin/manifests`](/C:/Users/manan/Code/Personal/office-word-addin/addin/manifests) for desktop/manual sideload. All three point at the taskpane dev host on `https://localhost:3443`.
+Use the XML files in [`addin/manifests`](addin/manifests) for desktop/manual sideload. All three point at the taskpane dev host on `https://localhost:3443`.
 
-- Word: [`word.xml`](/C:/Users/manan/Code/Personal/office-word-addin/addin/manifests/word.xml)
-- Excel: [`excel.xml`](/C:/Users/manan/Code/Personal/office-word-addin/addin/manifests/excel.xml)
-- PowerPoint: [`powerpoint.xml`](/C:/Users/manan/Code/Personal/office-word-addin/addin/manifests/powerpoint.xml)
+- Word: [`word.xml`](addin/manifests/word.xml)
+- Excel: [`excel.xml`](addin/manifests/excel.xml)
+- PowerPoint: [`powerpoint.xml`](addin/manifests/powerpoint.xml)
 
 If Word launches with a blank document during debugging, open the target saved document in that same Word instance and then open the add-in there. The taskpane session tracks the document it is attached to, not another Word window.
 
@@ -117,4 +118,4 @@ If Word launches with a blank document during debugging, open the target saved d
 - Pi is consumed as a dependency. This repo does not copy Pi source from `pi-mono`.
 - `npm run dev` means "start the local taskpane web host for sideload development."
 - The optional companion is intentionally read-only for v1 local access.
-- Contributor originality rules live in [`CONTRIBUTING.md`](/C:/Users/manan/Code/Personal/office-word-addin/CONTRIBUTING.md), with release provenance tracked in [`docs/provenance.md`](/C:/Users/manan/Code/Personal/office-word-addin/docs/provenance.md).
+- Contributor originality rules live in [`CONTRIBUTING.md`](CONTRIBUTING.md), with release provenance tracked in [`docs/provenance.md`](docs/provenance.md).

@@ -90,24 +90,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests cover auto-approval, explicit approval, explicit denial, and blocked-code paths.
   - Notes/Evidence: Review pointed to `addin/apps/taskpane/src/lib/office/document-tools.ts` using `new Function`, `addin/packages/pi-office-pack/src/protocol.ts` mapping `office_execute_js` to `write-doc`, and the default `autonomyLevel: "medium"`. 2026-04-26 hardening introduced the `escape-hatch` tool category, moved `office_execute_js` into it, excluded it from all autonomy auto-approval sets, and added tests proving it stays manual-only. 2026-04-26 closure normalized escape-hatch permission responses to `scope: "once"` even if a client sends `scope: "session"`, limited the permission popup to one-time approval for escape-hatch requests, and added protocol/UI contract tests for medium/high/extreme autonomy, explicit denial, explicit approval, attempted session approval, and blocked-code paths. Existing first-class tool inventory/registration tests and tool descriptions route common Office work toward structured tools before raw execution. Validation: `npm run test:office` passed with 91 tests; `npm run typecheck:taskpane` passed.
 
-- [ ] SECURITY-004: Add taskpane CSP/security policy and public privacy/storage disclosure
+- [x] SECURITY-004: Add taskpane CSP/security policy and public privacy/storage disclosure
   - Category: Security
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-26 competitor review against ChatGPT, Claude, and Ghostwriter inspiration captures.
   - Details: The taskpane is intended to be open-source and privacy-conscious, but the current implementation stores provider API keys, connector state/secrets, and chat history in browser storage. API key and connector envelopes use AES-GCM, but the crypto keys are also stored in localStorage, so this is local obfuscation rather than strong protection against same-origin script access or XSS. The taskpane shell also lacks an obvious CSP comparable to the ChatGPT inspiration capture. Users need a plain privacy/auth panel and docs that state what leaves the machine, what stays in browser storage, provider/connector call boundaries, telemetry defaults, clear-data controls, and the limits of localStorage encryption.
   - Dependencies: SECURITY-001, BUG-002, BUG-005 for accurate connector/provider disclosures.
   - Subtasks:
-    - [ ] Add a taskpane CSP or equivalent deployment security-header policy compatible with Office add-in hosts.
-    - [ ] Add in-app privacy/auth disclosure covering provider calls, connector calls, local chat history, audit logs, and localStorage credential limits.
-    - [ ] Add clear-data controls for provider auth, connector config/logs, and chat history.
-    - [ ] Document telemetry defaults and ensure any telemetry or analytics are opt-in and visibly disclosed.
-    - [ ] Evaluate stronger storage options for packaged builds or the optional companion, such as OS keychain/token broker storage.
+    - [x] Add a taskpane CSP or equivalent deployment security-header policy compatible with Office add-in hosts.
+    - [x] Add in-app privacy/auth disclosure covering provider calls, connector calls, local chat history, audit logs, and localStorage credential limits.
+    - [x] Add clear-data controls for provider auth, connector config/logs, and chat history.
+    - [x] Document telemetry defaults and ensure any telemetry or analytics are opt-in and visibly disclosed.
+    - [x] Evaluate stronger storage options for packaged builds or the optional companion, such as OS keychain/token broker storage.
   - Acceptance Criteria:
-    - [ ] Users can tell where keys, prompts, document snippets, connector requests, and chat history are stored or sent.
-    - [ ] A user can clear locally stored sensitive state from the UI.
-    - [ ] The taskpane has an explicit CSP/security policy or a documented Office-host-compatible reason why a different mechanism is used.
-  - Notes/Evidence: Review pointed to `BrowserAuthStore` and connector storage storing crypto keys in localStorage, `useChatHistory` persisting messages to localStorage, and inspiration add-ins with more explicit CSP/privacy surfaces.
+    - [x] Users can tell where keys, prompts, document snippets, connector requests, and chat history are stored or sent.
+    - [x] A user can clear locally stored sensitive state from the UI.
+    - [x] The taskpane has an explicit CSP/security policy or a documented Office-host-compatible reason why a different mechanism is used.
+  - Notes/Evidence: Review pointed to `BrowserAuthStore` and connector storage storing crypto keys in localStorage, `useChatHistory` persisting messages to localStorage, and inspiration add-ins with more explicit CSP/privacy surfaces. Closed 2026-04-26 by adding a taskpane `Content-Security-Policy` meta policy in `addin/apps/taskpane/index.html`, a Settings -> Privacy tab that discloses provider calls, connector calls, saved chat history, telemetry defaults, and the limits of localStorage-held AES-GCM keys, clear-data controls for all provider credentials, all connector config/secrets/scopes/OAuth state/logs, and saved local chat history, runtime routes `DELETE /v1/auth` and `DELETE /v1/connectors` that also remove their local crypto keys, and `docs/privacy-and-storage.md` linked from `README.md`. Stronger OS keychain/token-broker storage remains future provider/advanced-companion work and is documented as the intended hardening path. Regression coverage added in `addin/scripts/office-tests/src/privacy-storage.test.ts` for the CSP declaration, provider auth clear-all, connector clear-all, and chat-history clearing. Validation: `npm run typecheck:addin` passed; `npm run test:office` passed with 105 tests; `npm run build:addin` passed; `npm run typecheck:companion` passed; `npm run check:bundle` passed with `main.js=1436.3 KiB`; `npm run validate:manifests` validated Word, Excel, and PowerPoint.
 
 - [x] SECURITY-005: Maintain originality/provenance audit for competitor-inspired capabilities
   - Category: Security

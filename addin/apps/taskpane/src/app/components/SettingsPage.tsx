@@ -51,11 +51,12 @@ import {
   PrefsIcon,
   IntegrationIcon,
   DiagnosticsIcon,
+  ShieldIcon,
 } from "../../lib/icons";
 import { formatTokenCount } from "../../lib/helpers";
 import { IntegrationsSection } from "./IntegrationsSection";
 
-type SettingsTab = "profile" | "companion" | "providers" | "models" | "integrations" | "tools" | "preferences" | "diagnostics";
+type SettingsTab = "profile" | "companion" | "providers" | "models" | "integrations" | "privacy" | "tools" | "preferences" | "diagnostics";
 
 const TABS: { key: SettingsTab; label: string; Icon: () => React.JSX.Element }[] = [
   { key: "profile", label: "Profile", Icon: UserIcon },
@@ -63,6 +64,7 @@ const TABS: { key: SettingsTab; label: string; Icon: () => React.JSX.Element }[]
   { key: "providers", label: "AI Providers", Icon: ProviderIcon },
   { key: "models", label: "Models", Icon: ModelIcon },
   { key: "integrations", label: "Integrations", Icon: IntegrationIcon },
+  { key: "privacy", label: "Privacy", Icon: ShieldIcon },
   { key: "diagnostics", label: "Diagnostics", Icon: DiagnosticsIcon },
   { key: "tools", label: "Tools", Icon: ToolIcon },
   { key: "preferences", label: "Preferences", Icon: PrefsIcon },
@@ -133,6 +135,9 @@ interface SettingsPageProps {
   onPreviewConnectorImport: (bundle: ConnectorExportBundle) => Promise<ConnectorImportPreviewResponse>;
   onApplyConnectorImport: (bundle: ConnectorExportBundle, resolutions?: Record<string, "skip" | "replace">) => Promise<ConnectorImportApplyResponse>;
   onSetConnectorAuditPreference: (preference: ConnectorAuditPreference) => Promise<ConnectorAuditPreference>;
+  onClearAllProviderAuth: () => Promise<void>;
+  onClearConnectorData: () => Promise<void>;
+  onClearChatHistory: () => void;
   onRetryCompanion: () => Promise<void> | void;
   onSaveCompanionEndpoint: (endpoint: string) => Promise<void> | void;
   onClearRuntimeDiagnostics: () => void;
@@ -174,6 +179,9 @@ export function SettingsPage({
   onPreviewConnectorImport,
   onApplyConnectorImport,
   onSetConnectorAuditPreference,
+  onClearAllProviderAuth,
+  onClearConnectorData,
+  onClearChatHistory,
   onRetryCompanion,
   onSaveCompanionEndpoint,
   onClearRuntimeDiagnostics,
@@ -296,6 +304,13 @@ export function SettingsPage({
               onSetAuditPreference={onSetConnectorAuditPreference}
             />
           )}
+          {activeTab === "privacy" && (
+            <PrivacySection
+              onClearAllProviderAuth={onClearAllProviderAuth}
+              onClearConnectorData={onClearConnectorData}
+              onClearChatHistory={onClearChatHistory}
+            />
+          )}
           {activeTab === "diagnostics" && (
             <DiagnosticsSection
               diagnostics={runtimeDiagnostics}
@@ -324,6 +339,89 @@ const DIAGNOSTIC_SOURCE_LABELS: Record<RuntimeRequestFailureDiagnostic["source"]
   auth: "Auth",
   connector: "Connector",
 };
+
+function PrivacySection({
+  onClearAllProviderAuth,
+  onClearConnectorData,
+  onClearChatHistory,
+}: {
+  onClearAllProviderAuth: () => Promise<void>;
+  onClearConnectorData: () => Promise<void>;
+  onClearChatHistory: () => void;
+}) {
+  const confirmAndRun = useCallback((message: string, action: () => Promise<void> | void) => {
+    if (window.confirm(message)) {
+      void action();
+    }
+  }, []);
+
+  return (
+    <section className="settings-section privacy-section">
+      <h3>Privacy & Storage</h3>
+      <p className="settings-note">
+        Pi-Office keeps the Office bridge local to the taskpane. Provider and connector requests leave the taskpane only when a configured runtime or connector is used.
+      </p>
+
+      <div className="privacy-disclosure-list">
+        <article className="privacy-disclosure-row">
+          <div>
+            <strong>Provider calls</strong>
+            <p>Prompts, selected Office context, generated images, and tool results are sent to the selected AI provider when a request runs. Provider credentials are stored in this browser origin.</p>
+          </div>
+          <button
+            type="button"
+            className="button"
+            onClick={() => confirmAndRun("Clear all stored provider credentials from this taskpane?", onClearAllProviderAuth)}
+          >
+            Clear provider auth
+          </button>
+        </article>
+
+        <article className="privacy-disclosure-row">
+          <div>
+            <strong>Connectors</strong>
+            <p>Connector calls can contact external services or the optional local companion. Connector config, secrets, OAuth handoffs, scope settings, and redacted audit entries are stored locally.</p>
+          </div>
+          <button
+            type="button"
+            className="button"
+            onClick={() => confirmAndRun("Remove all connector configuration, secrets, OAuth state, scopes, and logs?", onClearConnectorData)}
+          >
+            Clear connectors
+          </button>
+        </article>
+
+        <article className="privacy-disclosure-row">
+          <div>
+            <strong>Chat history</strong>
+            <p>Saved chats may include prompts, document snippets, model responses, and metadata for the current Office host. They are stored in localStorage for this taskpane origin.</p>
+          </div>
+          <button
+            type="button"
+            className="button"
+            onClick={() => confirmAndRun("Clear saved local chat history from this taskpane?", onClearChatHistory)}
+          >
+            Clear saved chats
+          </button>
+        </article>
+
+        <article className="privacy-disclosure-row privacy-disclosure-row-static">
+          <div>
+            <strong>Telemetry</strong>
+            <p>Pi-Office does not enable product analytics or telemetry by default. AI providers, connectors, and hosted services may keep their own request logs under their policies.</p>
+          </div>
+        </article>
+
+        <article className="privacy-disclosure-row privacy-disclosure-row-static">
+          <div>
+            <strong>Local encryption limit</strong>
+            <p>Provider and connector envelopes use AES-GCM, but the encryption keys are also stored in localStorage. Treat this as local obfuscation, not protection from same-origin script access.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
 
 function formatDiagnosticTimestamp(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour12: false });

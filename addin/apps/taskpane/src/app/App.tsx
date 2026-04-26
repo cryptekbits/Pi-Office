@@ -234,7 +234,7 @@ export function App() {
     preferences.toolPermissionOverrides,
     officeState?.document.workspaceDir,
   );
-  const { saveChat, loadChat, deleteChat, listChats, updateSubject } = useChatHistory();
+  const { saveChat, loadChat, deleteChat, clearHistory, listChats, updateSubject } = useChatHistory();
 
   const sessionIdRef = useRef<string | undefined>(undefined);
   const bridgeRef = useRef<LocalBridgeSocket | null>(null);
@@ -1450,6 +1450,17 @@ export function App() {
     }
   }, [pushErrorMessage, pushSystemMessage, refreshProviderState]);
 
+  const handleClearAllProviderAuth = useCallback(async () => {
+    try {
+      await deleteJson<{ ok: true }>("/v1/auth");
+      await refreshProviderState();
+      pushSystemMessage("Cleared all stored provider credentials from this taskpane.");
+    } catch (error) {
+      pushErrorMessage(`Provider credential cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }, [pushErrorMessage, pushSystemMessage, refreshProviderState]);
+
   const handleStartOAuth = useCallback(async (provider: string) => {
     try {
       await postJson<{ ok: true }>("/v1/auth/start", { providerId: provider });
@@ -1526,6 +1537,19 @@ export function App() {
     }
   }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState]);
 
+  const handleClearConnectorData = useCallback(async () => {
+    try {
+      await deleteJson<{ ok: true }>("/v1/connectors");
+      await refreshConnectorState(connectorScopeContext);
+      await syncCurrentSessionState();
+      pushSystemMessage("Cleared connector configuration, secrets, scopes, OAuth state, and logs.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      pushErrorMessage(`Connector cleanup failed: ${message}`);
+      throw error;
+    }
+  }, [connectorScopeContext, pushErrorMessage, pushSystemMessage, refreshConnectorState, syncCurrentSessionState]);
+
   const handleSetConnectorFavorite = useCallback(async (request: ConnectorFavoriteRequest) => {
     try {
       await postJson<{ ok: true; status: ConnectorStatus }>("/v1/connectors/favorite", request);
@@ -1601,6 +1625,12 @@ export function App() {
       throw error;
     }
   }, [pushErrorMessage]);
+
+  const handleClearChatHistory = useCallback(() => {
+    clearHistory();
+    setHistoryOpen(false);
+    pushSystemMessage("Cleared saved local chat history.");
+  }, [clearHistory, pushSystemMessage]);
 
   const handleRetryCompanion = useCallback(async () => {
     try {
@@ -1688,6 +1718,9 @@ export function App() {
           onPreviewConnectorImport={handlePreviewConnectorImport}
           onApplyConnectorImport={handleApplyConnectorImport}
           onSetConnectorAuditPreference={handleSetConnectorAuditPreference}
+          onClearAllProviderAuth={handleClearAllProviderAuth}
+          onClearConnectorData={handleClearConnectorData}
+          onClearChatHistory={handleClearChatHistory}
           onRetryCompanion={handleRetryCompanion}
           onSaveCompanionEndpoint={handleSaveCompanionEndpoint}
           onClearRuntimeDiagnostics={clearRuntimeDiagnostics}

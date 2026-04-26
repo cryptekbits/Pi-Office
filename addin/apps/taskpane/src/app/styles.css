@@ -1636,6 +1636,48 @@ select:focus, input:focus, textarea:focus {
 .settings-meta { margin: 4px 0 0; font-size: 0.8rem; color: var(--muted); }
 
 /* ------------------------------------------------------------------ */
+/* Privacy disclosure                                                  */
+/* ------------------------------------------------------------------ */
+.privacy-section {
+  max-width: 760px;
+}
+.privacy-disclosure-list {
+  display: grid;
+  gap: 8px;
+}
+.privacy-disclosure-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  background: rgba(255, 255, 255, 0.6);
+}
+.privacy-disclosure-row > div {
+  min-width: 0;
+}
+.privacy-disclosure-row strong {
+  display: block;
+  font-size: 0.86rem;
+}
+.privacy-disclosure-row p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.privacy-disclosure-row .button {
+  flex: 0 0 auto;
+  max-width: 170px;
+  white-space: normal;
+}
+.privacy-disclosure-row-static {
+  align-items: flex-start;
+}
+
+/* ------------------------------------------------------------------ */
 /* Provider cards                                                      */
 /* ------------------------------------------------------------------ */
 .provider-list { display: grid; gap: 8px; }
@@ -2231,11 +2273,16 @@ select:focus, input:focus, textarea:focus {
   .integration-connected-top,
   .integration-custom-list-header,
   .integration-choice-row,
+  .privacy-disclosure-row,
   .integration-panel-footer,
   .integration-env-row,
   .integration-diagnostic-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .privacy-disclosure-row .button {
+    width: 100%;
+    max-width: none;
   }
 }
 
