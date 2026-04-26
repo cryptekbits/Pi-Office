@@ -1,30 +1,31 @@
 # Pi-Office
 
-Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint. The taskpane and local companion are built around Pi as the runtime core.
+Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 
-## What is in this repo
+## What Is In This Repo
 
 - `apps/taskpane`
   Shared React taskpane app served over `https://localhost:3443`
 - `apps/companion`
-  Local HTTPS companion that owns Pi auth, sessions, workspace access, and the Office bridge
+  Optional local HTTPS companion for read-only local file access and read-only local MCP execution
 - `packages/pi-office-pack`
   Internal Pi package with Office-specific tools, prompts, and skills
 - `manifests`
   Separate XML manifests for Word, Excel, and PowerPoint
 - `certs`
-  Local development certificate artifacts generated for the companion
+  Local development certificate artifacts used by local HTTPS services
 
-## Current architecture
+## Current Architecture
 
 - Office hosts the taskpane UI and runs `Office.js`
-- The companion runs Pi locally and serves the taskpane on the same origin
-- Pi treats Office manipulation as custom tools exposed by `pi-office-pack`
-- The taskpane executes those Office tool calls locally and returns results to the companion over WebSocket
-- Unsaved documents run in `document-only` mode
-- Saved documents switch to `workspace` mode and bind Pi to the document directory so AGENTS/skills/file context become available
+- The taskpane runtime is self-contained for chat, providers, models, Office tools, and browser-safe connectors
+- The optional companion is a separate capability provider on `https://localhost:3444`
+- Saved documents provide folder context, but local file tools stay disabled until the optional companion connects
+- Remote HTTP connectors can be configured in browser mode, but agent execution is setup-only until the browser remote-MCP execution path is implemented
+- Local stdio connectors require the optional companion and stay read-only
+- Multiple Office windows can reuse one machine-local companion while keeping logical taskpane sessions isolated
 
-## Local setup
+## Local Setup
 
 1. Install dependencies:
 
@@ -32,21 +33,29 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint. The
 npm install
 ```
 
-2. Create and trust the local HTTPS certificate used by the companion:
+2. Create and trust the local HTTPS certificate:
 
 ```bash
 npm run prepare:certs
 ```
 
-3. Start the Pi-Office stack:
+3. Start the taskpane dev host for sideload development:
 
 ```bash
 npm run dev
 ```
 
-The companion listens on `https://localhost:3443`.
+This starts the taskpane web host on `https://localhost:3443`.
 
-4. Sideload a host manifest:
+4. Optionally start the local companion:
+
+```bash
+npm run dev:companion
+```
+
+This starts the optional companion on `https://localhost:3444`.
+
+5. Sideload a host manifest:
 
 ```bash
 npm run sideload:word
@@ -59,7 +68,7 @@ npm run sideload:excel
 npm run sideload:powerpoint
 ```
 
-5. Remove the sideload registration when you are done:
+6. Remove the sideload registration when you are done:
 
 ```bash
 npm run sideload:stop
@@ -73,9 +82,9 @@ npm run build
 npm run validate:manifests
 ```
 
-## Sideload flow
+## Sideload Flow
 
-Use the XML files in [`manifests`](/C:/Users/manan/Code/Personal/office-word-addin/manifests) for desktop/manual sideload. All three point at the same local companion origin.
+Use the XML files in [`manifests`](/C:/Users/manan/Code/Personal/office-word-addin/manifests) for desktop/manual sideload. All three point at the taskpane dev host on `https://localhost:3443`.
 
 - Word: [`word.xml`](/C:/Users/manan/Code/Personal/office-word-addin/manifests/word.xml)
 - Excel: [`excel.xml`](/C:/Users/manan/Code/Personal/office-word-addin/manifests/excel.xml)
@@ -83,9 +92,17 @@ Use the XML files in [`manifests`](/C:/Users/manan/Code/Personal/office-word-add
 
 If Word launches with a blank document during debugging, open the target saved document in that same Word instance and then open the add-in there. The taskpane session tracks the document it is attached to, not another Word window.
 
+## Companion Notes
+
+- Pi-Office works without the companion
+- Without the companion, local files and local stdio MCP connectors are unavailable
+- With the companion connected, Pi-Office enables read-only `read`, `grep`, `find`, and `ls` for the saved document folder
+- The companion does not host providers, auth, models, or the taskpane
+- Remote HTTP connectors are currently setup-only; do not present them as usable agent tools until the runtime exposes verified read-only remote MCP execution
+- Packaging for `dist/binaries`, zip, and npm distribution is planned later
+
 ## Notes
 
 - Pi is consumed as a dependency. This repo does not copy Pi source from `pi-mono`.
-- The Office bridge is intentionally local-first and Windows desktop-oriented for v1.
-- OAuth support is scaffolded through Pi auth storage, but API key entry is also supported so OpenAI/OpenRouter/Anthropic/Copilot-style provider setups are possible without a single-vendor lock-in.
-- No commits have been made.
+- `npm run dev` means "start the local taskpane web host for sideload development."
+- The optional companion is intentionally read-only for v1 local access.

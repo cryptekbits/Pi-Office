@@ -38,9 +38,28 @@ Set-Content -LiteralPath $thumbPath -Value $existing.Thumbprint -NoNewline
 Write-Output "Created localhost certificate: $certPath"
 `;
 
-const result = spawnSync("C:\\Program Files\\PowerShell\\7\\pwsh.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
-  stdio: "inherit",
-});
+const powerShellCandidates = [
+  "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+  "pwsh",
+  "powershell.exe",
+];
+
+let result = null;
+for (const candidate of powerShellCandidates) {
+  const attempt = spawnSync(candidate, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
+    stdio: "inherit",
+  });
+  if (attempt.error?.code === "ENOENT") {
+    continue;
+  }
+  result = attempt;
+  break;
+}
+
+if (!result) {
+  console.error("PowerShell was not found. Install PowerShell 7 or ensure powershell.exe is available in PATH.");
+  process.exit(1);
+}
 
 if (result.status !== 0) {
   process.exit(result.status ?? 1);

@@ -165,6 +165,30 @@ const smokeScenarios = {
           "PivotTable schema, filters, refresh, and sorts all execute through native workbook objects.",
         ],
       },
+      {
+        id: "excel-taskpane-stability",
+        title: "Taskpane focus, scroll, prompt, and connector stability",
+        covers: [
+          "taskpane keyboard focus",
+          "chat vertical scroll behavior",
+          "prompt + streaming stability",
+          "connector action execution",
+          "session reconnect behavior",
+        ],
+        setup: "Keep the taskpane open with an active model and at least one connected connector.",
+        steps: [
+          "Type and send a long prompt while selecting ranges in Excel between prompts; confirm keyboard input remains in the taskpane composer.",
+          "During streaming output, scroll up in chat to inspect prior content and verify scrolling remains stable.",
+          "Run one connector-backed task and verify response details appear in chat/settings.",
+          "Restart or reconnect Excel taskpane session and validate prompting still works afterwards.",
+        ],
+        expected: [
+          "Composer retains focus and prompt submission remains reliable.",
+          "Scrollable chat remains responsive during and after streaming.",
+          "Connector usage produces explicit outcomes (success or actionable failure).",
+          "Reconnect path preserves a working runtime/session state.",
+        ],
+      },
     ],
   },
   powerpoint: {
@@ -232,6 +256,30 @@ const smokeScenarios = {
         expected: [
           "Notes serialization returns the updated note text and a replacement slide selection.",
           "Chart inspection and updates return chart metadata, preserve editability, and keep embedded workbook data synchronized.",
+        ],
+      },
+      {
+        id: "powerpoint-taskpane-stability",
+        title: "Taskpane focus, scroll, prompt, and connector stability",
+        covers: [
+          "taskpane keyboard focus",
+          "chat vertical scroll behavior",
+          "prompt + streaming stability",
+          "connector action execution",
+          "session reconnect behavior",
+        ],
+        setup: "Keep the taskpane open with an active model and at least one connected connector.",
+        steps: [
+          "Type and send a long prompt in the composer while interacting with slides; confirm keyboard stays scoped to taskpane input.",
+          "Scroll chat during streaming output and verify user-controlled scroll behavior remains consistent.",
+          "Run one connector-backed request and verify runtime feedback in chat/settings.",
+          "Reconnect the taskpane (or restart PowerPoint) and validate prompt execution after reconnect.",
+        ],
+        expected: [
+          "Taskpane input focus is stable across slide interactions.",
+          "Streaming responses do not break vertical chat scrolling.",
+          "Connector calls return explicit outcomes without hidden failures.",
+          "Post-reconnect runtime remains operational for normal prompting flows.",
         ],
       },
     ],

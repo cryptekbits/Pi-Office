@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node ../../scripts/preflight-dev-runtime.mjs",
+    "dev": "vite",
     "pretypecheck": "npm run build --prefix ../../packages/pi-office-pack",
     "prebuild": "npm run build --prefix ../../packages/pi-office-pack",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
