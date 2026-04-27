@@ -1596,7 +1596,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Details: The first modularization pass removed the largest tool-registry and bridge monoliths and extracted initial Excel/PowerPoint action domains, but `excel-actions.ts` and `powerpoint-actions.ts` still contain many feature families in single files. Continue moving chart, pivot, worksheet structure, table, media, slide structure, OOXML, and verification handlers into focused modules so upcoming Word/Excel/PowerPoint features can land without recreating a monolith.
   - Dependencies: IMPROVEMENT-003.
   - Subtasks:
-    - [ ] Split Excel chart and pivot helpers/actions into `excel-actions/` domain modules.
+    - [x] Split Excel chart and pivot helpers/actions into `excel-actions/` domain modules.
     - [ ] Split Excel worksheet/range/table structure handlers from formatting/filter handlers.
     - [ ] Split PowerPoint OOXML/package, chart/notes, media/image, table, and slide-structure handlers into `powerpoint-actions/` modules.
     - [ ] Add or extend drift tests so action-domain handlers stay reachable from the host executor facade.
@@ -1604,7 +1604,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] `excel-actions.ts` and `powerpoint-actions.ts` become thin dispatch/facade files rather than primary implementation stores.
     - [ ] Each extracted module owns a cohesive Office.js feature family with typed inputs/outputs or clear helper contracts.
     - [ ] Existing Office tests, build, bundle, manifests, and diff whitespace checks remain green.
-  - Notes/Evidence: After `IMPROVEMENT-003`, the remaining action files are still large enough to slow feature work, even though Excel formatting/table-filter helpers and the PowerPoint icon catalog have been extracted.
+  - Notes/Evidence: After `IMPROVEMENT-003`, the remaining action files are still large enough to slow feature work, even though Excel formatting/table-filter helpers and the PowerPoint icon catalog have been extracted. 2026-04-28 first slice extracted Excel chart creation/update/XML extraction to `addin/apps/taskpane/src/lib/office/excel-actions/charts.ts` and PivotTable create/update/sort/refresh/configuration to `addin/apps/taskpane/src/lib/office/excel-actions/pivots.ts`, leaving `excel-actions.ts` as the dispatcher for those domains. Validation passed with `npm run typecheck:addin`, `npm run test:office` (236 tests), `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
 
 - [ ] IMPROVEMENT-010: Update GitHub Actions workflow for Node 24 runner transition
   - Category: Improvement
