@@ -160,18 +160,134 @@ function appendViewportCaptureSummary(payload: unknown, includeWindowFrameReques
   };
 }
 
+function textFromUnknown(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return trimString(value);
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return trimString(value.text) ?? trimString(value.heading) ?? trimString(value.label) ?? trimString(value.preview);
+}
+
+function styleFromUnknown(value: unknown): string | undefined {
+  return isRecord(value) ? (trimString(value.styleBuiltIn) ?? trimString(value.style)) : undefined;
+}
+
+function getNestedValue(source: unknown, path: string[]): unknown {
+  let current = source;
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
+function collectStructuredTextEntries(source: unknown, paths: string[][]): Array<{ text: string; style?: string | undefined }> {
+  const entries: Array<{ text: string; style?: string | undefined }> = [];
+  for (const path of paths) {
+    const value = getNestedValue(source, path);
+    if (!Array.isArray(value)) {
+      continue;
+    }
+    for (const entry of value) {
+      const text = textFromUnknown(entry);
+      if (text) {
+        entries.push({ text, style: styleFromUnknown(entry) });
+      }
+    }
+  }
+  return entries;
+}
+
+function numberedHeading(text: string): { number: number; label: string } | undefined {
+  const match = text.match(/^\s*(\d{1,2})(?:[.)]|:)?\s+\S/);
+  if (!match) {
+    return undefined;
+  }
+  return {
+    number: Number(match[1]),
+    label: text.length > 90 ? `${text.slice(0, 87)}...` : text,
+  };
+}
+
+function toWordStructuralWarnings(payload: Record<string, unknown>): string[] {
+  const snippets = payload.snippets;
+  const warnings: string[] = [];
+  const headings = collectStructuredTextEntries(snippets, [
+    ["headings"],
+    ["documentStructure", "headings"],
+    ["outline", "headings"],
+  ]);
+  const paragraphs = collectStructuredTextEntries(snippets, [
+    ["paragraphs"],
+    ["documentStructure", "paragraphs"],
+    ["preview", "paragraphs"],
+  ]);
+  const ordered = headings.length ? headings : paragraphs;
+  const numbered = ordered
+    .map((entry, index) => {
+      const parsed = numberedHeading(entry.text);
+      return parsed ? { ...parsed, index } : undefined;
+    })
+    .filter((entry): entry is { number: number; label: string; index: number } => Boolean(entry));
+
+  if (numbered[0] && numbered[0].number > 1) {
+    warnings.push(
+      `Malformed heading order: first numbered heading is "${numbered[0].label}" before a section 1 heading. Verify and repair document order before claiming success.`,
+    );
+  }
+
+  for (let index = 1; index < numbered.length; index += 1) {
+    const previous = numbered[index - 1];
+    const current = numbered[index];
+    if (!previous || !current) {
+      continue;
+    }
+    if (current.number < previous.number) {
+      warnings.push(
+        `Malformed heading order: "${current.label}" appears after "${previous.label}". Verify and repair document order before claiming success.`,
+      );
+      break;
+    }
+  }
+
+  for (const [index, entry] of paragraphs.entries()) {
+    const style = entry.style ?? "";
+    const wordCount = entry.text.split(/\s+/).filter(Boolean).length;
+    if (/heading\s*1|heading1/i.test(style) && (entry.text.length > 180 || wordCount > 24)) {
+      warnings.push(
+        `Document structure warning: paragraph ${index + 1} is styled as Heading1 but looks like body text. Verify heading levels before claiming formatted output.`,
+      );
+      break;
+    }
+  }
+
+  return Array.from(new Set(warnings));
+}
+
 function toWordDocumentVerificationPayload(payload: unknown, scope: string | undefined): unknown {
   if (!isRecord(payload)) {
     return payload;
   }
 
+  const warnings = toWordStructuralWarnings(payload);
+  const summaryParts = [
+    trimString(payload.summary) ?? "Word verification context captured.",
+    ...warnings.map((warning) => `Warning: ${warning}`),
+  ];
+
   return {
-    summary: trimString(payload.summary) ?? "Word verification context captured.",
+    summary: summaryParts.join("\n"),
+    warnings: warnings.length ? warnings : undefined,
     details: {
       kind: "word-document-verification",
       mutating: false,
       host: "word",
       scope: scope ?? "document",
+      warnings: warnings.length ? warnings : undefined,
       context: {
         state: payload.state,
         anchors: payload.anchors,
@@ -665,7 +781,7 @@ export function serializeOfficeToolError(error: unknown): Record<string, unknown
 }
 
 export function toAnchor(params: Record<string, unknown>): OfficeAnchor {
-  const anchorRecord = isRecord(params.anchor) ? params.anchor : params;
+  const anchorRecord = isRecord(params.anchor) ? params.anchor : isRecord(params.target) ? params.target : params;
   const explicitKind = trimString(anchorRecord.kind);
   const layoutId = trimString(anchorRecord.layoutId);
   const slideMasterId = trimString(anchorRecord.slideMasterId);
@@ -775,6 +891,12 @@ function normalizeActionType(value: string | undefined): string | undefined {
   if (compact === "inserthtml") {
     return "insertHtml";
   }
+  if (compact === "replacedocumenthtml" || compact === "setdocumenthtml" || compact === "populatedocumenthtml") {
+    return "insertHtml";
+  }
+  if (compact === "appenddocumenthtml" || compact === "prependdocumenthtml") {
+    return "insertHtml";
+  }
   if (compact === "setrangevalues") {
     return "setRangeValues";
   }
@@ -823,6 +945,32 @@ function normalizeFormat(value: string | undefined): string | undefined {
   return normalized;
 }
 
+function documentHtmlPlacementFromType(value: string | undefined): "replace" | "end" | "start" | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  if (compact === "replacedocumenthtml" || compact === "setdocumenthtml" || compact === "populatedocumenthtml") {
+    return "replace";
+  }
+  if (compact === "appenddocumenthtml") {
+    return "end";
+  }
+  if (compact === "prependdocumenthtml") {
+    return "start";
+  }
+  return undefined;
+}
+
+function placementFromDocumentTargetPosition(value: unknown): "replace" | "end" | "start" | undefined {
+  const compact = trimString(value)?.replace(/[\s_-]/g, "").toLowerCase();
+  if (compact === "replace" || compact === "start" || compact === "end") {
+    return compact;
+  }
+  return undefined;
+}
+
 function looksLikeHtml(content: string): boolean {
   return /<\/?[a-z][a-z0-9:-]*(?:\s[^>]*)?>/i.test(content);
 }
@@ -832,7 +980,53 @@ function hasHtmlObjectValues(values: unknown): boolean {
     && values.some((entry) => isRecord(entry) && typeof entry.html === "string" && entry.html.trim().length > 0);
 }
 
-function validateInsertAction(action: OfficeHostAction, options?: { explicitLiteralText?: boolean }): OfficeHostAction {
+function firstHtmlHeading(content: string): { text: string; number?: number | undefined } | undefined {
+  const match = content.match(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i);
+  if (!match) {
+    return undefined;
+  }
+  const text = (match[1] ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) {
+    return undefined;
+  }
+  const numbered = text.match(/^(\d{1,2})(?:[.)]|:)?\s+\S/);
+  return {
+    text,
+    number: numbered ? Number(numbered[1]) : undefined,
+  };
+}
+
+function assertTopLevelSectionTargeting(action: OfficeHostAction, hasExplicitTarget: boolean): void {
+  if (normalizeActionType(trimString(action.type)) !== "insertHtml" || typeof action.content !== "string") {
+    return;
+  }
+
+  const heading = firstHtmlHeading(action.content);
+  if (!heading?.number || heading.number <= 1) {
+    return;
+  }
+
+  const targetKind = action.target?.kind;
+  const hasSafeTarget = Boolean(targetKind && targetKind !== "selection") || hasExplicitTarget;
+  if (hasSafeTarget) {
+    return;
+  }
+
+  throw new Error(
+    `office_apply_edit insertHtml appears to add top-level section "${heading.text}" without an explicit target. ` +
+      "For follow-up document sections, use action: { type: \"insertHtml\", target: { kind: \"document\" }, placement: \"end\", content: \"...\" } or operation: \"appendDocumentHtml\". " +
+      "Do not rely on the stale active Word selection for later document sections.",
+  );
+}
+
+function validateInsertAction(
+  action: OfficeHostAction,
+  options?: { explicitLiteralText?: boolean; hasExplicitTarget?: boolean },
+): OfficeHostAction {
   const type = normalizeActionType(trimString(action.type)) ?? action.type;
   if (type !== "insertHtml" && type !== "insertText") {
     return { ...action, type };
@@ -856,7 +1050,9 @@ function validateInsertAction(action: OfficeHostAction, options?: { explicitLite
     );
   }
 
-  return { ...action, type, content };
+  const normalized = { ...action, type, content };
+  assertTopLevelSectionTargeting(normalized, options?.hasExplicitTarget === true);
+  return normalized;
 }
 
 function toStringArray(value: unknown): string[] {
@@ -1181,16 +1377,69 @@ function toPowerPointStructureTarget(params: Record<string, unknown>): OfficeAnc
   return toAnchor(params);
 }
 
+function hasExplicitOfficeTarget(params: Record<string, unknown>): boolean {
+  if (isRecord(params.anchor) || isRecord(params.target) || trimString(params.target)) {
+    return true;
+  }
+
+  return [
+    "kind",
+    "id",
+    "label",
+    "paragraphId",
+    "searchQuery",
+    "searchResultId",
+    "commentId",
+    "revisionId",
+    "bookmarkName",
+    "hyperlinkId",
+    "hyperlinkAddress",
+    "sheetName",
+    "address",
+    "slideId",
+    "slideIndex",
+    "shapeId",
+    "tableName",
+    "chartName",
+    "pivotTableName",
+    "namedItemName",
+  ].some((key) => trimString(params[key]) || typeof params[key] === "number");
+}
+
 export function toHostAction(params: Record<string, unknown>): OfficeHostAction {
-  if (isRecord(params.action) && typeof params.action.type === "string") {
+  if (typeof params.action === "string" && params.action.trim()) {
+    throw new Error(
+      "office_apply_edit.action must be an object, not a JSON string. Pass action as { type: \"insertHtml\", content: \"...\" } without JSON-encoding the nested action.",
+    );
+  }
+  if (params.action !== undefined && params.action !== null && !isRecord(params.action)) {
+    throw new Error("office_apply_edit.action must be an object with a string type.");
+  }
+  if (isRecord(params.action)) {
+    if (typeof params.action.type !== "string") {
+      throw new Error("office_apply_edit.action.type is required when action is provided.");
+    }
     const action = { ...(params.action as Record<string, unknown>) } as OfficeHostAction;
+    const targetRecord = isRecord(action.target) ? action.target : undefined;
+    const documentPlacement =
+      documentHtmlPlacementFromType(trimString(action.type)) ?? placementFromDocumentTargetPosition(targetRecord?.position);
+    if (documentPlacement && (!targetRecord || !trimString(targetRecord.kind))) {
+      action.target = { ...(targetRecord ?? {}), kind: "document" };
+    }
+    if (!action.placement && documentPlacement) {
+      action.placement = documentPlacement;
+    }
     if (isRecord(action.target)) {
       action.target = toAnchor({ anchor: action.target });
     }
-    return validateInsertAction(action, { explicitLiteralText: normalizeActionType(trimString(action.type)) === "insertText" });
+    return validateInsertAction(action, {
+      explicitLiteralText: normalizeActionType(trimString(action.type)) === "insertText",
+      hasExplicitTarget: isRecord(action.target),
+    });
   }
 
-  const requestedType = normalizeActionType(trimString(params.operation) ?? trimString(params.type));
+  const rawRequestedType = trimString(params.operation) ?? trimString(params.type);
+  const requestedType = normalizeActionType(rawRequestedType);
   const mode = normalizeMode(trimString(params.mode));
   const inferredFormatFromType =
     requestedType === "insertHtml" ? "html" : requestedType === "setRangeValues" ? "matrix" : undefined;
@@ -1202,7 +1451,10 @@ export function toHostAction(params: Record<string, unknown>): OfficeHostAction 
     params.text,
     params.html,
   ) ?? "";
-  const target = toAnchor(params);
+  const targetRecord = isRecord(params.target) ? params.target : isRecord(params.anchor) ? params.anchor : undefined;
+  const documentPlacement =
+    documentHtmlPlacementFromType(rawRequestedType) ?? placementFromDocumentTargetPosition(targetRecord?.position ?? params.position);
+  const target = documentPlacement ? ({ kind: "document" } as OfficeAnchor) : toAnchor(params);
   const directValues = Array.isArray(params.values) ? (params.values as OfficeHostAction["values"]) : undefined;
 
   if (hasHtmlObjectValues(params.values) && requestedType !== "setRangeValues" && mode !== "setRangeValues" && format !== "matrix") {
@@ -1221,7 +1473,10 @@ export function toHostAction(params: Record<string, unknown>): OfficeHostAction 
     };
   }
 
-  const placement = trimString(params.placement) ?? (mode === "insertAfterSelection" ? "after" : mode === "insertBeforeSelection" ? "before" : "replace");
+  const placement =
+    trimString(params.placement) ??
+    documentPlacement ??
+    (mode === "insertAfterSelection" ? "after" : mode === "insertBeforeSelection" ? "before" : "replace");
   const type = requestedType ?? (format === "html" ? "insertHtml" : "insertText");
   const explicitLiteralText = requestedType === "insertText" || format === "text";
 
@@ -1231,7 +1486,7 @@ export function toHostAction(params: Record<string, unknown>): OfficeHostAction 
     content,
     format,
     placement,
-  }, { explicitLiteralText });
+  }, { explicitLiteralText, hasExplicitTarget: hasExplicitOfficeTarget(params) || Boolean(documentPlacement) });
 }
 
 export interface OfficeToolExecutorDependencies {

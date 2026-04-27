@@ -36,6 +36,47 @@ import {
 } from "./shared";
 import { matchesWordHeading, matchesWordParagraph } from "./word-navigate";
 
+export type NormalizedWordBreakType =
+  | "Page"
+  | "Next"
+  | "SectionNext"
+  | "SectionContinuous"
+  | "SectionEven"
+  | "SectionOdd"
+  | "Line";
+
+export function normalizeWordBreakType(value: unknown): NormalizedWordBreakType {
+  const raw = trimString(value) ?? "page";
+  const compact = raw.replace(/[\s_-]/g, "").toLowerCase();
+  switch (compact) {
+    case "page":
+      return "Page";
+    case "next":
+      return "Next";
+    case "sectionnext":
+      return "SectionNext";
+    case "sectioncontinuous":
+      return "SectionContinuous";
+    case "sectioneven":
+      return "SectionEven";
+    case "sectionodd":
+      return "SectionOdd";
+    case "line":
+      return "Line";
+    default:
+      throw new Error(
+        `Unsupported Word breakType "${raw}". Use page, sectionNext, sectionContinuous, sectionEven, sectionOdd, or line.`,
+      );
+  }
+}
+
+export function countWordOoxmlBreaks(ooxml: string, breakType: NormalizedWordBreakType): number {
+  if (breakType !== "Page") {
+    return 0;
+  }
+  return (ooxml.match(/<w:br\b[^>]*\bw:type=["']page["'][^>]*(?:\/>|>)/gi) ?? []).length;
+}
+
 export async function applyWordAction(action: OfficeHostAction): Promise<unknown> {
   return Word.run(async (context) => {
     const body = context.document.body;
@@ -376,17 +417,47 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
     };
 
     if (type === "insertHtml") {
+      if (action.target?.kind === "document") {
+        const documentPlacement =
+          action.placement === "start" || action.placement === "end" || action.placement === "replace"
+            ? action.placement
+            : "replace";
+        const documentInsertLocation: Word.InsertLocation.start | Word.InsertLocation.end | Word.InsertLocation.replace =
+          documentPlacement === "start"
+            ? Word.InsertLocation.start
+            : documentPlacement === "end"
+              ? Word.InsertLocation.end
+              : Word.InsertLocation.replace;
+        body.insertHtml(content, documentInsertLocation);
+        await context.sync();
+        return { ok: true, host: "word", action: type, target: { kind: "document" }, placement: documentPlacement };
+      }
       const { range } = await resolveTargetRange();
       range.insertHtml(content, placement);
       await context.sync();
-      return { ok: true, host: "word", action: type };
+      return { ok: true, host: "word", action: type, target: action.target, placement: action.placement ?? "replace" };
     }
 
     if (type === "insertText") {
+      if (action.target?.kind === "document") {
+        const documentPlacement =
+          action.placement === "start" || action.placement === "end" || action.placement === "replace"
+            ? action.placement
+            : "replace";
+        const documentInsertLocation: Word.InsertLocation.start | Word.InsertLocation.end | Word.InsertLocation.replace =
+          documentPlacement === "start"
+            ? Word.InsertLocation.start
+            : documentPlacement === "end"
+              ? Word.InsertLocation.end
+              : Word.InsertLocation.replace;
+        body.insertText(content, documentInsertLocation);
+        await context.sync();
+        return { ok: true, host: "word", action: type, target: { kind: "document" }, placement: documentPlacement };
+      }
       const { range } = await resolveTargetRange();
       range.insertText(content, placement);
       await context.sync();
-      return { ok: true, host: "word", action: type };
+      return { ok: true, host: "word", action: type, target: action.target, placement: action.placement ?? "replace" };
     }
 
     if (type === "applyParagraphFormat" || type === "applyTextFormat" || type === "clearFormatting") {
@@ -885,11 +956,53 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
 
       if (operation === "insertBreak") {
         const { range } = await resolveTargetRange();
-        const breakType = trimString(options.breakType ?? action.breakType) ?? "Page";
+        range.load("text");
+        const requestedBreakType = trimString(options.breakType ?? action.breakType) ?? "page";
+        const breakType = normalizeWordBreakType(requestedBreakType);
         const insertLocation = (action.placement === "before" ? Word.InsertLocation.before : Word.InsertLocation.after);
-        range.insertBreak(breakType as Word.BreakType, insertLocation);
+        const beforeOoxml = breakType === "Page" ? body.getOoxml() : undefined;
         await context.sync();
-        return { ok: true, host: "word", action: type, operation, breakType, placement: action.placement ?? "after" };
+        const beforeBreakCount = beforeOoxml ? countWordOoxmlBreaks(beforeOoxml.value, breakType) : undefined;
+        range.insertBreak(breakType as Word.BreakType, insertLocation);
+        const afterOoxml = breakType === "Page" ? body.getOoxml() : undefined;
+        await context.sync();
+        const afterBreakCount = afterOoxml ? countWordOoxmlBreaks(afterOoxml.value, breakType) : undefined;
+        if (
+          breakType === "Page" &&
+          typeof beforeBreakCount === "number" &&
+          typeof afterBreakCount === "number" &&
+          afterBreakCount <= beforeBreakCount
+        ) {
+          throw new Error(
+            "word_section_layout.insertBreak requested a page break but post-write OOXML verification did not find a new persisted w:br w:type=\"page\". Do not claim page-break or page-count success without verify_doc, verify_doc_visual, or native page metadata evidence.",
+          );
+        }
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          requestedBreakType,
+          resolvedBreakType: breakType,
+          target: {
+            kind: action.target?.kind ?? "selection",
+            text: truncateLabel(range.text, 140),
+          },
+          placement: action.placement ?? "after",
+          verification: breakType === "Page"
+            ? {
+                method: "body.getOoxml",
+                persisted: typeof afterBreakCount === "number" ? afterBreakCount > (beforeBreakCount ?? 0) : undefined,
+                beforeBreakCount,
+                afterBreakCount,
+                note: "Page-break success is based on persisted Word OOXML evidence; still call verify_doc or verify_doc_visual before claiming page count.",
+              }
+            : {
+                method: "office-js-insertBreak",
+                persisted: undefined,
+                note: "Non-page break insertion was sent through Word.insertBreak; use verify_doc or native page/section metadata before claiming final layout.",
+              },
+        };
       }
 
       throw new Error(`Unsupported Word section/layout operation: ${operation}.`);

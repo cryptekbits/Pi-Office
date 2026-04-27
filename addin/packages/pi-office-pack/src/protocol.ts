@@ -103,6 +103,7 @@ export interface OfficeDocumentDescriptor {
 }
 
 export const OFFICE_ANCHOR_KINDS = [
+  "document",
   "selection",
   "heading",
   "paragraph",

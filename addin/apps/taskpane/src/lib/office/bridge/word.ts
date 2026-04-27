@@ -318,6 +318,7 @@ export async function executeWordOfficeTool(
 
         const result = await dependencies.applyHostAction(request.host, {
           type: "sectionLayout",
+          target: request.params.target as never,
           content: typeof request.params.text === "string"
             ? request.params.text
             : typeof request.params.content === "string"

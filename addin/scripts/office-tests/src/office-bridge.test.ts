@@ -112,6 +112,45 @@ test("toHostAction rejects model-generated HTML shapes that would become literal
   );
 });
 
+test("toHostAction rejects Gemini Pro JSON-string action without falling back to empty insertText", () => {
+  assert.throws(
+    () => toHostAction({
+      action: "{\"type\": \"insertHtml\", \"content\": \"<h1>Executive Briefing: The Fast Fourier Transform (FFT)</h1>\"}",
+    }),
+    /action must be an object, not a JSON string/i,
+  );
+});
+
+test("toHostAction supports explicit document-scope HTML replacement and append", () => {
+  const replace = toHostAction({
+    operation: "replaceDocumentHtml",
+    html: "<h1>Executive Brief</h1><p>One write.</p>",
+  });
+  assert.equal(replace.type, "insertHtml");
+  assert.equal(replace.target?.kind, "document");
+  assert.equal(replace.placement, "replace");
+
+  const append = toHostAction({
+    action: {
+      type: "appendDocumentHtml",
+      content: "<h2>7. Conclusion</h2><p>Closing section.</p>",
+    },
+  });
+  assert.equal(append.type, "insertHtml");
+  assert.equal(append.target?.kind, "document");
+  assert.equal(append.placement, "end");
+});
+
+test("toHostAction blocks ambiguous follow-up numbered Word sections at stale selection", () => {
+  assert.throws(
+    () => toHostAction({
+      operation: "insertHtml",
+      html: "<h2>7. Conclusion</h2><p>Closing section inserted after the full document draft.</p>",
+    }),
+    /top-level section.*explicit target|stale active Word selection/i,
+  );
+});
+
 test("toHostAction supports direct matrix values payload", () => {
   const action = toHostAction({
     operation: "setRangeValues",
@@ -586,6 +625,46 @@ test("createOfficeToolExecutor returns structured payloads for first-class Word 
 
   assert.equal(verifyVisualUnsupported.success, false);
   assert.match(String(verifyVisualUnsupported.error), /only available for Word/);
+});
+
+test("verify_doc flags corrupted numbered heading order from saved document context", async () => {
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({
+      summary: "Word context captured",
+      state: { host: "word" },
+      snippets: {
+        headings: [
+          { text: "7. Conclusion", styleBuiltIn: "Heading2" },
+          { text: "1. Executive Summary", styleBuiltIn: "Heading2" },
+        ],
+        paragraphs: [
+          {
+            text: "7. Conclusion This closing section accidentally landed at the top of the document before the executive summary and now reads like body prose rather than a real heading.",
+            styleBuiltIn: "Heading1",
+          },
+        ],
+      },
+    }),
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const result = await executeOfficeTool({
+    requestId: "verify-heading-order",
+    toolName: "verify_doc" as OfficeToolRequest["toolName"],
+    host: "word",
+    params: { scope: "document" },
+  } as OfficeToolRequest);
+
+  assert.equal(result.success, true);
+  const payload = result.content as { summary: string; warnings?: string[]; details: { warnings?: string[] } };
+  assert.match(payload.summary, /7\. Conclusion/);
+  assert.match(payload.summary, /before a section 1 heading|appears after/i);
+  assert.ok(payload.warnings?.some((warning) => /Malformed heading order/.test(warning)));
+  assert.ok(payload.details.warnings?.some((warning) => /Heading1 but looks like body text/.test(warning)));
 });
 
 test("summarizeOfficeToolError includes code, location, statement, and traces when present", () => {

@@ -200,16 +200,36 @@ test("deferred discovery protocol tools are read-only registry entries", () => {
 
 test("prompt and registry steer Word document generation to structured HTML insertion", () => {
   const applyEditDefinition = getOfficeToolDefinition("office_apply_edit");
+  const actionSchema = (applyEditDefinition.parameters as { properties?: { action?: { type?: string } } }).properties?.action;
 
   assert.match(applyEditDefinition.description, /insertHtml/i);
+  assert.match(applyEditDefinition.description, /not a JSON string/i);
+  assert.equal(actionSchema?.type, "object");
   assert.match(applyEditDefinition.description, /content/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /new Word document generation/i);
-  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /"type": "insertHtml"/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /replaceDocumentHtml/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /"kind": "document"/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /JSON-encoded string/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /values\[\]/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /word_section_layout/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /page-break-before/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /Do not claim a page break landed/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /do not mix Markdown markers/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /before claiming the document is formatted/);
+});
+
+test("in-process runtime normalizes Gemini-style JSON string tool arguments", async () => {
+  const runtime = await loadKernelModule();
+  assert.deepEqual(
+    runtime.normalizeToolParams("{\"operation\":\"insertBreak\",\"breakType\":\"page\",\"placement\":\"before\"}"),
+    {
+      operation: "insertBreak",
+      breakType: "page",
+      placement: "before",
+    },
+  );
+  assert.deepEqual(runtime.normalizeToolParams("\"not-an-object\""), {});
+  assert.deepEqual(runtime.normalizeToolParams("{not json"), {});
 });
 
 test("in-process runtime publishes compact core tools and defers long-tail Office schemas", async () => {

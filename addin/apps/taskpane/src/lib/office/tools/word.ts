@@ -213,6 +213,7 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     parameters: Type.Object({
       operation: Type.String({ description: "inventory, setHeader, setFooter, clearHeader, clearFooter, pageSetup, or insertBreak." }),
       sectionIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based section index. Defaults to 1." })),
+      target: Type.Optional(Type.Any({ description: "Optional Word anchor for insertBreak, such as { kind: \"heading\", text: \"7. Conclusion\" } or another explicit range target." })),
       headerFooterType: Type.Optional(Type.String({ description: "primary, firstPage, or evenPages. Defaults to primary." })),
       text: Type.Optional(Type.String({ description: "Header/footer text for setHeader or setFooter." })),
       margins: Type.Optional(Type.Any({ description: "Margin/page setup values in points: top, bottom, left, right, pageWidth, pageHeight." })),
@@ -223,8 +224,8 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       pageWidth: Type.Optional(Type.Number({ description: "Page width in points for pageSetup." })),
       pageHeight: Type.Optional(Type.Number({ description: "Page height in points for pageSetup." })),
       orientation: Type.Optional(Type.String({ description: "Page orientation: portrait or landscape." })),
-      breakType: Type.Optional(Type.String({ description: "page, sectionNext, sectionContinuous, sectionEven, sectionOdd, or line." })),
-      placement: Type.Optional(Type.String({ description: "Break placement: before, after, start, or end." })),
+      breakType: Type.Optional(Type.String({ description: "page, sectionNext, sectionContinuous, sectionEven, sectionOdd, or line. Values are normalized to Office.js casing and verified when possible." })),
+      placement: Type.Optional(Type.String({ description: "Break placement: before or after the resolved target. Defaults to after." })),
     }),
     executor: "office-bridge",
   },

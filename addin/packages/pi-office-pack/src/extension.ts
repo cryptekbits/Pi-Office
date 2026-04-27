@@ -157,6 +157,31 @@ const getContextParams = Type.Object({
   )
 });
 
+const officeActionTargetSchema = Type.Object(
+  {
+    kind: Type.Optional(Type.String({ description: "Target kind such as document, selection, heading, paragraph, range, slide, shape, table, or chart." })),
+    position: Type.Optional(Type.String({ description: "For document targets, use replace, start, or end to make document-scope placement explicit." })),
+  },
+  { additionalProperties: true },
+);
+
+const officeActionSchema = Type.Object(
+  {
+    type: Type.String({
+      description:
+        "Structured action type. Use insertHtml for Word HTML, replaceDocumentHtml/appendDocumentHtml for document-scope generation, insertText for literal text, or setRangeValues for Excel matrices.",
+    }),
+    content: Type.Optional(Type.String({ description: "Action payload. For insertHtml this must be valid HTML, not Markdown." })),
+    html: Type.Optional(Type.String({ description: "HTML alias for action.content when type is insertHtml." })),
+    text: Type.Optional(Type.String({ description: "Text alias for action.content when type is insertText." })),
+    target: Type.Optional(officeActionTargetSchema),
+    placement: Type.Optional(Type.String({ description: "replace, before, after, start, or end. For document append, use target.kind=document and placement=end." })),
+    options: Type.Optional(Type.Object({}, { additionalProperties: true })),
+    values: Type.Optional(Type.Any({ description: "2D array for setRangeValues only." })),
+  },
+  { additionalProperties: true },
+);
+
 const applyEditParams = Type.Object({
   mode: Type.Optional(Type.String({ description: "Legacy edit mode such as replaceSelection, insertAfterSelection, or setRangeValues." })),
   content: Type.Optional(Type.String({ description: "Legacy text, HTML, or JSON matrix payload to insert into Office." })),
@@ -167,10 +192,7 @@ const applyEditParams = Type.Object({
   type: Type.Optional(Type.String({ description: "Top-level action type alias when not wrapping with action.type." })),
   values: Type.Optional(Type.Any({ description: "2D array of values for setRangeValues actions only; do not use values[] for Word HTML insertion." })),
   action: Type.Optional(
-    Type.Any({
-      description:
-        "Structured host action. Prefer { type: \"insertHtml\", content: \"...\" } for Word document generation with HTML, and prefer this over legacy mode/content for workbook, slide, comment, shape image, chart, table, and navigation-aware edits. Destructive actions should set action.options.confirmDestructive=true so the host can distinguish intentional deletes/clears from accidental ones.",
-    }),
+    officeActionSchema,
   ),
 });
 
@@ -778,7 +800,8 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
     pi.registerTool({
       name: "office_apply_edit",
       label: "Office Edit",
-      description: "Apply a native edit to the active Office document, selection, range, worksheet, or slide. For Word HTML insertion use action: { type: \"insertHtml\", content: \"<p>...</p>\" }.",
+      description:
+        "Apply a native edit to the active Office document, selection, range, worksheet, or slide. Pass action as an object, not a JSON string. For Word full-document generation use action: { type: \"replaceDocumentHtml\", content: \"<h1>...</h1>\" } or append later sections with target.kind=document and placement=end.",
       parameters: applyEditParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_apply_edit", params as OfficeApplyEditParams as Record<string, unknown>);

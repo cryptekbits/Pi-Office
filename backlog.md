@@ -562,6 +562,67 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Regression coverage guards the session-ID check around `Model change failed`.
   - Notes/Evidence: Fixed in `addin/apps/taskpane/src/app/App.tsx` by capturing `targetSessionId` and comparing it to `sessionIdRef.current` before refreshing session-specific state or pushing a visible error. Regression coverage added in `addin/scripts/office-tests/src/session-model-sync.test.ts`. Validation passed: `npm --prefix addin run test:office` (220 tests), `npm --prefix addin run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
 
+- [x] BUG-023: `office_apply_edit` schema permits JSON-string `action` payloads that the runtime treats as empty legacy text
+  - Category: Bug
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 sideload debug export `debugging-logs/2.further-failures.json` from `openrouter::google/gemini-3.1-pro-preview`; saved output artifact `debugging-logs/debugging-doc.docx`.
+  - Details: After the `BUG-021` fix, smaller Gemini Flash/Flash Lite models used the structured HTML insertion path correctly, but Gemini 3.1 Pro Preview produced a schema-adjacent shape that still failed. The public `office_apply_edit` schema exposes `action` as `Type.Any`, so the model sent `action` as a JSON string: `"{\"type\": \"insertHtml\", \"content\": \"...\"}"`. The runtime path in `toHostAction` only recognizes `params.action` when it is an object with a string `type`; a string action falls through to legacy top-level parsing, finds no top-level `content` or `html`, defaults to `insertText`, and fails with `insertText requires non-empty content`. This happened twice in the Pro Preview run before the model recovered by using top-level `operation: "insertHtml", html: "..."`. The issue is a real schema/runtime contract gap: the schema invites a broad payload shape, but the executor silently interprets the string payload as absent rather than either parsing it or rejecting it with a precise "action must be an object" correction.
+  - Dependencies: BUG-021, FEATURE-028, FEATURE-029.
+  - Subtasks:
+    - [x] Replace the public `office_apply_edit.action` `Type.Any` description with a narrower object schema for the canonical insert path, including `type`, `content`, `target`, `placement`, and `options` where appropriate.
+    - [x] Decide whether JSON-string `action` should be accepted by safely parsing valid JSON objects or fail-fast with a targeted correction message; implement that behavior consistently in taskpane bridge and package schema/tests.
+    - [x] Improve the error copy so a string action reports `office_apply_edit.action must be an object, not a JSON string`, instead of the misleading empty `insertText` message.
+    - [x] Add regression tests that replay the Gemini Pro shape from seq `226`/`227` and prove it either normalizes to `insertHtml` or fails before legacy fallback with actionable guidance.
+    - [x] Add prompt/tool guidance that says "do not JSON-encode nested `action`; pass it as an object."
+  - Acceptance Criteria:
+    - [x] `office_apply_edit({ action: "{\"type\":\"insertHtml\",\"content\":\"<h1>Title</h1>\"}" })` no longer falls through to empty `insertText`.
+    - [x] The tool schema presented to models clearly distinguishes structured object payloads from legacy top-level aliases.
+    - [x] Error output points the model to the exact correction and does not imply the content itself was empty when it was nested inside a stringified action.
+    - [x] Regression coverage lives in the Office bridge/tool schema tests and uses the exact failure shape from `debugging-logs/2.further-failures.json`.
+  - Notes/Evidence: Closed by making `toHostAction` reject JSON-string `action` with the precise object-only correction before legacy parsing, replacing public `office_apply_edit.action` `Type.Any` with object schemas in both the taskpane registry and package extension, and adding prompt guidance not to JSON-encode nested actions. Regression coverage in `addin/scripts/office-tests/src/office-bridge.test.ts` uses the Gemini Pro JSON-string shape from seq `226`/`227`; schema/prompt coverage is in `addin/scripts/office-tests/src/deferred-tool-discovery.test.ts`. Validation passed: `npm --prefix addin run test:office` (226 tests), `npm --prefix addin run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
+- [x] BUG-024: Multi-step Word document generation can insert later sections at a stale active selection and reorder the document
+  - Category: Bug
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 Gemini 3.1 Pro Preview run in `debugging-logs/2.further-failures.json`; saved malformed document `debugging-logs/debugging-doc.docx`.
+  - Details: The Pro Preview run eventually recovered from the JSON-string action failure by calling top-level `office_apply_edit({ operation: "insertHtml", html: ... })`; that full-document insert succeeded at seq `292`. Immediately after, seq `311` showed `office_get_context` with the active selection/insertion point still anchored around the title heading `Executive Briefing: The Fast Fourier Transform (FFT)`. The model then decided to add a separate `7. Conclusion` section using another generic `operation: "insertHtml"` call at seq `326`/`327`, with no explicit `target`, no document-end placement, and no append/replace-document intent. Because `office_apply_edit` defaults to the active selection, seq `328` succeeded but inserted the conclusion at/near the title instead of the end. The saved DOCX confirms the corruption: paragraph 1 is `7. Conclusion`, paragraph 2 is the conclusion body styled as `Heading1`, and the actual title text appears after that conclusion body. This is not raw HTML anymore; it is a stale-selection/targeting contract bug that lets a model corrupt section ordering while every tool call reports success.
+  - Dependencies: BUG-021, BUG-023, FEATURE-004, FEATURE-009, FEATURE-018.
+  - Subtasks:
+    - [x] Add explicit document-scope authoring operations for common generation flows, such as `replaceDocumentHtml`, `appendDocumentHtml`, or a structured `target: { kind: "document", position: "start|end|replace" }` contract.
+    - [x] Make new-document/full-document generation guidance prefer one atomic document-level write or explicit document-end append operations, not repeated generic selection edits.
+    - [x] Consider returning updated selection/anchor metadata from `office_apply_edit` so follow-up edits know where the insertion ended.
+    - [x] Add guardrails for ambiguous second-pass HTML insertion after a generated document exists: either require `placement: "end"`/document target or return a warning/error when the active selection is a heading and the payload appears to be a new top-level section.
+    - [x] Make `verify_doc` produce structural warnings when the first heading is a numbered later section, when heading order is non-monotonic, or when a heading body appears styled as `Heading1`.
+    - [x] Add regression tests that reproduce seq `292` -> seq `311` -> seq `326`/`328` and assert the conclusion cannot be inserted before the title without an explicit target.
+  - Acceptance Criteria:
+    - [x] A blank/new Word document generation request can replace or populate the whole document without relying on the current selection.
+    - [x] A follow-up section insertion after title/body insertion appends at document end only when explicitly requested, or fails with guidance asking for a document target.
+    - [x] `verify_doc` flags malformed heading order like `7. Conclusion` appearing before `1. Executive Summary`.
+    - [x] The saved-document corruption pattern from `debugging-logs/debugging-doc.docx` is covered by an automated regression or deterministic fixture test.
+  - Notes/Evidence: Closed by adding `document` anchors, `replaceDocumentHtml`/`appendDocumentHtml` aliases, document-targeted Word body insertion, and a guard that rejects ambiguous follow-up top-level numbered HTML sections unless the caller supplies an explicit safe target/placement. `verify_doc` now emits structural warnings for malformed numbered heading order and body-like `Heading1` paragraphs. Regression coverage in `addin/scripts/office-tests/src/office-bridge.test.ts` blocks the `7. Conclusion` stale-selection pattern and verifies saved-document warning behavior; prompt/schema coverage is in `addin/scripts/office-tests/src/deferred-tool-discovery.test.ts`. Validation passed: `npm --prefix addin run test:office` (226 tests), `npm --prefix addin run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
+- [x] BUG-025: Word page-break tools can report success without proving the break landed, enabling false two-page/layout claims
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 Gemini 3.1 Pro Preview run in `debugging-logs/2.further-failures.json`; saved DOCX structural inspection of `debugging-logs/debugging-doc.docx`.
+  - Details: The model correctly remembered the prompt guidance that Word page breaks should use `word_section_layout` instead of CSS `page-break-before`, but the run still produced misleading success. First, the model attempted another JSON-string `office_apply_edit.action` with CSS page-break HTML at seq `383`/`384`; it failed for the same string-action reason as `BUG-023`. It then used `office_tool_search`, `office_tool_get`, `word_search`, `office_navigate`, and `office_tool_call` with `word_section_layout` `insertBreak` at seq `473`/`474`. The tool result reported `Word section layout completed`, but inspection of the saved DOCX did not show a `w:br` page break; only a normal line break from the title metadata paragraph was visible in `word/document.xml`. The final assistant message nevertheless claimed the document was "formatted into two pages (with a page break before the conclusion)" even though the captured/verifiable state did not substantiate that. This is a result-evidence gap: the break operation reports success based on API call completion, not on a post-write verification that the intended page/section break exists or changed the visual/page state.
+  - Dependencies: BUG-023, BUG-024, BUG-007, FEATURE-031.
+  - Subtasks:
+    - [x] Make `word_section_layout.insertBreak` return stronger evidence: requested break type, resolved Word break type, resolved target/paragraph, placement, and a post-operation verification signal.
+    - [x] Investigate whether `breakType` casing (`page` vs Office.js `Page`) or selection/range semantics can make `range.insertBreak` report success without persisting a `w:br type="page"` in the expected location.
+    - [x] Add a post-write OOXML/context assertion in tests for page breaks, using the same `office_tool_call({ toolName: "word_section_layout", arguments: "{\"operation\":\"insertBreak\",\"breakType\":\"page\",\"placement\":\"before\"}" })` shape from the log.
+    - [x] Update `verify_doc` / `verify_doc_visual` to distinguish "tool call completed" from "page break present" and "two pages visually verified."
+    - [x] Tighten final-answer guidance so models cannot claim two pages/page-break success unless `verify_doc`, `verify_doc_visual`, or native viewport/page metadata confirms it after the write.
+  - Acceptance Criteria:
+    - [x] A page-break insertion result includes enough evidence to know where the break landed or why verification is unavailable.
+    - [x] The result fails or warns when no persisted page/section break can be found after the operation.
+    - [x] Models receive an explicit warning not to claim page count or visual layout from `word_section_layout` success alone.
+    - [x] Regression coverage prevents the final-state pattern where no page break exists but the tool result and assistant response imply a verified two-page document.
+  - Notes/Evidence: Closed by parsing JSON-object strings passed as `office_tool_call.arguments`, normalizing Word break types to Office.js casing (`page` -> `Page`), passing explicit `target` through `word_section_layout`, and making `insertBreak` return requested/resolved break type, target preview, placement, and OOXML verification counts. Page breaks now fail when a post-write OOXML check does not find a new persisted `w:br w:type="page"`; prompt guidance says not to claim page breaks or page counts from tool-call success alone. Regression coverage in `addin/scripts/office-tests/src/deferred-tool-discovery.test.ts` covers the JSON-string `arguments` shape, and `addin/scripts/office-tests/src/word-section-layout-tools.test.ts` covers break-type casing, OOXML counting, target forwarding, and no-claim guidance. Validation passed: `npm --prefix addin run test:office` (226 tests), `npm --prefix addin run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
 - [x] BUG-017: Companion-brokered OAuth callback does not update taskpane connector state
   - Category: Bug
   - Status: done

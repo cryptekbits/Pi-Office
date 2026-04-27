@@ -727,7 +727,18 @@ function formatSuggestionMessages(messages: PromptSuggestionMessage[]): string {
     .join("\n");
 }
 
-function normalizeToolParams(params: unknown): Record<string, unknown> {
+export function normalizeToolParams(params: unknown): Record<string, unknown> {
+  if (typeof params === "string" && params.trim()) {
+    try {
+      const parsed = JSON.parse(params) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+    return {};
+  }
   if (!params || typeof params !== "object" || Array.isArray(params)) return {};
   return params as Record<string, unknown>;
 }

@@ -1,6 +1,31 @@
 import { Type } from "@sinclair/typebox";
 import type { OfficeToolDefinition } from "./types";
 
+const officeActionTargetSchema = Type.Object(
+  {
+    kind: Type.Optional(Type.String({ description: "Target kind such as document, selection, heading, paragraph, range, slide, shape, table, or chart." })),
+    position: Type.Optional(Type.String({ description: "For document targets, use replace, start, or end to make document-scope placement explicit." })),
+  },
+  { additionalProperties: true },
+);
+
+const officeActionSchema = Type.Object(
+  {
+    type: Type.String({
+      description:
+        "Structured action type. Use insertHtml for Word HTML, replaceDocumentHtml/appendDocumentHtml for document-scope generation, insertText for literal text, or setRangeValues for Excel matrices.",
+    }),
+    content: Type.Optional(Type.String({ description: "Action payload. For insertHtml this must be valid HTML, not Markdown." })),
+    html: Type.Optional(Type.String({ description: "HTML alias for action.content when type is insertHtml." })),
+    text: Type.Optional(Type.String({ description: "Text alias for action.content when type is insertText." })),
+    target: Type.Optional(officeActionTargetSchema),
+    placement: Type.Optional(Type.String({ description: "replace, before, after, start, or end. For document append, use target.kind=document and placement=end." })),
+    options: Type.Optional(Type.Object({}, { additionalProperties: true })),
+    values: Type.Optional(Type.Any({ description: "2D array for setRangeValues only." })),
+  },
+  { additionalProperties: true },
+);
+
 export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
   {
     name: "office_tool_search",
@@ -183,7 +208,7 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     category: "write-doc",
     label: "Office Edit",
     description:
-      "Apply native edits to the active Office document, worksheet, or slide. Prefer action.type/action.content; for Word HTML insertion use action: { type: \"insertHtml\", content: \"<p>...</p>\" }. Legacy operation/text/html params are also supported.",
+      "Apply native edits to the active Office document, worksheet, or slide. Prefer an object action; action must be an object, not a JSON string. For Word full-document generation use action: { type: \"replaceDocumentHtml\", content: \"<h1>...</h1>\" } or action: { type: \"insertHtml\", target: { kind: \"document\" }, placement: \"end\", content: \"<h2>...</h2>\" }. Legacy operation/text/html params are also supported.",
     parameters: Type.Object({
       mode: Type.Optional(Type.String({ description: "Legacy edit mode such as replaceSelection, insertAfterSelection, or setRangeValues." })),
       content: Type.Optional(Type.String({ description: "Legacy text, HTML, or JSON matrix payload to insert into Office." })),
@@ -194,9 +219,7 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       type: Type.Optional(Type.String({ description: "Top-level action type alias when not wrapping with action.type." })),
       values: Type.Optional(Type.Any({ description: "2D array of values for setRangeValues actions only; do not use values[] for Word HTML insertion." })),
       action: Type.Optional(
-        Type.Any({
-          description: "Structured OfficeHostAction payload. Use { type: \"insertHtml\", content: \"...\" } for Word document generation with HTML.",
-        }),
+        officeActionSchema,
       ),
     }),
     executor: "office-bridge",
