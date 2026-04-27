@@ -1439,6 +1439,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 ### Improvements
 
+- [x] IMPROVEMENT-014: Slim taskpane startup and prefer companion-owned non-Office runtime work
+  - Category: Improvement
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-28 user discussion about taskpane standalone becoming heavy while companion-connected mode can route connectors and other non-Office modules outside the Office webview.
+  - Details: Pi-Office must preserve standalone taskpane functionality because many users will not install the optional companion, but the taskpane should not eagerly load connector-heavy, settings-heavy, icon-heavy, or browser-direct MCP runtime code on initial chat startup. When the companion is connected and advertises the relevant capability, non-Office runtime work such as connector verification/execution, OAuth brokerage, MCP result storage, file/memory context, and future provider auth/inference should prefer the companion. The taskpane should remain the UI plus Office.js executor, with browser standalone modules loaded only as a fallback or on first use.
+  - Dependencies: FEATURE-006, FEATURE-007, FEATURE-008, FEATURE-028, FEATURE-030, BUG-014.
+  - Subtasks:
+    - [x] Lazy-load Settings/Integrations surfaces so connector catalog/UI code is not part of the first chat render.
+    - [x] Remove eager connector brand/icon package weight from the initial taskpane bundle while preserving connector logos and fallbacks.
+    - [x] Add a connector runtime facade that prefers connected companion execution where available and dynamically loads the browser connector runtime for standalone/browser-direct fallback.
+    - [x] Preserve all currently working standalone taskpane functionality, including browser-callable providers, browser-direct hosted MCP where supported, connector setup/import/export/status/audit, Office tools, snapshots, rewind, and debug export.
+    - [x] Add or update bundle/runtime tests so the taskpane startup path cannot accidentally re-import heavy connector runtime surfaces.
+  - Acceptance Criteria:
+    - [x] Standalone taskpane mode retains existing browser runtime capabilities after lazy loading.
+    - [x] Companion-connected mode routes eligible connector/MCP work through the companion without loading browser-direct connector execution code unless a fallback is needed.
+    - [x] `npm run check:bundle` shows a reduced initial `main.js` size versus the pre-work baseline of `1790.1 KiB`.
+    - [x] Existing typecheck, Office tests, build, bundle, manifest validation, and whitespace checks pass.
+  - Notes/Evidence: 2026-04-28 investigation found the built taskpane main chunk at `main.js=1790.1 KiB` / gzip `426.3 KiB`. Sourcemap analysis showed `simple-icons/index.mjs`, `@mariozechner/pi-ai/dist/models.generated.js`, `inprocess-kernel.ts`, `connector-catalog-generated.ts`, `browser-connectors.ts`, `jszip`, and Office action modules in the initial chunk. `inprocess-kernel.ts` eagerly imports and constructs `BrowserConnectorRuntime`, `App.tsx` eagerly imports `SettingsPage`, `SettingsPage.tsx` eagerly imports `IntegrationsSection`, and `icons.tsx` imports `simple-icons`. Closed 2026-04-28 by lazy-loading `SettingsPage`, dynamically importing `BrowserConnectorRuntime` only for connector routes or sessions with saved connector state, preserving empty-connector sessions without loading the browser connector chunk, removing `simple-icons` from taskpane imports/dependencies, keeping connector image assets plus text fallbacks, and adding `taskpane-loading-policy.test.ts` to guard the lazy boundaries. `npm run check:bundle` now reports `main.js=1526.8 KiB`, down from `1790.1 KiB`, with `browser-connectors-*.js` as a lazy chunk. Validation passed: `npm run typecheck:addin`, `npm run build`, `npm run test:office` with 236 tests, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
 - [x] IMPROVEMENT-013: Split connector catalog into per-connector YAML files
   - Category: Improvement
   - Status: done

@@ -1,23 +1,4 @@
 import { useEffect, useState } from "react";
-import type { SimpleIcon } from "simple-icons";
-import {
-  siAirtable,
-  siConfluence,
-  siFigma,
-  siGithub,
-  siGitlab,
-  siGoogledrive,
-  siJira,
-  siNotion,
-  siObsidian,
-  siPaypal,
-  siPerplexity,
-  siPostgresql,
-  siPosthog,
-  siQdrant,
-  siShopify,
-  siStripe,
-} from "simple-icons";
 
 export function GearIcon() {
   return (
@@ -331,27 +312,6 @@ function connectorGlyph(iconKey: string): string {
   return map[iconKey] ?? iconKey.slice(0, 2).toUpperCase();
 }
 
-const CONNECTOR_MARKS: Record<string, SimpleIcon | undefined> = {
-  jira: siJira,
-  confluence: siConfluence,
-  figma: siFigma,
-  notion: siNotion,
-  obsidian: siObsidian,
-  posthog: siPosthog,
-  shopify: siShopify,
-  stripe: siStripe,
-  paypal: siPaypal,
-  airtable: siAirtable,
-  perplexity: siPerplexity,
-  qdrant: siQdrant,
-  gdrive: siGoogledrive,
-  "google-drive": siGoogledrive,
-  github: siGithub,
-  gitlab: siGitlab,
-  postgres: siPostgresql,
-  "postgresql-reader": siPostgresql,
-};
-
 const CONNECTOR_LOGO_ASSETS: Record<string, string | undefined> = {
   figma: "/connectors/figma.png",
   slack: "/connectors/slack.png",
@@ -384,7 +344,6 @@ const CONNECTOR_LOGO_ASSETS: Record<string, string | undefined> = {
 export function ConnectorBrandIcon({ iconKey, label }: { iconKey: string; label: string }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const logoSrc = CONNECTOR_LOGO_ASSETS[iconKey];
-  const mark = CONNECTOR_MARKS[iconKey];
 
   useEffect(() => {
     setLoadFailed(false);
@@ -394,21 +353,6 @@ export function ConnectorBrandIcon({ iconKey, label }: { iconKey: string; label:
     return (
       <span className="connector-logo connector-logo-image" aria-hidden="true" title={label}>
         <img src={logoSrc} alt="" loading="lazy" decoding="async" onError={() => setLoadFailed(true)} />
-      </span>
-    );
-  }
-
-  if (mark) {
-    return (
-      <span
-        className="connector-logo connector-logo-mark"
-        aria-hidden="true"
-        title={label}
-        style={{ color: `#${mark.hex}` }}
-      >
-        <svg viewBox="0 0 24 24" role="presentation">
-          <path d={mark.path} fill="currentColor" />
-        </svg>
       </span>
     );
   }

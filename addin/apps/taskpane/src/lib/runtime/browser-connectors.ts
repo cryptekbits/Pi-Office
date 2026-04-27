@@ -566,6 +566,10 @@ export class BrowserConnectorRuntime {
     };
   }
 
+  getCatalogItem(connectorId: string): ConnectorCatalogItem | undefined {
+    return getConnectorCatalogItem(connectorId);
+  }
+
   buildCompanionSessionConnectors(scopeContext?: ConnectorScopeContext): CompanionConnectorDefinition[] {
     this.dropExpiredOAuthFlows();
     return this.state.connectors

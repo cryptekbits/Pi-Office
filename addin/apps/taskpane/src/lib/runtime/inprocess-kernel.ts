@@ -129,9 +129,8 @@ import {
 } from "../office/tools/index.js";
 import { isBrowserDebugOfficeState } from "../office/shared";
 import { executeMcpBatchPlan, executeOfficeBatchPlan } from "./batch-executor";
-import { BrowserConnectorRuntime } from "./browser-connectors";
-import { getConnectorCatalogItem } from "./connector-catalog";
 import { CompanionClient, type CompanionSessionBinding } from "./companion-client";
+import type { BrowserConnectorRuntime } from "./browser-connectors";
 
 type JsonRecord = Record<string, unknown>;
 type ToolContentPart = { type: "text"; text: string } | ImageContent;
@@ -208,6 +207,7 @@ interface ConversationDebugLogExport {
 const AUTH_STORAGE_KEY = "pi-office-auth";
 const AUTH_STORAGE_KEY_VERSION = 2;
 const AUTH_CRYPTO_KEY_STORAGE_KEY = "pi-office-auth-key-v1";
+const CONNECTOR_STORAGE_KEY = "pi-office-connectors";
 const CHECKPOINT_STORAGE_KEY_PREFIX = "pi-office-checkpoints:";
 const MAX_CHECKPOINT_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_CHECKPOINTS_PER_DOC = 50;
@@ -3017,11 +3017,35 @@ class InProcessKernel {
   private readonly authStore = new BrowserAuthStore();
   private readonly modelRegistry = new BrowserModelRegistry(this.authStore);
   private readonly checkpointStore = new BrowserCheckpointStore();
-  private readonly connectorRuntime = new BrowserConnectorRuntime();
+  private connectorRuntime: BrowserConnectorRuntime | undefined;
+  private connectorRuntimePromise: Promise<BrowserConnectorRuntime> | undefined;
   private readonly companionClient = new CompanionClient();
   private readonly sessionsById = new Map<string, BrowserOfficeSession>();
   private readonly sessionsByDocument = new Map<string, BrowserOfficeSession>();
   private userPreferences: UserPreferences = { ...DEFAULT_USER_PREFERENCES };
+
+  private async getConnectorRuntime(): Promise<BrowserConnectorRuntime> {
+    if (this.connectorRuntime) {
+      await this.connectorRuntime.ready;
+      return this.connectorRuntime;
+    }
+    this.connectorRuntimePromise ??= import("./browser-connectors").then((module) => {
+      const runtime = new module.BrowserConnectorRuntime();
+      this.connectorRuntime = runtime;
+      return runtime;
+    });
+    const runtime = await this.connectorRuntimePromise;
+    await runtime.ready;
+    return runtime;
+  }
+
+  private hasStoredConnectorState(): boolean {
+    try {
+      return Boolean(localStorage.getItem(CONNECTOR_STORAGE_KEY));
+    } catch {
+      return false;
+    }
+  }
 
   setPreferences(patch: Partial<UserPreferences>): { ok: true; preferences: UserPreferences } {
     if (
@@ -3142,11 +3166,12 @@ class InProcessKernel {
   }
 
   private applyCompanionExecutionMetadata(
+    connectorRuntime: BrowserConnectorRuntime,
     status: ConnectorStatusResponse["connectors"][number],
     overlay?: ConnectorStatus | undefined,
     forceCompanion = false,
   ): ConnectorStatus {
-    const catalog = getConnectorCatalogItem(status.connectorId);
+    const catalog = connectorRuntime.getCatalogItem(status.connectorId);
     const profile = catalog?.setupProfiles?.find((entry) => entry.id === status.setupProfileId)
       ?? catalog?.setupProfiles?.find((entry) => entry.defaultWhenCompanionAbsent)
       ?? catalog?.setupProfiles?.[0];
@@ -3160,16 +3185,18 @@ class InProcessKernel {
     };
   }
 
-  private mergeConnectorStatuses(
+  private async mergeConnectorStatuses(
     statuses: ConnectorStatusResponse["connectors"],
     overlayStatuses: ConnectorStatus[] | undefined,
-  ): ConnectorStatusResponse {
+  ): Promise<ConnectorStatusResponse> {
+    const connectorRuntime = await this.getConnectorRuntime();
     const overlayById = new Map((overlayStatuses ?? []).map((status) => [status.id, status]));
     return {
       connectors: statuses.map((status) => this.applyCompanionExecutionMetadata(
+        connectorRuntime,
         status,
         overlayById.get(status.id),
-        Boolean(this.connectorRuntime.buildCompanionConnectorDefinition(status.id)),
+        Boolean(connectorRuntime.buildCompanionConnectorDefinition(status.id)),
       )),
     };
   }
@@ -3179,14 +3206,16 @@ class InProcessKernel {
     officeState: OfficeStateUpdate,
     windowId?: string,
   ): Promise<CompanionSessionBinding | undefined> {
-    const connectors = this.connectorRuntime.buildCompanionSessionConnectors({
-      host: officeState.host,
-      documentId: officeState.document.id,
-      documentTitle: officeState.document.title,
-      documentSaved: officeState.document.saved,
-      documentUrl: officeState.document.documentUrl,
-      workspaceId: officeState.document.workspaceDir,
-    });
+    const connectors = this.hasStoredConnectorState()
+      ? (await this.getConnectorRuntime()).buildCompanionSessionConnectors({
+          host: officeState.host,
+          documentId: officeState.document.id,
+          documentTitle: officeState.document.title,
+          documentSaved: officeState.document.saved,
+          documentUrl: officeState.document.documentUrl,
+          workspaceId: officeState.document.workspaceDir,
+        })
+      : [];
     return this.companionClient.openSession(session.sessionId, officeState, connectors, windowId);
   }
 
@@ -3216,7 +3245,8 @@ class InProcessKernel {
     status: ConnectorStatus;
     diagnostics: ConnectorDiagnostic[];
   } | undefined> {
-    const definition = this.connectorRuntime.buildCompanionConnectorDefinitionFromSetup(request);
+    const connectorRuntime = await this.getConnectorRuntime();
+    const definition = connectorRuntime.buildCompanionConnectorDefinitionFromSetup(request);
     if (!definition) {
       return undefined;
     }
@@ -3224,7 +3254,7 @@ class InProcessKernel {
   }
 
   async request<T>(path: string, init?: RequestInit): Promise<T> {
-    await Promise.all([this.authStore.ready, this.connectorRuntime.ready]);
+    await this.authStore.ready;
     const method = (init?.method ?? "GET").toUpperCase();
     const body = parseRequestBody(init);
 
@@ -3286,8 +3316,13 @@ class InProcessKernel {
       )) as T;
     }
 
+    const connectorRuntime = path.startsWith("/v1/connectors")
+      ? await this.getConnectorRuntime()
+      : undefined;
+
+    if (connectorRuntime) {
     if (method === "GET" && path === "/v1/connectors/catalog") {
-      return this.connectorRuntime.getCatalogResponse() as T;
+      return connectorRuntime.getCatalogResponse() as T;
     }
     if (method === "POST" && path === "/v1/connectors/status") {
       const request = body as { scopeContext?: ConnectorScopeContext; sessionId?: string } | undefined;
@@ -3296,13 +3331,13 @@ class InProcessKernel {
         ? this.getSessionCompanionConnectors(request?.sessionId)
         : undefined;
       return this.mergeConnectorStatuses(
-        this.connectorRuntime.getStatusResponse(request?.scopeContext).connectors,
+        connectorRuntime.getStatusResponse(request?.scopeContext).connectors,
         overlayStatuses,
       ) as T;
     }
     if (method === "GET" && path === "/v1/connectors/diagnostics") {
       const companion = await this.getCompanionState();
-      const diagnostics = this.connectorRuntime.getDiagnostics();
+      const diagnostics = connectorRuntime.getDiagnostics();
       const companionDiagnostics = companion.status === "connected"
         ? await this.companionClient.getConnectorDiagnostics().catch((error): ConnectorDiagnosticsResponse => ({
             generatedAt: new Date().toISOString(),
@@ -3340,23 +3375,23 @@ class InProcessKernel {
       } as T;
     }
     if (method === "GET" && path === "/v1/connectors/audit") {
-      return this.connectorRuntime.getAuditPreferenceResponse() as T;
+      return connectorRuntime.getAuditPreferenceResponse() as T;
     }
     if (method === "POST" && path === "/v1/connectors/audit") {
-      return (await this.connectorRuntime.setAuditPreference(body as ConnectorAuditPreference)) as T;
+      return (await connectorRuntime.setAuditPreference(body as ConnectorAuditPreference)) as T;
     }
     if (method === "DELETE" && path === "/v1/connectors") {
-      return (await this.connectorRuntime.clearAll()) as T;
+      return (await connectorRuntime.clearAll()) as T;
     }
     if (method === "GET" && path === "/v1/connectors/export") {
-      return this.connectorRuntime.getExportBundle() as T;
+      return connectorRuntime.getExportBundle() as T;
     }
     if (method === "POST" && path === "/v1/connectors/import/preview") {
       const request = body as ConnectorImportPreviewRequest;
-      return this.connectorRuntime.previewImport(request) as T;
+      return connectorRuntime.previewImport(request) as T;
     }
     if (method === "POST" && path === "/v1/connectors/import/apply") {
-      return (await this.connectorRuntime.applyImport(body as ConnectorImportApplyRequest)) as T;
+      return (await connectorRuntime.applyImport(body as ConnectorImportApplyRequest)) as T;
     }
     if (method === "POST" && path === "/v1/connectors/setup/prepare") {
       const request = body as { connectorId?: string; scopeContext?: ConnectorScopeContext } | undefined;
@@ -3365,7 +3400,7 @@ class InProcessKernel {
         throw new Error("connectorId is required.");
       }
       const companion = await this.getCompanionState();
-      const response = this.connectorRuntime.prepareConnector(connectorId, request?.scopeContext);
+      const response = connectorRuntime.prepareConnector(connectorId, request?.scopeContext);
       const selectedProfile = response.connector.setupProfiles?.find((profile) => profile.id === response.draft?.setupProfileId)
         ?? response.connector.setupProfiles?.[0];
       const requiresCompanion = this.setupProfileNeedsCompanion(selectedProfile, selectedProfile?.transport ?? response.connector.transport);
@@ -3388,10 +3423,10 @@ class InProcessKernel {
     if (method === "POST" && path === "/v1/connectors/setup/connect") {
       const request = body as ConnectorSetupRequest;
       const companion = await this.getCompanionState();
-      const response = await this.connectorRuntime.connectConnector(request);
+      const response = await connectorRuntime.connectConnector(request);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
       let probe = undefined as Awaited<ReturnType<InProcessKernel["probeConnectorThroughCompanion"]>>;
-      const definition = this.connectorRuntime.buildCompanionConnectorDefinitionFromSetup({ ...request, existingId: response.status.id });
+      const definition = connectorRuntime.buildCompanionConnectorDefinitionFromSetup({ ...request, existingId: response.status.id });
       try {
         probe = definition ? await this.probeConnectorThroughCompanion({ ...request, existingId: response.status.id }) : undefined;
       } catch (error) {
@@ -3407,7 +3442,7 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
+        status: this.applyCompanionExecutionMetadata(connectorRuntime, response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
@@ -3420,10 +3455,10 @@ class InProcessKernel {
     if (method === "POST" && path === "/v1/connectors/setup/test") {
       const request = body as ConnectorSetupRequest;
       const companion = await this.getCompanionState();
-      const response = await this.connectorRuntime.testConnector(request);
+      const response = await connectorRuntime.testConnector(request);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
       let probe = undefined as Awaited<ReturnType<InProcessKernel["probeConnectorThroughCompanion"]>>;
-      const definition = this.connectorRuntime.buildCompanionConnectorDefinitionFromSetup(request);
+      const definition = connectorRuntime.buildCompanionConnectorDefinitionFromSetup(request);
       try {
         probe = definition ? await this.probeConnectorThroughCompanion(request) : undefined;
       } catch (error) {
@@ -3439,7 +3474,7 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
+        status: this.applyCompanionExecutionMetadata(connectorRuntime, response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
@@ -3456,12 +3491,12 @@ class InProcessKernel {
         throw new Error("connectorId is required.");
       }
       const companion = await this.getCompanionState();
-      const definition = this.connectorRuntime.buildCompanionConnectorDefinition(connectorId);
+      const definition = connectorRuntime.buildCompanionConnectorDefinition(connectorId);
       if (definition?.oauth?.broker === "companion" && companion.status === "connected") {
         const companionStatus = await this.companionClient.getConnectorOAuthStatus({ connectorId });
-        await this.connectorRuntime.syncCompanionOAuthStatus({ connectorId }, companionStatus, request?.scopeContext);
+        await connectorRuntime.syncCompanionOAuthStatus({ connectorId }, companionStatus, request?.scopeContext);
       }
-      const response = await this.connectorRuntime.reverifyConnector(connectorId, request?.scopeContext);
+      const response = await connectorRuntime.reverifyConnector(connectorId, request?.scopeContext);
       let probeDiagnostics: ConnectorDiagnostic[] = [];
       let probe: {
         ok: boolean;
@@ -3483,7 +3518,7 @@ class InProcessKernel {
       }
       return {
         ...response,
-        status: this.applyCompanionExecutionMetadata(response.status, probe?.status, Boolean(definition)),
+        status: this.applyCompanionExecutionMetadata(connectorRuntime, response.status, probe?.status, Boolean(definition)),
         diagnostics: this.addCompanionDiagnostics(
           [...response.diagnostics, ...probeDiagnostics, ...(probe?.diagnostics ?? [])],
           response.status.transport,
@@ -3499,58 +3534,59 @@ class InProcessKernel {
       if (!connectorId) {
         throw new Error("connectorId is required.");
       }
-      const definition = this.connectorRuntime.buildCompanionConnectorDefinition(connectorId);
+      const definition = connectorRuntime.buildCompanionConnectorDefinition(connectorId);
       if (definition?.oauth?.broker === "companion") {
         const companion = await this.getCompanionState();
         if (companion.status !== "connected") {
           throw new Error("Start the local companion before signing in to this connector.");
         }
         const started = await this.companionClient.startConnectorOAuth(definition);
-        return (await this.connectorRuntime.markCompanionOAuthStarted(connectorId, started) as ConnectorOAuthStartResponse) as T;
+        return (await connectorRuntime.markCompanionOAuthStarted(connectorId, started) as ConnectorOAuthStartResponse) as T;
       }
-      return (await this.connectorRuntime.startOAuth(connectorId) as ConnectorOAuthStartResponse) as T;
+      return (await connectorRuntime.startOAuth(connectorId) as ConnectorOAuthStartResponse) as T;
     }
     if (method === "POST" && path === "/v1/connectors/oauth/status") {
       const request = body as { connectorId?: string; state?: string; scopeContext?: ConnectorScopeContext } | undefined;
       const connectorId = String(request?.connectorId ?? "");
       const state = String(request?.state ?? "");
-      const definition = connectorId ? this.connectorRuntime.buildCompanionConnectorDefinition(connectorId) : undefined;
+      const definition = connectorId ? connectorRuntime.buildCompanionConnectorDefinition(connectorId) : undefined;
       if (definition?.oauth?.broker === "companion") {
         const companion = await this.getCompanionState();
         if (companion.status !== "connected") {
-          return this.connectorRuntime.getOAuthStatus({ connectorId, state }, request?.scopeContext) as T;
+          return connectorRuntime.getOAuthStatus({ connectorId, state }, request?.scopeContext) as T;
         }
         const companionStatus = await this.companionClient.getConnectorOAuthStatus({ connectorId, state });
-        return (await this.connectorRuntime.syncCompanionOAuthStatus(
+        return (await connectorRuntime.syncCompanionOAuthStatus(
           { connectorId, state },
           companionStatus,
           request?.scopeContext,
         )) as T;
       }
-      return this.connectorRuntime.getOAuthStatus({ connectorId, state }, request?.scopeContext) as T;
+      return connectorRuntime.getOAuthStatus({ connectorId, state }, request?.scopeContext) as T;
     }
     if (method === "POST" && path === "/v1/connectors/oauth/callback") {
-      return (await this.connectorRuntime.completeOAuth(body as ConnectorOAuthCallbackRequest) as ConnectorOAuthCallbackResponse) as T;
+      return (await connectorRuntime.completeOAuth(body as ConnectorOAuthCallbackRequest) as ConnectorOAuthCallbackResponse) as T;
     }
     if (method === "POST" && path === "/v1/connectors/favorite") {
-      return (await this.connectorRuntime.setFavorite(body as ConnectorFavoriteRequest)) as T;
+      return (await connectorRuntime.setFavorite(body as ConnectorFavoriteRequest)) as T;
     }
     if (method === "POST" && path === "/v1/connectors/scope") {
-      return (await this.connectorRuntime.updateScope(body as ConnectorScopeUpdateRequest)) as T;
+      return (await connectorRuntime.updateScope(body as ConnectorScopeUpdateRequest)) as T;
     }
     if (method === "POST" && path === "/v1/connectors/tools") {
-      return (await this.connectorRuntime.updateToolPolicy(body as ConnectorToolPolicyUpdateRequest)) as T;
+      return (await connectorRuntime.updateToolPolicy(body as ConnectorToolPolicyUpdateRequest)) as T;
     }
     const connectorDeleteMatch = method === "DELETE" ? path.match(/^\/v1\/connectors\/([^/]+)$/) : null;
     if (connectorDeleteMatch) {
-      return (await this.connectorRuntime.removeConnector(decodeURIComponent(connectorDeleteMatch[1] ?? ""))) as T;
+      return (await connectorRuntime.removeConnector(decodeURIComponent(connectorDeleteMatch[1] ?? ""))) as T;
     }
     const connectorLogsMatch = method === "GET" ? path.match(/^\/v1\/connectors\/([^/]+)\/logs$/) : null;
     if (connectorLogsMatch) {
-      return this.connectorRuntime.getLogs(decodeURIComponent(connectorLogsMatch[1] ?? "")) as T;
+      return connectorRuntime.getLogs(decodeURIComponent(connectorLogsMatch[1] ?? "")) as T;
     }
     if (path.startsWith("/v1/connectors/")) {
       throw new Error(`Unknown connector route: ${method} ${path}`);
+    }
     }
 
     if (method === "POST" && path === "/v1/sessions/open") {
@@ -3562,6 +3598,7 @@ class InProcessKernel {
       const documentKey = buildBrowserSessionKey(request.host, request.documentId, request.windowId);
       let session = this.sessionsByDocument.get(documentKey);
       const normalizedState = normalizeOpenState(request);
+      const sessionConnectorRuntime = connectorRuntime ?? (this.hasStoredConnectorState() ? await this.getConnectorRuntime() : undefined);
 
       if (request.forceNew && session) {
         this.sessionsByDocument.delete(documentKey);
@@ -3578,13 +3615,18 @@ class InProcessKernel {
           () => this.userPreferences,
           (sessionId, toolName, params) => this.companionClient.executeFileTool(sessionId, toolName, params),
           (sessionId, toolName, params) => this.companionClient.executeMcpTool(sessionId, toolName, params),
-          (scopeContext) => this.connectorRuntime.getBrowserConnectorToolNames(scopeContext),
-          (searchRequest, scopeContext) => this.connectorRuntime.searchBrowserMcpTools(searchRequest, scopeContext),
+          (scopeContext) => sessionConnectorRuntime?.getBrowserConnectorToolNames(scopeContext) ?? [],
+          (searchRequest, scopeContext) => sessionConnectorRuntime?.searchBrowserMcpTools(searchRequest, scopeContext) ?? [],
           (sessionId, searchRequest) => this.companionClient.searchMcpTools(sessionId, searchRequest),
-          (toolName, params, scopeContext) => this.connectorRuntime.executeBrowserMcpTool(toolName, params, scopeContext),
-          (request) => this.connectorRuntime.getMcpResult(request),
-          (request) => this.connectorRuntime.summarizeMcpResult(request),
-          (request) => this.connectorRuntime.clearMcpResults(request),
+          (toolName, params, scopeContext) => {
+            if (!sessionConnectorRuntime) {
+              throw new Error(`Connector tool "${toolName}" is not enabled for browser-direct execution.`);
+            }
+            return sessionConnectorRuntime.executeBrowserMcpTool(toolName, params, scopeContext);
+          },
+          (request) => sessionConnectorRuntime?.getMcpResult(request) ?? { ok: false, error: "No browser MCP result handles are loaded." },
+          (request) => sessionConnectorRuntime?.summarizeMcpResult(request) ?? { ok: false, error: "No browser MCP result handles are loaded." },
+          (request) => sessionConnectorRuntime?.clearMcpResults(request) ?? { ok: true, cleared: 0 },
           (sessionId, request) => this.companionClient.getMcpResult(sessionId, request),
           (sessionId, request) => this.companionClient.summarizeMcpResult(sessionId, request),
           (sessionId, request) => this.companionClient.clearMcpResults(sessionId, request),

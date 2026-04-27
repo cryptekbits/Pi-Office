@@ -1,9 +1,11 @@
 import {
   useCallback,
   useEffect,
+  lazy,
   useMemo,
   useRef,
   useState,
+  Suspense,
 } from "react";
 import type {
   AuthStatusResponse,
@@ -107,7 +109,6 @@ import { ChatView } from "./components/ChatView";
 import { Composer } from "./components/Composer";
 import { QueueStrip } from "./components/QueueStrip";
 import { PromptSuggestionStrip } from "./components/PromptSuggestionStrip";
-import { SettingsPage } from "./components/SettingsPage";
 import { HistoryDropdown } from "./components/HistoryDropdown";
 import { AskUserPopup } from "./components/AskUserPopup";
 import { ToolPermissionPopup } from "./components/ToolPermissionPopup";
@@ -121,6 +122,10 @@ import type {
 } from "@pi-office/pi-office-pack/protocol";
 import { useToolPermissions } from "../hooks/useToolPermissions";
 import { applyAcceptedEdits } from "../lib/office";
+
+const SettingsPage = lazy(() =>
+  import("./components/SettingsPage").then((module) => ({ default: module.SettingsPage })),
+);
 
 function buildSelectionFingerprint(selection: OfficeStateUpdate["selection"] | undefined): string {
   if (!selection) return "";
@@ -2071,51 +2076,53 @@ export function App() {
   if (settingsOpen) {
     return (
       <div className="shell" data-host={officeState?.host ?? "word"} style={themeStyle}>
-        <SettingsPage
-          officeState={officeState}
-          documentState={documentState}
-          companion={companion}
-          providers={providers}
-          authStatus={authStatus}
-          connectors={connectors}
-          connectorStatuses={connectorStatuses}
-          connectorDiagnostics={connectorDiagnostics}
-          connectorAuditPreference={connectorAuditPreference}
-          connectorScopeContext={connectorScopeContext}
-          runtimeDiagnostics={runtimeDiagnostics}
-          sessionStats={sessionStats}
-          preferences={preferences}
-          enabledModels={enabledModels}
-          enabledProviders={enabledProviders}
-          onClose={() => setSettingsOpen(false)}
-          onUpdatePreferences={updatePreferences}
-          onToggleModel={toggleModel}
-          onToggleProvider={toggleProvider}
-          onSaveApiKey={handleSaveApiKey}
-          onStartOAuth={handleStartOAuth}
-          onClearAuth={handleClearAuth}
-          onPrepareConnector={handlePrepareConnector}
-          onConnectConnector={handleConnectConnector}
-          onTestConnector={handleTestConnector}
-          onReverifyConnector={handleReverifyConnector}
-          onStartConnectorOAuth={handleStartConnectorOAuth}
-          onCheckConnectorOAuthStatus={handleCheckConnectorOAuthStatus}
-          onRemoveConnector={handleRemoveConnector}
-          onSetConnectorFavorite={handleSetConnectorFavorite}
-          onUpdateConnectorScope={handleUpdateConnectorScope}
-          onUpdateConnectorToolPolicy={handleUpdateConnectorToolPolicy}
-          onLoadConnectorLogs={handleLoadConnectorLogs}
-          onExportConnectors={handleExportConnectors}
-          onPreviewConnectorImport={handlePreviewConnectorImport}
-          onApplyConnectorImport={handleApplyConnectorImport}
-          onSetConnectorAuditPreference={handleSetConnectorAuditPreference}
-          onClearAllProviderAuth={handleClearAllProviderAuth}
-          onClearConnectorData={handleClearConnectorData}
-          onClearChatHistory={handleClearChatHistory}
-          onRetryCompanion={handleRetryCompanion}
-          onSaveCompanionEndpoint={handleSaveCompanionEndpoint}
-          onClearRuntimeDiagnostics={clearRuntimeDiagnostics}
-        />
+        <Suspense fallback={<div className="settings-page settings-loading">Loading settings...</div>}>
+          <SettingsPage
+            officeState={officeState}
+            documentState={documentState}
+            companion={companion}
+            providers={providers}
+            authStatus={authStatus}
+            connectors={connectors}
+            connectorStatuses={connectorStatuses}
+            connectorDiagnostics={connectorDiagnostics}
+            connectorAuditPreference={connectorAuditPreference}
+            connectorScopeContext={connectorScopeContext}
+            runtimeDiagnostics={runtimeDiagnostics}
+            sessionStats={sessionStats}
+            preferences={preferences}
+            enabledModels={enabledModels}
+            enabledProviders={enabledProviders}
+            onClose={() => setSettingsOpen(false)}
+            onUpdatePreferences={updatePreferences}
+            onToggleModel={toggleModel}
+            onToggleProvider={toggleProvider}
+            onSaveApiKey={handleSaveApiKey}
+            onStartOAuth={handleStartOAuth}
+            onClearAuth={handleClearAuth}
+            onPrepareConnector={handlePrepareConnector}
+            onConnectConnector={handleConnectConnector}
+            onTestConnector={handleTestConnector}
+            onReverifyConnector={handleReverifyConnector}
+            onStartConnectorOAuth={handleStartConnectorOAuth}
+            onCheckConnectorOAuthStatus={handleCheckConnectorOAuthStatus}
+            onRemoveConnector={handleRemoveConnector}
+            onSetConnectorFavorite={handleSetConnectorFavorite}
+            onUpdateConnectorScope={handleUpdateConnectorScope}
+            onUpdateConnectorToolPolicy={handleUpdateConnectorToolPolicy}
+            onLoadConnectorLogs={handleLoadConnectorLogs}
+            onExportConnectors={handleExportConnectors}
+            onPreviewConnectorImport={handlePreviewConnectorImport}
+            onApplyConnectorImport={handleApplyConnectorImport}
+            onSetConnectorAuditPreference={handleSetConnectorAuditPreference}
+            onClearAllProviderAuth={handleClearAllProviderAuth}
+            onClearConnectorData={handleClearConnectorData}
+            onClearChatHistory={handleClearChatHistory}
+            onRetryCompanion={handleRetryCompanion}
+            onSaveCompanionEndpoint={handleSaveCompanionEndpoint}
+            onClearRuntimeDiagnostics={clearRuntimeDiagnostics}
+          />
+        </Suspense>
       </div>
     );
   }
