@@ -414,6 +414,28 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_proofing_stats") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_proofing_stats is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "qualityCheck",
+          target: request.params.target as never,
+          options: {
+            scope: request.params.scope,
+            includeReadability: request.params.includeReadability,
+            includeProofing: request.params.includeProofing,
+            includeCounts: request.params.includeCounts,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

@@ -1331,6 +1331,44 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       throw new Error(`Unsupported Word review exchange operation: ${operation}.`);
     }
 
+    if (type === "proofingStats") {
+      const scope = trimString(options.scope ?? action.scope) ?? "document";
+      const targetRange = scope === "selection" ? context.document.getSelection() : body.getRange();
+      targetRange.load("text");
+      await context.sync();
+      const text = targetRange.text ?? "";
+      const words = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+      const sentences = text.split(/[.!?]+/).filter((entry) => entry.trim()).length;
+      const paragraphs = text.split(/\r|\n/).filter((entry) => entry.trim()).length;
+      const characters = text.replace(/\s/g, "").length;
+      const readabilityAvailable = supportsRequirementSet("WordApiDesktop", "1.4");
+      let readability: Array<{ name?: string | undefined; value?: number | undefined }> = [];
+      if (readabilityAvailable) {
+        const stats = context.document.readabilityStatistics;
+        stats.load("items/name,items/value");
+        await context.sync();
+        readability = stats.items.map((entry) => ({ name: entry.name, value: entry.value }));
+      }
+      return {
+        ok: true,
+        host: "word",
+        action: type,
+        scope,
+        mutating: false,
+        nativeMetrics: {
+          words,
+          sentences,
+          paragraphs,
+          characters,
+          readability,
+          readabilityAvailable,
+        },
+        note: readabilityAvailable
+          ? "Native Word readability statistics were included."
+          : "Basic counts are computed from Office.js text; native readability statistics require WordApiDesktop 1.4.",
+      };
+    }
+
     if (type === "acceptAllRevisions" || type === "rejectAllRevisions") {
       if (!supportsRequirementSet("WordApi", "1.6")) {
         throw new Error("Word revision actions require WordApi 1.6 or newer.");

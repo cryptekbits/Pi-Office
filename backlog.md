@@ -973,25 +973,25 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests prevent unapproved or provenance-ambiguous boilerplate from being presented as official content.
   - Notes/Evidence: The Word API reference includes `BuildingBlock`, `BuildingBlockCategory`, `BuildingBlockCollection`, `BuildingBlockEntryCollection`, `BuildingBlockGalleryContentControl`, `BuildingBlockTypeItem`, `Template`, and `TemplateCollection`. Closed 2026-04-27 by adding `word_building_block`, desktop-gated attached-template/building-block inventory and approved insertion operations, provenance-required insertion checks, integration with content-control/template guidance, prompt guardrails against fabricated boilerplate, and `word-building-block-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-023: Add Word proofing, readability, and document-statistics tools
+- [x] FEATURE-023: Add Word proofing, readability, and document-statistics tools
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: 2026-04-27 Word API audit and Tier C quality-assessment gap review.
   - Details: Pi-Office can critique text with an LLM, but it does not expose native Word proofing, readability statistics, or numbered-item counting. Resume polish, executive summaries, legal simplification, and academic editing benefit from concrete measures such as readability, spelling/proofing status, numbered-item counts, and before/after quality checks. These tools should be non-mutating by default and should clearly distinguish native proofing signals from model judgment.
   - Dependencies: FEATURE-004.
   - Subtasks:
-    - [ ] Inventory `Document.checkSpelling`, readability statistics, word/count-style APIs, and numbered item counting by requirement set.
-    - [ ] Add non-mutating proofing/readability/statistics tools for selection, section, and document scopes where supported.
-    - [ ] Add optional apply/fix flows only when a native proofing API supports deterministic fixes or when routed through reviewable proposals.
-    - [ ] Add workflow guidance for resume, spec, legal/professional, and research-paper checks.
-    - [ ] Add tests for statistics extraction, unsupported-host fallback, no-mutation default behavior, and scope handling.
+    - [x] Inventory `Document.checkSpelling`, readability statistics, word/count-style APIs, and numbered item counting by requirement set.
+    - [x] Add non-mutating proofing/readability/statistics tools for selection, section, and document scopes where supported.
+    - [x] Add optional apply/fix flows only when a native proofing API supports deterministic fixes or when routed through reviewable proposals.
+    - [x] Add workflow guidance for resume, spec, legal/professional, and research-paper checks.
+    - [x] Add tests for statistics extraction, unsupported-host fallback, no-mutation default behavior, and scope handling.
   - Acceptance Criteria:
-    - [ ] The assistant can report native Word proofing/readability/statistics evidence without relying only on LLM judgment.
-    - [ ] Proofing tools are non-mutating unless the user explicitly chooses a reviewable fix path.
-    - [ ] Results distinguish native metrics from model-generated recommendations.
-    - [ ] Tests cover scope, unsupported capability, and no-mutation guarantees.
-  - Notes/Evidence: The Word API reference includes `Document.checkSpelling`, `DocumentCheckSpellingOptions`, `ReadabilityStatistic`, `ReadabilityStatisticCollection`, `Document.countNumberedItems`, and related options.
+    - [x] The assistant can report native Word proofing/readability/statistics evidence without relying only on LLM judgment.
+    - [x] Proofing tools are non-mutating unless the user explicitly chooses a reviewable fix path.
+    - [x] Results distinguish native metrics from model-generated recommendations.
+    - [x] Tests cover scope, unsupported capability, and no-mutation guarantees.
+  - Notes/Evidence: The Word API reference includes `Document.checkSpelling`, readability statistics, `ReadabilityStatisticCollection`, and related options. Closed 2026-04-27 by adding `word_proofing_stats`, non-mutating text statistics/readability collection, prompt guidance separating native metrics from model judgment, and `word-proofing-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-024: Add Word protection, reviewer, coauthoring, and conflict-awareness tools
   - Category: Feature

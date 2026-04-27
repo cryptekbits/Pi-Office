@@ -359,6 +359,29 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     executor: "office-bridge",
   },
   {
+    name: "word_proofing_stats",
+    hosts: ["word"],
+    category: "read",
+    label: "Word Proofing and Statistics",
+    description:
+      "Collect non-mutating Word quality signals such as text statistics, numbered-item counts, and desktop-gated readability metrics.",
+    discovery: {
+      tier: "specialized",
+      capabilityIds: ["word.proofing", "word.readability", "word.statistics"],
+      keywords: ["word", "proofing", "readability", "statistics", "word count", "numbered items"],
+      summary: "Report native Word quality/statistics signals separately from model judgment.",
+      riskLevel: "low",
+      requirementSets: [{ name: "WordApi", minVersion: "1.1" }, { name: "WordApiDesktop", minVersion: "1.4", note: "Readability statistics are desktop-gated." }],
+      fallback: "Use verify_doc and model-level critique when native proofing/readability APIs are unavailable.",
+    },
+    parameters: Type.Object({
+      scope: Type.Optional(Type.String({ description: "selection or document. Defaults to document." })),
+      includeReadability: Type.Optional(Type.Boolean({ description: "Attempt desktop-gated readability statistics. Defaults to true." })),
+      includeNumberedItems: Type.Optional(Type.Boolean({ description: "Attempt desktop-gated numbered item counts. Defaults to true." })),
+    }),
+    executor: "office-bridge",
+  },
+  {
     name: "edit_doc_text",
     hosts: ["word"],
     category: "write-doc",
