@@ -382,6 +382,28 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     executor: "office-bridge",
   },
   {
+    name: "word_collab_guard",
+    hosts: ["word"],
+    category: "read",
+    label: "Word Collaboration and Protection State",
+    description:
+      "Read Word protection, reviewer, and tracked-change display state before risky edits. Non-mutating diagnostics only.",
+    discovery: {
+      tier: "specialized",
+      capabilityIds: ["word.protection", "word.reviewers", "word.collaboration"],
+      keywords: ["word", "protection", "reviewer", "coauthoring", "conflict", "tracked changes"],
+      summary: "Warn about protected or review-sensitive Word documents before edits.",
+      riskLevel: "low",
+      requirementSets: [{ name: "WordApi", minVersion: "1.1" }, { name: "WordApiDesktop", minVersion: "1.4", note: "Protection type and reviewer filter metadata are desktop-gated." }],
+      fallback: "Use normal permission prompts and reviewable proposals when native collaboration metadata is unavailable.",
+    },
+    parameters: Type.Object({
+      includeReviewers: Type.Optional(Type.Boolean({ description: "Include desktop-gated reviewer visibility/filter metadata. Defaults to true." })),
+      includeRevisions: Type.Optional(Type.Boolean({ description: "Include tracked change counts/previews. Defaults to true." })),
+    }),
+    executor: "office-bridge",
+  },
+  {
     name: "edit_doc_text",
     hosts: ["word"],
     category: "write-doc",

@@ -1369,6 +1369,69 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       };
     }
 
+    if (type === "protectionAwareness") {
+      const operation = trimString(options.operation ?? action.operation) ?? "diagnostics";
+      const supportsProtection = supportsRequirementSet("WordApiDesktop", "1.4");
+      const trackedChanges = supportsRequirementSet("WordApi", "1.6") ? body.getTrackedChanges() : undefined;
+      trackedChanges?.load("items/author,items/date,items/text,items/type");
+      const comments = supportsRequirementSet("WordApi", "1.4") ? body.getComments() : undefined;
+      comments?.load("items/id,items/authorName,items/content,items/resolved");
+      if (supportsProtection) {
+        context.document.load("protectionType");
+        context.document.activeWindow?.view?.load("type");
+        context.document.activeWindow?.view?.revisionsFilter?.load("markup,view,reviewers/items/isVisible");
+      }
+      await context.sync();
+
+      if (operation === "protect" || operation === "unprotect") {
+        if (!supportsProtection) throw new Error("Word protect/unprotect diagnostics require WordApiDesktop 1.4 or newer.");
+        if (toBoolean(options.confirmProtectionChange ?? action.confirmProtectionChange) !== true) {
+          throw new Error(`Word ${operation} requires confirmProtectionChange=true.`);
+        }
+        if (operation === "unprotect") {
+          context.document.unprotect(trimString(options.password ?? action.password));
+        } else {
+          throw new Error("Word protect operations require a richer protection options contract; this slice is diagnostics-first.");
+        }
+        await context.sync();
+      }
+
+      const protectionType = supportsProtection ? String((context.document as unknown as { protectionType?: unknown }).protectionType ?? "Unknown") : "unsupported";
+      const revisionCount = trackedChanges?.items.length ?? 0;
+      const unresolvedComments = comments?.items.filter((comment) => !comment.resolved).length ?? 0;
+      const warnings = [
+        protectionType !== "NoProtection" && protectionType !== "unsupported" ? `Document protection is ${protectionType}.` : undefined,
+        revisionCount ? `${revisionCount} tracked change${revisionCount === 1 ? "" : "s"} visible in current scope.` : undefined,
+        unresolvedComments ? `${unresolvedComments} unresolved comment${unresolvedComments === 1 ? "" : "s"}.` : undefined,
+      ].filter((entry): entry is string => Boolean(entry));
+      return {
+        ok: true,
+        host: "word",
+        action: type,
+        operation,
+        mutating: operation === "unprotect",
+        diagnostics: {
+          protectionType,
+          revisionCount,
+          unresolvedComments,
+          reviewers: supportsProtection
+            ? (context.document.activeWindow?.view?.revisionsFilter?.reviewers?.items ?? []).map((reviewer, index) => ({
+                id: `reviewer:${index + 1}`,
+                isVisible: reviewer.isVisible,
+              }))
+            : [],
+          revisionsFilter: supportsProtection
+            ? {
+                markup: context.document.activeWindow?.view?.revisionsFilter?.markup,
+                view: context.document.activeWindow?.view?.revisionsFilter?.view,
+              }
+            : undefined,
+          supportsNativeProtection: supportsProtection,
+        },
+        warnings,
+      };
+    }
+
     if (type === "acceptAllRevisions" || type === "rejectAllRevisions") {
       if (!supportsRequirementSet("WordApi", "1.6")) {
         throw new Error("Word revision actions require WordApi 1.6 or newer.");

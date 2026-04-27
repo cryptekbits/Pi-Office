@@ -436,6 +436,30 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_collab_guard") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_collab_guard is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "collaborationGuard",
+          target: request.params.target as never,
+          options: {
+            operation: request.params.operation,
+            protectionType: request.params.protectionType,
+            password: request.params.password,
+            reviewerName: request.params.reviewerName,
+            visible: request.params.visible,
+            confirmProtectionChange: request.params.confirmProtectionChange,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

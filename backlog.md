@@ -993,25 +993,25 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests cover scope, unsupported capability, and no-mutation guarantees.
   - Notes/Evidence: The Word API reference includes `Document.checkSpelling`, readability statistics, `ReadabilityStatisticCollection`, and related options. Closed 2026-04-27 by adding `word_proofing_stats`, non-mutating text statistics/readability collection, prompt guidance separating native metrics from model judgment, and `word-proofing-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-024: Add Word protection, reviewer, coauthoring, and conflict-awareness tools
+- [x] FEATURE-024: Add Word protection, reviewer, coauthoring, and conflict-awareness tools
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: 2026-04-27 Word API audit and Tier C review-safety gap review.
   - Details: AI edits in shared or protected Word documents need awareness of protection mode, editable ranges, reviewers, coauthoring updates, locks, and conflicts. Pi-Office currently gates tool permissions but does not inspect or manage Word-native protection and collaboration state. This task should prioritize non-mutating awareness first, then narrowly scoped protection/editable-range operations where supported and safe.
   - Dependencies: FEATURE-004, SECURITY-002, SECURITY-003.
   - Subtasks:
-    - [ ] Inventory protection, editor, reviewer, revisions filter, coauthoring lock/update, and conflict APIs by requirement set.
-    - [ ] Add read-only collaboration/protection diagnostics that warn before document writes in protected, locked, or conflicted ranges.
-    - [ ] Define guarded operations for protect/unprotect, editable ranges, reviewer filters, and conflict resolution only where supported.
-    - [ ] Integrate diagnostics with tool permission prompts so risky writes surface native collaboration state.
-    - [ ] Add tests for protected document warnings, locked-range denial, reviewer filtering, conflict detection, and unsupported-host fallback.
+    - [x] Inventory protection, editor, reviewer, revisions filter, coauthoring lock/update, and conflict APIs by requirement set.
+    - [x] Add read-only collaboration/protection diagnostics that warn before document writes in protected, locked, or conflicted ranges.
+    - [x] Define guarded operations for protect/unprotect, editable ranges, reviewer filters, and conflict resolution only where supported.
+    - [x] Integrate diagnostics with tool permission prompts so risky writes surface native collaboration state.
+    - [x] Add tests for protected document warnings, locked-range denial, reviewer filtering, conflict detection, and unsupported-host fallback.
   - Acceptance Criteria:
-    - [ ] The assistant can detect and explain protection/coauthoring/review state before making risky edits.
-    - [ ] Protected or conflicted ranges fail closed or request explicit user action before mutation.
-    - [ ] Reviewer and revisions filters are handled transparently and do not hide relevant changes from the model.
-    - [ ] Tests cover non-mutating diagnostics and guarded write behavior.
-  - Notes/Evidence: The Word API reference includes `Document.protect`, `DocumentProtectOptions`, `Editor`, `EditorCollection`, `Reviewer`, `ReviewerCollection`, `RevisionsFilter`, `Coauthoring`, `CoauthoringLock`, `CoauthoringUpdate`, `Conflict`, and related collections.
+    - [x] The assistant can detect and explain protection/coauthoring/review state before making risky edits.
+    - [x] Protected or conflicted ranges fail closed or request explicit user action before mutation.
+    - [x] Reviewer and revisions filters are handled transparently and do not hide relevant changes from the model.
+    - [x] Tests cover non-mutating diagnostics and guarded write behavior.
+  - Notes/Evidence: The Word API reference includes `Document.protect`, `DocumentProtectOptions`, `Editor`, `EditorCollection`, `Reviewer`, `ReviewerCollection`, `RevisionsFilter`, `Coauthoring`, `CoauthoringLock`, `CoauthoringUpdate`, `Conflict`, and related collections. Closed 2026-04-27 by adding `word_collab_guard`, non-mutating protection/review diagnostics, desktop-gated protection/revisions-filter awareness, confirmation-gated unprotect hook, prompt guidance before risky edits, and `word-protection-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-025: Add Word custom XML, XML mapping, document metadata, and settings tools
   - Category: Feature

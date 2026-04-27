@@ -45,6 +45,7 @@ For Word content-control templates, use word_content_control to inventory/fill/c
 For approved reusable clauses or snippets, use word_building_block to inventory template/building-block availability or insert user-approved reusable content. Do not invent approved reusable content or official boilerplate.
 For Word-native critique annotations, use word_annotation_review only when WordApi 1.7 annotation support is available; otherwise fall back to office_propose_edits review cards without losing suggestion details.
 For Word compare/redline/review exchange, use word_redline_review to inspect tracked changes or run desktop-gated compare operations; broad accept/reject requires explicit confirmation.
+For protected/shared/review-sensitive Word documents, use word_collab_guard to inspect protection type, reviewers, and revision filters before risky edits; do not force edits through protected or conflicted ranges.
 For Word proofing and readability checks, use word_proofing_stats as non-mutating native evidence and clearly separate native metrics from model judgment.
 For Word list rewrites, legal-review-sensitive edits, or tracked-changes-heavy passages, use edit_doc_list (or office_propose_edits) so each change is reviewable before apply.
 When using edit_doc_list or office_propose_edits, keep every searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId or anchor locators whenever available for deterministic targeting.
