@@ -1,0 +1,83 @@
+category: knowledge
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: granola
+name: Granola
+vendor: Granola
+iconKey: granola
+maturity: beta
+setupKind: remote_oauth
+authMethod: oauth
+transport: remote_http
+readOnly: true
+summary: Connect Granola meeting history through the official hosted MCP.
+officeValue: Meeting notes and summaries can become source material for proposals, briefs, action docs, and follow-ups.
+tags:
+  - meetings
+  - notes
+capabilityHints:
+  - read meetings
+  - search notes
+requirements: []
+envHints: []
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.granola.ai/mcp
+setupProfiles:
+  - id: granola-hosted-oauth
+    label: Sign in with Granola
+    description: Official hosted Granola MCP using companion-brokered browser sign-in.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.granola.ai/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Granola sign-in opens in the system browser. The local companion receives the OAuth callback and stores the
+        token on this device.
+      - Granola meeting notes requested by tools go from the companion to Granola after sign-in.
+    simpleFields:
+      - Sign in
+    advancedFields:
+      - MCP service URL
+      - Tool policy
+    oauth:
+      broker: companion
+      launchMode: system_browser
+      metadataUrl: https://mcp.granola.ai/.well-known/oauth-authorization-server
+      redirectPath: /v1/connectors/oauth/callback
+      clientName: Pi-Office
+    docsUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+    endpointEvidenceUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Granola is an official hosted MCP with OAuth/DCR, but live Office webviews are blocked by provider CORS during
+        Dynamic Client Registration. Use the generic companion OAuth broker for DCR, PKCE callback, token exchange, and
+        system-browser sign-in.
+    availability: needs_companion
+    browserDirect: unsupported
+    authEvidenceUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+docsUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp
+setupNotes:
+  - Granola MCP uses browser sign-in through OAuth/DCR. Do not ask for an API key unless Granola publishes a first-party
+    MCP token flow.
+authUrl: https://docs.granola.ai/help-center/sharing/integrations/mcp

@@ -1,0 +1,115 @@
+category: commerce
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: stripe
+name: Stripe
+vendor: Stripe
+iconKey: stripe
+maturity: beta
+setupKind: remote_api_key
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Read payments, subscriptions, and billing context for finance or operations work.
+officeValue: Helpful for business reviews, reconciliations, and executive finance summaries.
+tags:
+  - payments
+  - billing
+  - finance
+capabilityHints:
+  - read charges
+  - list customers
+  - inspect subscriptions
+requirements: []
+envHints:
+  - key: STRIPE_API_KEY
+    label: Stripe secret key
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(refund|capture|create|update|delete|cancel)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.stripe.com
+setupProfiles:
+  - id: stripe-hosted
+    label: Connect Stripe online
+    description: Stripe hosted MCP using OAuth or a restricted API key.
+    transport: remote_http
+    setupKind: remote_api_key
+    authMethod: api_key
+    endpoint: https://mcp.stripe.com
+    credentialEnvKey: STRIPE_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Stripe billing requests go to Stripe's hosted MCP service. Prefer restricted read-only keys.
+    simpleFields:
+      - Connector URL
+      - API key
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.stripe.com/mcp
+    endpointEvidenceUrl: https://docs.stripe.com/mcp
+    authEvidenceUrl: https://docs.stripe.com/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: stripe-local-stdio
+    label: Use local companion
+    description: Local Stripe MCP package with a restricted key.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: api_key
+    command: npx
+    args:
+      - -y
+      - "@stripe/mcp@latest"
+    credentialEnvKey: STRIPE_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - API key
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://docs.stripe.com/mcp
+    endpointEvidenceUrl: https://docs.stripe.com/mcp
+    authEvidenceUrl: https://docs.stripe.com/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+        commands.
+    availability: needs_companion
+    browserDirect: unsupported
+docsUrl: https://docs.stripe.com/mcp
+authUrl: https://dashboard.stripe.com/apikeys

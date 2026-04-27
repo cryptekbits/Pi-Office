@@ -1,0 +1,126 @@
+category: productivity
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: microsoft-365
+name: Microsoft 365 (Work IQ)
+vendor: Microsoft
+iconKey: microsoft-365
+maturity: beta
+setupKind: remote_oauth
+authMethod: oauth
+transport: remote_http
+readOnly: true
+summary: Read Teams channels, SharePoint files, Outlook email, calendar events, and OneDrive documents through
+  Microsoft's official Work IQ MCP.
+officeValue: "Ground your Office documents in real M365 context: meeting notes from Teams, source files from SharePoint,
+  and email threads from Outlook."
+tags:
+  - m365
+  - teams
+  - sharepoint
+  - email
+  - calendar
+  - files
+  - onedrive
+capabilityHints:
+  - search Teams messages
+  - read SharePoint files
+  - list calendar events
+  - search email
+  - browse OneDrive
+requirements: []
+envHints:
+  - key: M365_ACCESS_TOKEN
+    label: Microsoft 365 access token
+    description: If you already export a token locally, the add-in can reuse it.
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(send|message|reply|post|upload|delete|move|rename|share|grant|create|write|create_channel)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+setupProfiles:
+  - id: workiq-local-stdio
+    label: Use local Work IQ
+    description: Runs Microsoft's Work IQ MCP locally through the companion.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: oauth
+    command: npx
+    args:
+      - -y
+      - "@microsoft/workiq@latest"
+      - mcp
+    credentialEnvKey: M365_ACCESS_TOKEN
+    requiresCompanion: true
+    officialness: official_preview
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - Sign in
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+    endpointEvidenceUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+    authEvidenceUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+        commands.
+    availability: needs_companion
+    browserDirect: unsupported
+  - id: agent365-hosted-mail
+    label: Agent 365 hosted MCP
+    description: Advanced tenant/server endpoint for Microsoft Agent 365 MCP.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://agent365.svc.cloud.microsoft/agents/tenants/{tenantId}/servers/{serverId}
+    requiresCompanion: false
+    officialness: planned
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Requires Microsoft 365 Copilot/Agent 365 tenant setup and admin-approved OAuth.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+    endpointEvidenceUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+    authEvidenceUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Tenant/server-specific Agent 365 setup is visible as roadmap until Pi-Office supports verified Microsoft OAuth
+        handoff.
+    availability: planned
+    browserDirect: unknown
+    setupDisabled: true
+docsUrl: https://learn.microsoft.com/microsoft-365-copilot/extensibility/mcp
+authUrl: https://portal.office.com
+setupNotes:
+  - Work IQ is Microsoft's official MCP server for M365 productivity data.
+  - Use browser sign-in or a Microsoft 365 access token from your IT-approved flow.
+  - Covers Teams, SharePoint, Calendar, Email, and OneDrive in a single connector.

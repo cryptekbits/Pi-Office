@@ -1,0 +1,119 @@
+category: knowledge
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: confluence
+name: Confluence
+vendor: Atlassian
+iconKey: confluence
+maturity: beta
+setupKind: remote_api_key
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Search wiki pages, SOPs, and project documentation while writing polished Office documents.
+officeValue: Ground slide decks, briefs, and meeting notes in the latest internal documentation.
+tags:
+  - wiki
+  - knowledge-base
+  - docs
+capabilityHints:
+  - search pages
+  - read page content
+  - fetch spaces
+requirements: []
+envHints:
+  - key: CONFLUENCE_API_TOKEN
+    label: Confluence API token
+  - key: CONFLUENCE_BASE_URL
+    label: Confluence site URL
+    description: For example https://your-team.atlassian.net/wiki
+    required: true
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(create_page|update_page|delete_page|comment|publish)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.atlassian.com/v1/mcp
+setupProfiles:
+  - id: atlassian-hosted-oauth
+    label: Sign in with Atlassian
+    description: Official Atlassian remote MCP for Confluence through browser sign-in.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.atlassian.com/v1/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Confluence page and space requests go to Atlassian's hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+    endpointEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+    authEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: community-local-stdio
+    label: Use local companion
+    description: Advanced self-hosted Jira/Confluence MCP through a local command.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: api_key
+    command: uvx
+    args:
+      - mcp-atlassian
+    credentialEnvKey: CONFLUENCE_API_TOKEN
+    requiresCompanion: true
+    officialness: community
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - API key
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+    endpointEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+    authEvidenceUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Community/local MCP profile; review the command and package source before enabling.
+    availability: needs_companion
+    browserDirect: unsupported
+docsUrl: https://support.atlassian.com/rovo/docs/use-an-mcp-server-with-rovo-dev-cli/
+authUrl: https://id.atlassian.com/manage-profile/security/api-tokens
+setupNotes:
+  - Use a site URL and token pair.
+  - Confluence works best for policy docs, specs, and meeting follow-ups.

@@ -1,0 +1,140 @@
+category: commerce
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: shopify
+name: Shopify
+vendor: Shopify
+iconKey: shopify
+maturity: beta
+setupKind: remote_api_key
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Read products, orders, and store metrics for merchant-facing documents.
+officeValue: Useful for merchandising reports, launch decks, and customer success recaps.
+tags:
+  - commerce
+  - orders
+  - catalog
+capabilityHints:
+  - list orders
+  - read products
+  - inspect store data
+requirements: []
+envHints:
+  - key: SHOPIFY_ACCESS_TOKEN
+    label: Shopify Admin API token
+  - key: SHOPIFY_STORE_DOMAIN
+    label: Shopify store domain
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(fulfill|refund|update|delete|create|adjust)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://{shopDomain}/api/mcp
+setupProfiles:
+  - id: shopify-storefront
+    label: Storefront catalog
+    description: Shopify Storefront MCP for product/catalog reads.
+    transport: remote_http
+    setupKind: remote_url_token
+    authMethod: none
+    endpoint: https://{shopDomain}/api/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Public storefront catalog requests go to the Shopify shop domain you enter.
+    simpleFields:
+      - Connector URL
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+    endpointEvidenceUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: shopify-customer-account
+    label: Customer account
+    description: Shopify Customer Account MCP with browser sign-in.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://{shopDomain}/customer/api/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+    endpointEvidenceUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+    authEvidenceUrl: https://shopify.dev/docs/api/customer-account-api/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: shopify-dev-local
+    label: Use Shopify Dev MCP
+    description: Local Shopify developer MCP through the companion.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: none
+    command: npx
+    args:
+      - -y
+      - "@shopify/dev-mcp@latest"
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+    endpointEvidenceUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+        commands.
+    availability: needs_companion
+    browserDirect: unsupported
+docsUrl: https://shopify.dev/docs/apps/build/storefront-mcp
+authUrl: https://shopify.dev/apps

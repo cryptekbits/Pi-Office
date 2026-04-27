@@ -1,0 +1,83 @@
+category: knowledge
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: advanced
+catalogRevision: 2026-04-27
+id: obsidian
+name: Obsidian
+vendor: Community
+iconKey: obsidian
+maturity: custom_mcp_only
+setupKind: local_executable_or_docker
+authMethod: none
+transport: local_stdio
+readOnly: true
+customOnly: true
+summary: Connect a local Obsidian MCP if your team already has one.
+officeValue: Helpful for private research vaults and note libraries that are already curated locally.
+tags:
+  - local
+  - notes
+  - vault
+capabilityHints:
+  - search notes
+  - read vault content
+requirements:
+  - key: node
+    label: Node.js
+  - key: npx
+    label: npx
+envHints: []
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(append|write|rename|move|delete)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+setupProfiles:
+  - id: obsidian-local-stdio
+    label: Use local companion
+    description: Community Obsidian MCP through the optional local companion.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: api_key
+    command: uvx
+    args:
+      - mcp-obsidian
+    credentialEnvKey: OBSIDIAN_API_KEY
+    requiresCompanion: true
+    officialness: community
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - API key
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://github.com/MarkusPfundstein/mcp-obsidian
+    endpointEvidenceUrl: https://github.com/MarkusPfundstein/mcp-obsidian
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Community local connector; users should review vault permissions and package provenance before setup.
+    availability: needs_companion
+    browserDirect: unsupported
+    authEvidenceUrl: https://github.com/MarkusPfundstein/mcp-obsidian
+docsUrl: https://github.com/MarkusPfundstein/mcp-obsidian
+setupNotes:
+  - Obsidian is shown as a community/local-only connector, not a vendor-official hosted MCP.

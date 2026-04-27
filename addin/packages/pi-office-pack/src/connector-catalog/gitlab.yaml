@@ -1,0 +1,112 @@
+category: engineering
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: gitlab
+name: GitLab
+vendor: GitLab
+iconKey: gitlab
+maturity: beta
+setupKind: remote_api_key
+authMethod: bearer_token
+transport: remote_http
+readOnly: true
+summary: Read merge requests, issues, and project files from GitLab workspaces.
+officeValue: Useful for engineering status packs and stakeholder-facing release materials.
+tags:
+  - code
+  - issues
+  - merge-requests
+capabilityHints:
+  - read files
+  - list merge requests
+  - inspect issues
+requirements: []
+envHints:
+  - key: GITLAB_PERSONAL_ACCESS_TOKEN
+    label: GitLab personal access token
+  - key: GITLAB_BASE_URL
+    label: GitLab base URL
+    description: Required for self-hosted GitLab instances.
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(approve|comment|create|update|delete|manage_pipeline|pipeline_run)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://gitlab.com/api/v4/mcp
+setupProfiles:
+  - id: gitlab-hosted-oauth
+    label: Sign in with GitLab
+    description: Official GitLab MCP endpoint for GitLab.com or self-managed instances.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://gitlab.com/api/v4/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - GitLab project, issue, and merge request reads go to the GitLab host you configure.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+    endpointEvidenceUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+    authEvidenceUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: gitlab-pat
+    label: Use personal token
+    description: GitLab API token fallback for read-only project context.
+    transport: remote_http
+    setupKind: remote_api_key
+    authMethod: bearer_token
+    endpoint: https://gitlab.com/api/v4/mcp
+    credentialEnvKey: GITLAB_PERSONAL_ACCESS_TOKEN
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Access token
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+    endpointEvidenceUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+    authEvidenceUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+docsUrl: https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/
+authUrl: https://gitlab.com/-/user_settings/personal_access_tokens

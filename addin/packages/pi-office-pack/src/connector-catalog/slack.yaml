@@ -1,0 +1,85 @@
+category: collaboration
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: slack
+name: Slack
+vendor: Slack
+iconKey: slack
+maturity: beta
+setupKind: remote_api_key
+authMethod: bearer_token
+transport: remote_http
+readOnly: true
+summary: Read channels, threads, and searchable message history from Slack workspaces.
+officeValue: Summarize scattered decisions into crisp Office-ready outputs without manually copying message threads.
+tags:
+  - chat
+  - threads
+  - search
+capabilityHints:
+  - search messages
+  - read channels
+  - inspect threads
+requirements: []
+envHints:
+  - key: SLACK_BOT_TOKEN
+    label: Slack bot token
+  - key: SLACK_USER_TOKEN
+    label: Slack user token
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(chat_post|post_message|reply|send|create_channel|archive)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.slack.com/mcp
+setupProfiles:
+  - id: slack-hosted-oauth
+    label: Sign in with Slack
+    description: Official hosted Slack MCP, coming soon in Pi-Office after a Slack app is registered.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.slack.com/mcp
+    requiresCompanion: false
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Slack messages and channel metadata requested by tools go to Slack's hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.slack.dev/ai/slack-mcp-server/
+    endpointEvidenceUrl: https://docs.slack.dev/ai/slack-mcp-server/
+    authEvidenceUrl: https://docs.slack.dev/ai/slack-mcp-server/
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Slack MCP does not support Dynamic Client Registration and requires a registered Slack app client ID/secret.
+        Pi-Office will enable setup after the Slack app registration path is ready.
+    availability: planned
+    browserDirect: unsupported
+    setupDisabled: true
+docsUrl: https://docs.slack.dev/ai/slack-mcp-server/
+authUrl: https://api.slack.com/apps
+setupNotes:
+  - Slack MCP requires a registered Slack app with confidential OAuth, so Pi-Office setup is intentionally coming soon.
+  - Keep the connector visible as a roadmap entry until the Slack app registration and credential broker path is ready.

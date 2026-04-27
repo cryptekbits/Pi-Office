@@ -1,0 +1,171 @@
+category: analytics
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: launchdarkly
+name: LaunchDarkly
+vendor: LaunchDarkly
+iconKey: launchdarkly
+maturity: beta
+setupKind: remote_api_key
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Read flag states, environments, and rollout context from LaunchDarkly.
+officeValue: Ideal for release notes, rollout plans, and operational review slides.
+tags:
+  - feature-flags
+  - release
+capabilityHints:
+  - list flags
+  - inspect environments
+  - review rollout metadata
+requirements: []
+envHints:
+  - key: LAUNCHDARKLY_API_KEY
+    label: LaunchDarkly access token
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(patch|update|delete|create|toggle|archive)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.launchdarkly.com/mcp/fm
+setupProfiles:
+  - id: launchdarkly-fm
+    label: Feature flags
+    description: LaunchDarkly hosted MCP for flag management read workflows.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.launchdarkly.com/mcp/fm
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Flag metadata requested by tools goes to LaunchDarkly's hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    endpointEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    authEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: launchdarkly-ai-configs
+    label: AI configs
+    description: LaunchDarkly hosted MCP for AI Configs context.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.launchdarkly.com/mcp/aiconfigs
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    endpointEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    authEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: launchdarkly-observability
+    label: Observability
+    description: LaunchDarkly hosted MCP for observability context.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.launchdarkly.com/mcp/observability
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    endpointEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    authEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: launchdarkly-local-stdio
+    label: Use local companion
+    description: Local LaunchDarkly MCP with a personal access token.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: api_key
+    command: npx
+    args:
+      - -y
+      - "@launchdarkly/mcp-server"
+    credentialEnvKey: LAUNCHDARKLY_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - API key
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    endpointEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    authEvidenceUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+        commands.
+    availability: needs_companion
+    browserDirect: unsupported
+docsUrl: https://launchdarkly.com/docs/home/getting-started/mcp
+authUrl: https://app.launchdarkly.com/settings/authorization/tokens

@@ -1,0 +1,116 @@
+category: knowledge
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: notion
+name: Notion
+vendor: Notion
+iconKey: notion
+maturity: beta
+setupKind: remote_api_key
+authMethod: bearer_token
+transport: remote_http
+readOnly: true
+summary: Search pages, databases, and notes from shared Notion workspaces.
+officeValue: Useful for pulling fast-moving planning notes into polished documents and presentations.
+tags:
+  - notes
+  - wiki
+  - database
+capabilityHints:
+  - search pages
+  - read databases
+  - inspect notes
+requirements: []
+envHints:
+  - key: NOTION_API_KEY
+    label: Notion internal integration token
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(create_page|update_page|append|write)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.notion.com/mcp
+setupProfiles:
+  - id: notion-hosted-oauth
+    label: Sign in with Notion
+    description: Official hosted Notion MCP using browser sign-in.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.notion.com/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Notion workspace content requested by tools goes to Notion's hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://developers.notion.com/guides/mcp/overview
+    endpointEvidenceUrl: https://developers.notion.com/guides/mcp/overview
+    authEvidenceUrl: https://developers.notion.com/guides/mcp/overview
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: notion-local-stdio
+    label: Use local companion
+    description: Advanced local Notion MCP package with a Notion integration token.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: bearer_token
+    command: npx
+    args:
+      - -y
+      - "@notionhq/notion-mcp-server"
+    credentialEnvKey: NOTION_TOKEN
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - Access token
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://developers.notion.com/guides/mcp/overview
+    endpointEvidenceUrl: https://developers.notion.com/guides/mcp/overview
+    authEvidenceUrl: https://developers.notion.com/guides/mcp/overview
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+        commands.
+    availability: needs_companion
+    browserDirect: unsupported
+docsUrl: https://developers.notion.com/guides/mcp/overview
+authUrl: https://www.notion.so/my-integrations
+setupNotes:
+  - Use an internal integration token that already has page access granted.

@@ -1,0 +1,109 @@
+category: knowledge
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: supermemory
+name: Supermemory
+vendor: Supermemory
+iconKey: supermemory
+maturity: beta
+setupKind: remote_oauth
+authMethod: oauth
+transport: remote_http
+readOnly: true
+summary: Connect a hosted Supermemory MCP if your team uses it for memory and retrieval.
+officeValue: Useful for quickly grounding drafts in prior conversations or indexed knowledge.
+tags:
+  - memory
+  - retrieval
+capabilityHints:
+  - search memories
+  - retrieve saved context
+requirements: []
+envHints:
+  - key: SUPERMEMORY_API_KEY
+    label: Supermemory token
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.supermemory.ai/mcp
+setupProfiles:
+  - id: supermemory-hosted-oauth
+    label: Sign in with Supermemory
+    description: Official hosted Supermemory MCP using browser sign-in.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.supermemory.ai/mcp
+    requiresCompanion: false
+    officialness: official_preview
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Memory search and recall requests go to Supermemory's hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.supermemory.ai/mcp
+    endpointEvidenceUrl: https://docs.supermemory.ai/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Supermemory docs describe user/project-specific MCP setup; Pi-Office keeps this disabled until a stable endpoint
+        contract is confirmed.
+    availability: planned
+    browserDirect: unknown
+    setupDisabled: true
+    authEvidenceUrl: https://docs.supermemory.ai/mcp
+  - id: supermemory-api-key
+    label: Use API key
+    description: API-key setup for Supermemory projects.
+    transport: remote_http
+    setupKind: remote_api_key
+    authMethod: bearer_token
+    endpoint: https://mcp.supermemory.ai/mcp
+    credentialEnvKey: SUPERMEMORY_API_KEY
+    requiresCompanion: false
+    officialness: official_preview
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Access token
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.supermemory.ai/mcp
+    endpointEvidenceUrl: https://docs.supermemory.ai/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Supermemory docs describe user/project-specific MCP setup; Pi-Office keeps this disabled until a stable endpoint
+        contract is confirmed.
+    availability: planned
+    browserDirect: unknown
+    setupDisabled: true
+    authEvidenceUrl: https://docs.supermemory.ai/mcp
+docsUrl: https://docs.supermemory.ai/mcp
+setupNotes:
+  - Starts in custom setup until a stable template is confirmed.

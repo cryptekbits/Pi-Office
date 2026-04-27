@@ -1,0 +1,109 @@
+category: data
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: airtable
+name: Airtable
+vendor: Airtable
+iconKey: airtable
+maturity: beta
+setupKind: remote_api_key
+authMethod: bearer_token
+transport: remote_http
+readOnly: true
+summary: Read tables, views, and linked records for operations and planning workflows.
+officeValue: Great for status trackers, launch plans, hiring ops, and structured planning data in Office docs.
+tags:
+  - tables
+  - planning
+  - ops
+capabilityHints:
+  - list bases
+  - read records
+  - query views
+requirements: []
+envHints:
+  - key: AIRTABLE_API_KEY
+    label: Airtable token
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(create|update|delete|write|append)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.airtable.com/mcp
+setupProfiles:
+  - id: airtable-hosted-oauth
+    label: Sign in with Airtable
+    description: Official Airtable hosted MCP with OAuth.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.airtable.com/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Selected Airtable base and record requests go to Airtable's hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+    endpointEvidenceUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+    authEvidenceUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: airtable-pat
+    label: Use personal token
+    description: Advanced Airtable personal access token setup.
+    transport: remote_http
+    setupKind: remote_api_key
+    authMethod: bearer_token
+    endpoint: https://mcp.airtable.com/mcp
+    credentialEnvKey: AIRTABLE_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Access token
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+    endpointEvidenceUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+    authEvidenceUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+docsUrl: https://support.airtable.com/docs/using-the-airtable-mcp-server
+authUrl: https://airtable.com/create/tokens

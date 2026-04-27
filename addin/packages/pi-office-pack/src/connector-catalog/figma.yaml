@@ -1,0 +1,108 @@
+category: engineering
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: figma
+name: Figma
+vendor: Figma
+iconKey: figma
+maturity: beta
+setupKind: remote_api_key
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Read design files, comments, and handoff context while preparing specs or reviews.
+officeValue: Reference source-of-truth design decisions when building product decks and feature briefs.
+tags:
+  - design
+  - handoff
+  - review
+capabilityHints:
+  - read file metadata
+  - inspect comments
+  - search design context
+requirements: []
+envHints:
+  - key: FIGMA_API_KEY
+    label: Figma token
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(create|update|delete|comment|post)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.figma.com/mcp
+setupProfiles:
+  - id: figma-hosted-oauth
+    label: Sign in with Figma
+    description: Official hosted Figma MCP for supported MCP clients.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.figma.com/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Figma hosted MCP support depends on Figma's client catalog and workspace policy.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://developers.figma.com/docs/figma-mcp-server/
+    endpointEvidenceUrl: https://developers.figma.com/docs/figma-mcp-server/
+    authEvidenceUrl: https://developers.figma.com/docs/figma-mcp-server/
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: figma-desktop-http
+    label: Use Figma desktop
+    description: Advanced local Figma Desktop MCP endpoint.
+    transport: remote_http
+    setupKind: remote_url_token
+    authMethod: none
+    endpoint: http://127.0.0.1:3845/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Uses the signed-in Figma desktop app on this machine.
+    simpleFields:
+      - Connector URL
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://developers.figma.com/docs/figma-mcp-server/
+    endpointEvidenceUrl: https://developers.figma.com/docs/figma-mcp-server/
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Figma Desktop exposes a local MCP endpoint, so Pi-Office routes it through the companion instead of
+        browser-local calls.
+    availability: needs_companion
+    browserDirect: unsupported
+docsUrl: https://developers.figma.com/docs/figma-mcp-server/
+authUrl: https://www.figma.com/developers/api
+setupNotes:
+  - Use a personal access token or your approved workspace token.

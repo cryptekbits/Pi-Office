@@ -1,0 +1,134 @@
+category: research
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: parallel-web
+name: Parallel Web
+vendor: Parallel
+iconKey: parallel
+maturity: beta
+setupKind: remote_api_key
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Read fresh web results from Parallel's search tooling.
+officeValue: Useful for market scans, competitive research, and cited briefing material.
+tags:
+  - web
+  - search
+  - research
+capabilityHints:
+  - web fetch
+  - web search
+requirements: []
+envHints:
+  - key: PARALLEL_API_KEY
+    label: Parallel API key
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://search.parallel.ai/mcp
+setupProfiles:
+  - id: parallel-search-anonymous
+    label: Free web search
+    description: Parallel Search MCP public endpoint for limited anonymous search.
+    transport: remote_http
+    setupKind: remote_url_token
+    authMethod: none
+    endpoint: https://search.parallel.ai/mcp
+    requiresCompanion: false
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Anonymous/free search has limited use and is not the ZDR/org endpoint.
+    simpleFields:
+      - Connector URL
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.parallel.ai/integrations/mcp/search-mcp
+    endpointEvidenceUrl: https://docs.parallel.ai/integrations/mcp/search-mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: parallel-search-oauth-zdr
+    label: Account or ZDR search
+    description: Parallel Search MCP with OAuth/account attribution where the MCP authorization server offers it.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://search.parallel.ai/mcp-oauth
+    requiresCompanion: false
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Use this endpoint for account attribution, organization controls, or ZDR requirements.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.parallel.ai/integrations/mcp/search-mcp
+    endpointEvidenceUrl: https://docs.parallel.ai/integrations/mcp/search-mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official docs require the /mcp-oauth endpoint for OAuth, account attribution, organization controls, and ZDR.
+    availability: available
+    browserDirect: unknown
+    authEvidenceUrl: https://docs.parallel.ai/integrations/oauth-provider
+  - id: parallel-task-mcp
+    label: Deep research tasks
+    description: Parallel Task MCP for authenticated long-running research tasks.
+    transport: remote_http
+    setupKind: remote_api_key
+    authMethod: api_key
+    endpoint: https://task-mcp.parallel.ai/mcp
+    credentialEnvKey: PARALLEL_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Task MCP can create remote research tasks and may consume account quota.
+    simpleFields:
+      - Connector URL
+      - API key
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://docs.parallel.ai/integrations/mcp/search-mcp
+    endpointEvidenceUrl: https://docs.parallel.ai/integrations/mcp/search-mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+    authEvidenceUrl: https://docs.parallel.ai/integrations/mcp/search-mcp
+docsUrl: https://docs.parallel.ai/integrations/mcp/search-mcp
+setupNotes:
+  - Use an API key-backed hosted MCP endpoint if your team provides one.

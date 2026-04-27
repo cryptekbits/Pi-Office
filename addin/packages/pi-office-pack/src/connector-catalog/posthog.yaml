@@ -1,0 +1,142 @@
+category: analytics
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: posthog
+name: PostHog
+vendor: PostHog
+iconKey: posthog
+maturity: beta
+setupKind: remote_api_key
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Read product analytics, dashboards, and event trends while building reviews or product updates.
+officeValue: Ground roadmap decks and review docs in live usage data.
+tags:
+  - analytics
+  - product
+  - usage
+capabilityHints:
+  - query dashboards
+  - read insights
+  - inspect events
+requirements: []
+envHints:
+  - key: POSTHOG_API_KEY
+    label: PostHog personal API key
+  - key: POSTHOG_BASE_URL
+    label: PostHog host URL
+    description: Needed for self-hosted workspaces.
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(capture|create|update|delete|feature_flag_update)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.posthog.com/mcp
+setupProfiles:
+  - id: posthog-us
+    label: Connect PostHog US
+    description: PostHog hosted MCP for app.posthog.com workspaces.
+    transport: remote_http
+    setupKind: remote_api_key
+    authMethod: api_key
+    endpoint: https://mcp.posthog.com/mcp
+    credentialEnvKey: POSTHOG_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Product analytics queries go to PostHog's hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - API key
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://posthog.com/docs/model-context-protocol
+    endpointEvidenceUrl: https://posthog.com/docs/model-context-protocol
+    authEvidenceUrl: https://posthog.com/docs/model-context-protocol
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: posthog-eu
+    label: Connect PostHog EU
+    description: PostHog hosted MCP for EU workspaces.
+    transport: remote_http
+    setupKind: remote_api_key
+    authMethod: api_key
+    endpoint: https://mcp-eu.posthog.com/mcp
+    credentialEnvKey: POSTHOG_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - API key
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://posthog.com/docs/model-context-protocol
+    endpointEvidenceUrl: https://posthog.com/docs/model-context-protocol
+    authEvidenceUrl: https://posthog.com/docs/model-context-protocol
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+  - id: posthog-oauth
+    label: Sign in with PostHog
+    description: OAuth setup for PostHog MCP where supported.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://mcp.posthog.com/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://posthog.com/docs/model-context-protocol
+    endpointEvidenceUrl: https://posthog.com/docs/model-context-protocol
+    authEvidenceUrl: https://posthog.com/docs/model-context-protocol
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official remote MCP profile, but Pi-Office has not yet verified browser-direct CORS/OAuth compatibility for this
+        endpoint.
+    availability: available
+    browserDirect: unknown
+docsUrl: https://posthog.com/docs/model-context-protocol
+authUrl: https://app.posthog.com/settings/user-api-keys

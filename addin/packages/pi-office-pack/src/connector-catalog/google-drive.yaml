@@ -1,0 +1,116 @@
+category: productivity
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: google-drive
+name: Google Drive
+vendor: Google
+iconKey: gdrive
+maturity: beta
+setupKind: remote_oauth
+authMethod: oauth
+transport: remote_http
+readOnly: true
+summary: Read shared Drive folders, Docs exports, and supporting files from Google Workspace.
+officeValue: Bring reference material from Drive into Microsoft Office writing workflows.
+tags:
+  - files
+  - docs
+  - workspace
+capabilityHints:
+  - list files
+  - read file metadata
+  - search drive
+requirements: []
+envHints:
+  - key: GOOGLE_DRIVE_ACCESS_TOKEN
+    label: Google access token
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(upload|delete|move|rename|share|create|write)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://drivemcp.googleapis.com/mcp/v1
+setupProfiles:
+  - id: google-drive-official
+    label: Sign in with Google
+    description: Google Drive first-party MCP Developer Preview.
+    transport: remote_http
+    setupKind: remote_oauth
+    authMethod: oauth
+    endpoint: https://drivemcp.googleapis.com/mcp/v1
+    requiresCompanion: false
+    officialness: planned
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Drive file metadata/content requested by tools goes to Google's Drive MCP service.
+    simpleFields:
+      - Connector URL
+      - Sign in
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://developers.google.com/drive
+    endpointEvidenceUrl: https://developers.google.com/drive
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Endpoint/auth contract is unverified from first-party MCP docs, so setup is visible as roadmap but disabled.
+    availability: planned
+    browserDirect: unknown
+    setupDisabled: true
+    authEvidenceUrl: https://developers.google.com/drive/api/guides/about-auth
+  - id: google-drive-legacy-local
+    label: Use local companion
+    description: Archived local Google Drive MCP fallback for advanced users.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: oauth
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-gdrive"
+    credentialEnvKey: GOOGLE_DRIVE_ACCESS_TOKEN
+    requiresCompanion: true
+    officialness: deprecated
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - Sign in
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://developers.google.com/drive
+    endpointEvidenceUrl: https://developers.google.com/drive
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Community/local MCP profile; review the command and package source before enabling.
+    availability: needs_companion
+    browserDirect: unsupported
+    authEvidenceUrl: https://developers.google.com/drive/api/guides/about-auth
+docsUrl: https://developers.google.com/drive
+authUrl: https://console.cloud.google.com
+setupNotes:
+  - The exact drivemcp.googleapis.com/mcp/v1 endpoint is intentionally planned/unverified until a first-party Google
+    source is attached.

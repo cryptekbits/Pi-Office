@@ -1,0 +1,80 @@
+category: research
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: guided
+catalogRevision: 2026-04-27
+id: perplexity
+name: Perplexity
+vendor: Perplexity
+iconKey: perplexity
+maturity: beta
+setupKind: local_node
+authMethod: api_key
+transport: local_stdio
+readOnly: true
+summary: Run Perplexity's official MCP server locally through the Pi-Office companion.
+officeValue: Useful for fast briefing support and web-grounded background research.
+tags:
+  - research
+  - search
+capabilityHints:
+  - search web
+  - retrieve answers
+requirements: []
+envHints:
+  - key: PERPLEXITY_API_KEY
+    label: Perplexity token
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+setupProfiles:
+  - id: perplexity-local-stdio
+    label: Use local companion
+    description: Official Perplexity MCP package through the local companion.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: api_key
+    command: npx
+    args:
+      - -yq
+      - "@perplexity-ai/mcp-server"
+    credentialEnvKey: PERPLEXITY_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - API key
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server
+    endpointEvidenceUrl: https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official setup is local STDIO/API-key only, so setup and verification are disabled until the companion is
+        connected.
+    availability: needs_companion
+    browserDirect: unsupported
+    authEvidenceUrl: https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server
+docsUrl: https://docs.perplexity.ai/docs/getting-started/integrations/mcp-server
+setupNotes:
+  - Perplexity currently documents a local STDIO MCP package with PERPLEXITY_API_KEY, not a hosted OAuth MCP URL.

@@ -1,0 +1,111 @@
+category: data
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: qdrant
+name: Qdrant
+vendor: Qdrant
+iconKey: qdrant
+maturity: beta
+setupKind: remote_url_token
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Query vector collections and retrieval layers that back internal knowledge systems.
+officeValue: Useful when Office docs need to reference internal RAG indexes or embeddings-based search.
+tags:
+  - vector-db
+  - retrieval
+  - data
+capabilityHints:
+  - query collections
+  - search points
+  - inspect collections
+requirements: []
+envHints:
+  - key: QDRANT_API_KEY
+    label: Qdrant API key
+  - key: QDRANT_URL
+    label: Qdrant base URL
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+    - (^|_)(upsert|delete|create_collection|update|write)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+setupProfiles:
+  - id: qdrant-local-stdio
+    label: Use local companion
+    description: Official Qdrant MCP through uvx on the companion machine.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: api_key
+    command: uvx
+    args:
+      - mcp-server-qdrant
+    credentialEnvKey: QDRANT_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - API key
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://github.com/qdrant/mcp-server-qdrant
+    endpointEvidenceUrl: https://github.com/qdrant/mcp-server-qdrant
+    authEvidenceUrl: https://github.com/qdrant/mcp-server-qdrant
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+        commands.
+    availability: needs_companion
+    browserDirect: unsupported
+  - id: qdrant-local-http
+    label: Local HTTP endpoint
+    description: Advanced local Qdrant MCP over Streamable HTTP.
+    transport: remote_http
+    setupKind: remote_api_key
+    authMethod: api_key
+    endpoint: http://127.0.0.1:8000/mcp
+    credentialEnvKey: QDRANT_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connector URL
+      - API key
+    advancedFields:
+      - HTTP headers
+      - Environment-backed headers
+      - Tool policy
+    docsUrl: https://github.com/qdrant/mcp-server-qdrant
+    endpointEvidenceUrl: https://github.com/qdrant/mcp-server-qdrant
+    authEvidenceUrl: https://github.com/qdrant/mcp-server-qdrant
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Local HTTP MCP endpoints are treated like local runtime access and require the Pi-Office companion.
+    availability: needs_companion
+    browserDirect: unsupported
+docsUrl: https://github.com/qdrant/mcp-server-qdrant

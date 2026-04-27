@@ -1439,6 +1439,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 ### Improvements
 
+- [x] IMPROVEMENT-013: Split connector catalog into per-connector YAML files
+  - Category: Improvement
+  - Status: done
+  - Priority: P2
+  - Source: 2026-04-28 user request to split the single connector YAML into a dedicated YAML per connector.
+  - Details: The connector setup catalog had grown into one large `addin/packages/pi-office-pack/src/connector-catalog.yaml`, making per-connector review and future connector additions noisy. Keep the generated TypeScript runtime catalog stable, but move connector bodies into dedicated files under `addin/packages/pi-office-pack/src/connector-catalog/`, with the root YAML reduced to an ordered manifest.
+  - Dependencies: FEATURE-008.
+  - Subtasks:
+    - [x] Replace the single large connector YAML with a manifest that records catalog revision and ordered connector file references.
+    - [x] Move each existing connector body into one dedicated YAML file named by connector ID.
+    - [x] Update the connector catalog generator to validate manifest references, duplicate IDs, and manifest/file ID mismatches.
+    - [x] Update provenance/project memory references to point future edits at the manifest plus per-connector files.
+  - Acceptance Criteria:
+    - [x] `npm --prefix addin run check:connector-catalog` passes from the split source layout.
+    - [x] Generated runtime catalog data remains stable except for source/editing comments.
+    - [x] Existing typecheck, Office tests, build, bundle, manifest validation, and whitespace checks pass.
+  - Notes/Evidence: Closed 2026-04-28 by replacing `addin/packages/pi-office-pack/src/connector-catalog.yaml` with an ordered manifest, moving all 24 connector definitions into `addin/packages/pi-office-pack/src/connector-catalog/*.yaml`, and updating `addin/scripts/generate-connector-catalog.mjs` to load manifest entries, validate ID/file consistency, and preserve the generated runtime catalog. The only generated runtime diff is the source editing comment. Validation passed: `npm --prefix addin run check:connector-catalog`, `npm run typecheck`, `npm run test:office` with 235 tests, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
 - [x] IMPROVEMENT-001: Clean up worktree hygiene for untracked archive and generated artifacts
   - Category: Improvement
   - Status: done

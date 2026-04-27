@@ -1,0 +1,132 @@
+category: research
+recommendedHosts:
+  - word
+  - excel
+  - powerpoint
+setupDifficulty: easy
+catalogRevision: 2026-04-27
+id: exa-search
+name: Exa Search
+vendor: Exa
+iconKey: exa
+maturity: beta
+setupKind: remote_api_key
+authMethod: api_key
+transport: remote_http
+readOnly: true
+summary: Use Exa-backed search and discovery for research-heavy documents.
+officeValue: Good for analyst notes, market maps, and supporting references in Office content.
+tags:
+  - search
+  - research
+  - discovery
+capabilityHints:
+  - web search
+  - content discovery
+requirements: []
+envHints:
+  - key: EXA_API_KEY
+    label: Exa API key
+readPolicy:
+  mode: hard-read-only
+  allowResources: true
+  allowPrompts: false
+  allowToolPatterns:
+    - ^(get|list|search|find|read|fetch|query|retrieve|describe|preview|inspect|lookup|resolve|show|view|count|whoami|stat)
+    - (^|_)(search|list|get|read|find|fetch|query|describe|inspect|preview|lookup|retrieve)(_|$)
+  blockToolPatterns:
+    - ^(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)
+    - (^|_)(create|update|delete|remove|write|edit|insert|append|upload|post|put|patch|merge|commit|apply|send|message|reply|comment|close|reopen|archive|move|rename|grant|revoke|start|stop|restart|approve|reject|refund|charge|pay)(_|$)
+  allowPromptPatterns: []
+  blockPromptPatterns:
+    - .*
+template:
+  transport: remote_http
+  url: https://mcp.exa.ai/mcp
+setupProfiles:
+  - id: exa-hosted
+    label: Connect Exa online
+    description: Exa hosted MCP with optional API key.
+    transport: remote_http
+    setupKind: remote_url_token
+    authMethod: none
+    endpoint: https://mcp.exa.ai/mcp
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: true
+    defaultWhenCompanionPresent: true
+    privacyNotes:
+      - Web queries, URLs, and fetched content requests go to Exa.
+    simpleFields:
+      - Connect online
+    advancedFields:
+      - MCP service URL
+      - Tool policy
+    docsUrl: https://exa.ai/mcp
+    endpointEvidenceUrl: https://exa.ai/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Exa currently documents a hosted MCP endpoint without requiring Pi-Office to collect an API key.
+    availability: available
+    browserDirect: unknown
+  - id: exa-hosted-basic-tools
+    label: Search and fetch only
+    description: Exa hosted MCP limited to search and fetch tools.
+    transport: remote_http
+    setupKind: remote_url_token
+    authMethod: none
+    endpoint: https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Connector requests are made by the companion to the hosted MCP service.
+    simpleFields:
+      - Connect online
+    advancedFields:
+      - MCP service URL
+      - Tool policy
+    docsUrl: https://exa.ai/mcp
+    endpointEvidenceUrl: https://exa.ai/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Exa currently documents a hosted MCP endpoint without requiring Pi-Office to collect an API key.
+    availability: available
+    browserDirect: unknown
+  - id: exa-local-stdio
+    label: Use local companion
+    description: Local Exa MCP package through the companion.
+    transport: local_stdio
+    setupKind: local_node
+    authMethod: api_key
+    command: npx
+    args:
+      - -y
+      - exa-mcp-server
+    credentialEnvKey: EXA_API_KEY
+    requiresCompanion: true
+    officialness: official
+    defaultWhenCompanionAbsent: false
+    defaultWhenCompanionPresent: false
+    privacyNotes:
+      - Local command output and tool results are sent back to the active Pi-Office session.
+    simpleFields:
+      - Local companion
+      - Launch command
+      - API key
+    advancedFields:
+      - Arguments
+      - Working directory
+      - Environment variables
+      - Tool policy
+    docsUrl: https://exa.ai/mcp
+    endpointEvidenceUrl: https://exa.ai/mcp
+    authEvidenceUrl: https://exa.ai/mcp
+    checkedAt: 2026-04-27
+    riskNotes:
+      - Official local MCP profile, but it requires the Pi-Office companion because browsers cannot launch STDIO
+        commands.
+    availability: needs_companion
+    browserDirect: unsupported
+docsUrl: https://exa.ai/mcp
