@@ -932,26 +932,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Broad review-state changes fail closed without explicit user approval.
   - Notes/Evidence: The Word JavaScript API reference includes document compare/merge/review option types and rich revision/reviewer surfaces. Current Pi-Office covers tracked-change reading and accept/reject but not the upstream compare/review workflow.
 
-- [ ] FEATURE-021: Add Word bookmarks, go-to navigation, hyperlinks, and cross-reference anchors
+- [x] FEATURE-021: Add Word bookmarks, go-to navigation, hyperlinks, and cross-reference anchors
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit and Tier A/B gap review.
   - Details: Pi-Office navigation currently relies on paragraph IDs, text matching, comments, revisions, fields, content controls, and internal search fallback. Word exposes bookmarks, native go-to navigation, hyperlinks, and cross-reference-adjacent field patterns that can make long-document targeting and provenance far more deterministic. The assistant should be able to create durable bookmarks for user-approved working areas, navigate by page/line/heading/bookmark/comment/field where supported, and insert or update hyperlinks without raw OOXML.
   - Dependencies: FEATURE-004, FEATURE-017, SECURITY-003.
   - Subtasks:
-    - [ ] Add bookmark inventory, creation, deletion, navigation, and range-targeting contracts.
-    - [ ] Add native go-to operations for supported target types while preserving current anchor fallback behavior.
-    - [ ] Add hyperlink inventory and structured add/update/remove operations with display text, address, screen tip, and target anchors where supported.
-    - [ ] Define how generated bookmarks are named, scoped, and cleaned up so they do not clutter user documents unexpectedly.
-    - [ ] Integrate bookmark/go-to/hyperlink anchors with `office_navigate`, search results, and edit proposal locators.
-    - [ ] Add tests for duplicate bookmark names, repeated-text targeting, hyperlink mutation, unsupported go-to targets, and cleanup behavior.
+    - [x] Add bookmark inventory, creation, deletion, navigation, and range-targeting contracts.
+    - [x] Add native go-to operations for supported target types while preserving current anchor fallback behavior.
+    - [x] Add hyperlink inventory and structured add/update/remove operations with display text, address, screen tip, and target anchors where supported.
+    - [x] Define how generated bookmarks are named, scoped, and cleaned up so they do not clutter user documents unexpectedly.
+    - [x] Integrate bookmark/go-to/hyperlink anchors with `office_navigate`, search results, and edit proposal locators.
+    - [x] Add tests for duplicate bookmark names, repeated-text targeting, hyperlink mutation, unsupported go-to targets, and cleanup behavior.
   - Acceptance Criteria:
-    - [ ] Long-document workflows can create, cite, navigate, and edit by durable bookmark or native go-to anchor where supported.
-    - [ ] Hyperlink operations are first-class and do not require OOXML or raw Office.js for common cases.
-    - [ ] Generated anchors are visible, auditable, and cleaned up or preserved according to explicit tool options.
-    - [ ] Tests prove bookmark/go-to/hyperlink tools interoperate with search and navigation.
-  - Notes/Evidence: The Word API reference includes `Bookmark`, `BookmarkCollection`, `Selection.goTo`, `Document.goTo`, `GoToOptions`, `Hyperlink`, `HyperlinkCollection`, and `HyperlinkAddOptions`. These close the remaining Tier A navigation and Tier B hyperlink gaps.
+    - [x] Long-document workflows can create, cite, navigate, and edit by durable bookmark or native go-to anchor where supported.
+    - [x] Hyperlink operations are first-class and do not require OOXML or raw Office.js for common cases.
+    - [x] Generated anchors are visible, auditable, and cleaned up or preserved according to explicit tool options.
+    - [x] Tests prove bookmark/go-to/hyperlink tools interoperate with search and navigation.
+  - Notes/Evidence: The Word API reference includes `Bookmark`, `BookmarkCollection`, `Selection.goTo`, `Document.goTo`, `GoToOptions`, `Hyperlink`, `HyperlinkCollection`, and `HyperlinkAddOptions`. These close the remaining Tier A navigation and Tier B hyperlink gaps. Closed 2026-04-27 by adding `bookmark` and `hyperlink` anchor kinds/fields, `word_reference_inventory` for desktop-gated bookmark/hyperlink inventory and bookmark create/delete/select actions, `word_hyperlink` for desktop-gated hyperlink add/update/delete actions, navigation support for bookmark/hyperlink anchors, prompt guidance, and `word-bookmark-hyperlink-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-022: Add Word building block and template insertion tools
   - Category: Feature

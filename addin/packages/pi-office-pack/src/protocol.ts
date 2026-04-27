@@ -113,6 +113,8 @@ export const OFFICE_ANCHOR_KINDS = [
   "field",
   "contentControl",
   "searchResult",
+  "bookmark",
+  "hyperlink",
   "cell",
   "range",
   "sheet",
@@ -146,6 +148,9 @@ export interface OfficeAnchor {
   commentId?: string | undefined;
   revisionId?: string | undefined;
   noteTarget?: "reference" | "body" | undefined;
+  bookmarkName?: string | undefined;
+  hyperlinkId?: string | undefined;
+  hyperlinkAddress?: string | undefined;
   slideId?: string | undefined;
   slideIndex?: number | undefined;
   shapeId?: string | undefined;
@@ -1155,6 +1160,8 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   word_search: "read",
   word_format_text: "write-doc",
   word_list_format: "write-doc",
+  word_reference_inventory: "read",
+  word_hyperlink: "write-doc",
   office_capture_snapshot: "read",
   office_capture_viewport: "read",
   verify_doc: "read",
@@ -1652,6 +1659,8 @@ export const OFFICE_TOOL_NAMES = [
   "word_search",
   "word_format_text",
   "word_list_format",
+  "word_reference_inventory",
+  "word_hyperlink",
   "verify_doc",
   "verify_doc_visual",
   "get_presentation_structure",

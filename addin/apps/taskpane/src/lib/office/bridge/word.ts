@@ -157,6 +157,51 @@ export async function executeWordOfficeTool(
         };
       }
 
+      if (request.toolName === "word_reference_inventory") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_reference_inventory is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "bookmark",
+          target: request.params.target as never,
+          options: {
+            operation: request.params.operation,
+            name: request.params.name,
+            preserve: request.params.preserve,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
+      if (request.toolName === "word_hyperlink") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_hyperlink is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "hyperlink",
+          target: request.params.target as never,
+          content: typeof request.params.text === "string" ? request.params.text : undefined,
+          options: {
+            operation: request.params.operation,
+            address: request.params.address,
+            subAddress: request.params.subAddress,
+            screenTip: request.params.screenTip,
+            text: request.params.text,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

@@ -226,6 +226,48 @@ export async function navigateWordAnchor(anchor: OfficeAnchor): Promise<unknown>
       }
     }
 
+    if (anchor.kind === "bookmark" && supportsRequirementSet("WordApiDesktop", "1.4")) {
+      const bookmarks = context.document.bookmarks;
+      bookmarks.load("items/name,items/start,items/end");
+      await context.sync();
+      const bookmark = bookmarks.items.find((entry) =>
+        matchesTextQuery(entry.name, anchor.bookmarkName || anchor.label || anchor.id),
+      );
+      if (bookmark) {
+        bookmark.select();
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          anchorKind: "bookmark",
+          bookmarkName: bookmark.name,
+          desktopOnly: true,
+        };
+      }
+    }
+
+    if (anchor.kind === "hyperlink" && supportsRequirementSet("WordApiDesktop", "1.3")) {
+      const hyperlinks = body.getRange("Content").hyperlinks;
+      hyperlinks.load("items/address,items/textToDisplay,items/screenTip,items/subAddress");
+      await context.sync();
+      const hyperlink = hyperlinks.items.find((entry) =>
+        matchesTextQuery(entry.address, anchor.hyperlinkAddress || anchor.text || anchor.label) ||
+        matchesTextQuery(entry.textToDisplay, anchor.text || anchor.label),
+      );
+      if (hyperlink) {
+        hyperlink.range.select();
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          anchorKind: "hyperlink",
+          address: hyperlink.address,
+          text: truncateLabel(hyperlink.textToDisplay, 180),
+          desktopOnly: true,
+        };
+      }
+    }
+
     if (anchor.kind === "field" && supportsRequirementSet("WordApi", "1.4")) {
       const fields = body.fields;
       fields.load(supportsFieldMetadata ? "items/code,items/type,items/result/text" : "items/code,items/result/text");

@@ -463,6 +463,68 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       };
     }
 
+    if (type === "manageHyperlink") {
+      if (!supportsRequirementSet("WordApiDesktop", "1.3")) {
+        throw new Error("Word hyperlink actions require WordApiDesktop 1.3 or newer.");
+      }
+      const { range } = await resolveTargetRange();
+      const operation = trimString(options.operation ?? action.operation) ?? "add";
+      const hyperlinks = range.hyperlinks;
+      hyperlinks.load("items/address,items/subAddress,items/screenTip,items/textToDisplay,items/name");
+      await context.sync();
+
+      const address = trimString(options.address ?? action.address);
+      const textToDisplay = trimString(options.textToDisplay ?? action.textToDisplay);
+      const screenTip = trimString(options.screenTip ?? action.screenTip);
+      const subAddress = trimString(options.subAddress ?? action.subAddress);
+      const targetName = trimString(options.name ?? action.name ?? action.text ?? action.label);
+      const target = hyperlinks.items.find((entry) =>
+        (targetName && (entry.name === targetName || entry.textToDisplay === targetName || entry.address === targetName)) ||
+        (address && entry.address === address),
+      ) ?? hyperlinks.items[0];
+
+      if (operation === "remove" || operation === "delete") {
+        if (!target) throw new Error("Could not find a Word hyperlink to remove.");
+        const removed = target.textToDisplay || target.address || target.name;
+        target.delete();
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation: "remove", removed };
+      }
+
+      if (operation === "update") {
+        if (!target) throw new Error("Could not find a Word hyperlink to update.");
+        if (address) target.address = address;
+        if (textToDisplay) target.textToDisplay = textToDisplay;
+        if (screenTip) target.screenTip = screenTip;
+        if (subAddress) target.subAddress = subAddress;
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation: "update", address, textToDisplay, screenTip, subAddress };
+      }
+
+      if (!address && !subAddress) {
+        throw new Error("Adding a Word hyperlink requires address or subAddress.");
+      }
+      const link = hyperlinks.add(range, {
+        ...(address ? { address } : {}),
+        ...(subAddress ? { subAddress } : {}),
+        ...(screenTip ? { screenTip } : {}),
+        ...(textToDisplay ? { textToDisplay } : {}),
+      });
+      link.load("address,subAddress,screenTip,textToDisplay,name");
+      await context.sync();
+      return {
+        ok: true,
+        host: "word",
+        action: type,
+        operation: "add",
+        address: link.address,
+        subAddress: link.subAddress,
+        screenTip: link.screenTip,
+        textToDisplay: link.textToDisplay,
+        name: link.name,
+      };
+    }
+
     if (type === "insertOoxml") {
       const { range } = await resolveTargetRange();
       range.insertOoxml(content, placement);

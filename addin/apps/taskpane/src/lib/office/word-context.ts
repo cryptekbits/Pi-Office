@@ -142,6 +142,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
     const supportsFieldMetadata = supportsRequirementSet("WordApi", "1.5");
     const supportsContentControls = supportsRequirementSet("WordApi", "1.1");
     const supportsContentControlSubtypes = supportsRequirementSet("WordApi", "1.3");
+    const supportsDesktopLists = supportsRequirementSet("WordApiDesktop", "1.3");
     const shapes = supportsShapes ? selection.shapes : undefined;
     const comments = supportsComments ? selection.getComments() : undefined;
     const footnotes = supportsNotes ? body.footnotes : undefined;
@@ -154,6 +155,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
     const selectionContentControls = supportsContentControls ? selection.contentControls : undefined;
     const documentContentControls = supportsContentControls ? body.contentControls : undefined;
     const pageSetup = supportsPageSetup ? context.document.pageSetup : undefined;
+    const selectionListFormat = supportsDesktopLists ? selection.listFormat : undefined;
     const activeWindow = supportsViewportPages ? context.document.activeWindow : undefined;
     const activePane = activeWindow?.activePane;
     const viewportPages = activePane?.pagesEnclosingViewport;
@@ -201,6 +203,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
         : "items/id,items/title,items/tag,items/type,items/appearance,items/cannotDelete,items/cannotEdit,items/removeWhenEdited,items/placeholderText,items/text",
     );
     pageSetup?.load("topMargin,bottomMargin,leftMargin,rightMargin,pageWidth,pageHeight");
+    selectionListFormat?.load("listType,listLevelNumber,listString,listValue");
     viewportPages?.load("items/index,items/width,items/height");
     selectionPages?.load("items/index,items/width,items/height");
     if (supportsWindowMetadata) {
@@ -300,6 +303,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
         ...(supportsReviewedText ? ["word.reviewedText"] : []),
         ...(supportsFields ? ["word.fields"] : []),
         ...(supportsContentControls ? ["word.contentControls"] : []),
+        ...(supportsDesktopLists ? ["word.listFormat"] : []),
         "word.insertText",
         "word.insertHtml",
         "word.insertOoxml",
@@ -440,6 +444,14 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
             rotation: shape.rotation,
             altTextDescription: shape.altTextDescription,
           })),
+          selectionList: supportsDesktopLists && selectionListFormat
+            ? {
+                listType: selectionListFormat.listType,
+                level: selectionListFormat.listLevelNumber,
+                listString: selectionListFormat.listString,
+                listValue: selectionListFormat.listValue,
+              }
+            : undefined,
         }
       : undefined;
 
