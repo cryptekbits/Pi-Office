@@ -143,6 +143,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
     const supportsContentControls = supportsRequirementSet("WordApi", "1.1");
     const supportsContentControlSubtypes = supportsRequirementSet("WordApi", "1.3");
     const supportsDesktopLists = supportsRequirementSet("WordApiDesktop", "1.3");
+    const supportsTables = supportsRequirementSet("WordApi", "1.3");
     const shapes = supportsShapes ? selection.shapes : undefined;
     const comments = supportsComments ? selection.getComments() : undefined;
     const footnotes = supportsNotes ? body.footnotes : undefined;
@@ -154,6 +155,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
     const documentFields = supportsFields ? body.fields : undefined;
     const selectionContentControls = supportsContentControls ? selection.contentControls : undefined;
     const documentContentControls = supportsContentControls ? body.contentControls : undefined;
+    const documentTables = supportsTables ? body.tables : undefined;
     const pageSetup = supportsPageSetup ? context.document.pageSetup : undefined;
     const selectionListFormat = supportsDesktopLists ? selection.listFormat : undefined;
     const activeWindow = supportsViewportPages ? context.document.activeWindow : undefined;
@@ -202,6 +204,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
         ? "items/id,items/title,items/tag,items/type,items/subtype,items/appearance,items/cannotDelete,items/cannotEdit,items/removeWhenEdited,items/placeholderText,items/text"
         : "items/id,items/title,items/tag,items/type,items/appearance,items/cannotDelete,items/cannotEdit,items/removeWhenEdited,items/placeholderText,items/text",
     );
+    documentTables?.load("items/rowCount,items/values,items/style,items/styleBuiltIn,items/title,items/description");
     pageSetup?.load("topMargin,bottomMargin,leftMargin,rightMargin,pageWidth,pageHeight");
     selectionListFormat?.load("listType,listLevelNumber,listString,listValue");
     viewportPages?.load("items/index,items/width,items/height");
@@ -325,6 +328,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
     const selectedFields = selectionFields?.items ?? [];
     const documentContentControlList = documentContentControls?.items ?? selectionContentControls?.items ?? [];
     const selectedContentControls = selectionContentControls?.items ?? [];
+    const documentTableList = documentTables?.items ?? [];
     const paragraphMap = bodyParagraphs.items.slice(0, 40).map((paragraph, index) => ({
       kind: /heading/i.test(String(paragraph.styleBuiltIn || paragraph.style || "")) ? "heading" : "paragraph",
       index,
@@ -531,6 +535,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
           revisions: reviewChanges.length,
           fields: documentFieldsList.length,
           contentControls: documentContentControlList.length,
+          tables: documentTableList.length,
         },
         comments: reviewComments.slice(0, 8).map((comment) => ({
           id: comment.id,
@@ -586,6 +591,15 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
           cannotDelete: control.cannotDelete,
           cannotEdit: control.cannotEdit,
           removeWhenEdited: control.removeWhenEdited,
+        })),
+        tables: documentTableList.slice(0, 8).map((table, index) => ({
+          id: `table:${index + 1}`,
+          title: trimString(table.title),
+          description: trimString(table.description),
+          rowCount: table.rowCount,
+          columnCount: table.values?.[0]?.length ?? 0,
+          style: table.style || table.styleBuiltIn,
+          preview: table.values?.slice(0, 3).map((row) => row.slice(0, 5)) ?? [],
         })),
         selectedContentControls: selectedContentControls.slice(0, 8).map((control) => ({
           id: `contentControl:${control.id}`,

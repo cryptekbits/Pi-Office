@@ -202,6 +202,36 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_table") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_table is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "tableEdit",
+          target: request.params.target as never,
+          values: Array.isArray(request.params.values) ? request.params.values as never : undefined,
+          options: {
+            operation: request.params.operation,
+            tableIndex: request.params.tableIndex,
+            rowIndex: request.params.rowIndex,
+            columnIndex: request.params.columnIndex,
+            rowCount: request.params.rowCount,
+            columnCount: request.params.columnCount,
+            text: request.params.text,
+            style: request.params.style,
+            shadingColor: request.params.shadingColor,
+            alignment: request.params.alignment,
+            confirmDestructive: request.params.confirmDestructive,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

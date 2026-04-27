@@ -598,6 +598,85 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       return { ok: true, host: "word", action: type, rowCount, columnCount };
     }
 
+    const resolveWordTableTarget = async () => {
+      const tableIndex = Math.max(0, Math.trunc(toNumber(options.tableIndex ?? action.tableIndex) ?? 0));
+      const tables = body.tables;
+      tables.load("items/rowCount,items/values,items/style,items/styleBuiltIn,title");
+      await context.sync();
+      const table = tables.items[tableIndex];
+      if (!table) {
+        throw new Error(`Could not find Word table at index ${tableIndex}.`);
+      }
+      return { table, tableIndex };
+    };
+
+    if (type === "inspectTable") {
+      if (!supportsRequirementSet("WordApi", "1.3")) {
+        throw new Error("Word table inspection requires WordApi 1.3 or newer.");
+      }
+      const { table, tableIndex } = await resolveWordTableTarget();
+      return {
+        ok: true,
+        host: "word",
+        action: type,
+        tableIndex,
+        rowCount: table.rowCount,
+        columnCount: table.values?.[0]?.length ?? 0,
+        title: trimString(table.title),
+        style: table.style || table.styleBuiltIn,
+        valuesPreview: table.values?.slice(0, 8).map((row) => row.slice(0, 8)),
+      };
+    }
+
+    if (type === "editTableCell") {
+      if (!supportsRequirementSet("WordApi", "1.3")) {
+        throw new Error("Word table cell edits require WordApi 1.3 or newer.");
+      }
+      const { table, tableIndex } = await resolveWordTableTarget();
+      const rowIndex = Math.max(0, Math.trunc(toNumber(options.rowIndex ?? action.rowIndex) ?? 0));
+      const columnIndex = Math.max(0, Math.trunc(toNumber(options.columnIndex ?? action.columnIndex) ?? 0));
+      const cell = table.getCell(rowIndex, columnIndex);
+      cell.value = content;
+      await context.sync();
+      return { ok: true, host: "word", action: type, tableIndex, rowIndex, columnIndex, text: content };
+    }
+
+    if (type === "modifyTable") {
+      if (!supportsRequirementSet("WordApi", "1.3")) {
+        throw new Error("Word table row/column operations require WordApi 1.3 or newer.");
+      }
+      const { table, tableIndex } = await resolveWordTableTarget();
+      const operation = trimString(options.operation ?? action.operation);
+      const count = Math.max(1, Math.trunc(toNumber(options.count ?? action.count) ?? 1));
+      const insertLocation = (options.insertLocation ?? action.insertLocation) === "start" ? Word.InsertLocation.start : Word.InsertLocation.end;
+      const values = toStringMatrix(options.values ?? action.values);
+      if ((operation === "deleteRows" || operation === "deleteColumns" || operation === "deleteTable" || operation === "clear") && toBoolean(options.confirmDestructive ?? action.confirmDestructive) !== true) {
+        throw new Error(`Word table ${operation} requires confirmDestructive=true.`);
+      }
+      if (operation === "addRows") {
+        table.addRows(insertLocation, count, values);
+      } else if (operation === "addColumns") {
+        table.addColumns(insertLocation, count, values);
+      } else if (operation === "deleteRows") {
+        table.deleteRows(Math.max(0, Math.trunc(toNumber(options.rowIndex ?? action.rowIndex) ?? 0)), count);
+      } else if (operation === "deleteColumns") {
+        table.deleteColumns(Math.max(0, Math.trunc(toNumber(options.columnIndex ?? action.columnIndex) ?? 0)), count);
+      } else if (operation === "clear") {
+        table.clear();
+      } else if (operation === "deleteTable") {
+        table.delete();
+      } else if (operation === "setStyle") {
+        const style = trimString(options.style ?? action.style);
+        const builtInStyle = trimString(options.styleBuiltIn ?? action.styleBuiltIn);
+        if (style) table.style = style;
+        if (builtInStyle) table.styleBuiltIn = builtInStyle as Word.BuiltInStyleName;
+      } else {
+        throw new Error(`Unsupported Word table operation: ${operation || "(missing)"}.`);
+      }
+      await context.sync();
+      return { ok: true, host: "word", action: type, tableIndex, operation, count };
+    }
+
     if (type === "insertContentControl") {
       if (!supportsRequirementSet("WordApi", "1.1")) {
         throw new Error("Word content controls require WordApi 1.1 or newer.");

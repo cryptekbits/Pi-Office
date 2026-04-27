@@ -764,26 +764,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests prove list edits do not require `office_execute_js` for common cases.
   - Notes/Evidence: The Word API reference includes `List`, `ListCollection`, `ListFormat`, `ListItem`, `ListLevel`, `ListTemplate`, and `ListTemplateGallery` objects. This is a high-value AI-assistant surface because many professional Word documents encode meaning in list structure, not just words. Closed 2026-04-27 by adding `word_list_format`, desktop-gated list-format action support for bullets/numbering/outline levels/indent/outdent/remove, broad-change confirmation checks, prompt guidance, and `word-list-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-012: Add Word table cell, row, column, and table-format tools
+- [x] FEATURE-012: Add Word table cell, row, column, and table-format tools
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: Pi-Office can insert a simple Word table, but it cannot deeply inspect or mutate cells, rows, columns, formulas, table sorting, shading, row height, column widths, or table styles through first-class actions. Professional Word workflows need clean comparison matrices, issue tables, requirements tables, DCF narrative tables, and legal-review tables without whole-table OOXML replacement. Structured table tools should support precise targets, reviewable destructive operations, and clear fallback when a host lacks a specific table API.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Add Word table inventory for tables in selection/document, including row/column counts, cell previews, headings, styles, and anchors.
-    - [ ] Define target schema for table by anchor/index/name-like label plus row/column/cell coordinates.
-    - [ ] Implement structured operations for editing cell text, inserting/deleting rows and columns, merging cells, applying table/cell shading, setting row height/left indent, sorting rows, and inserting table formulas where supported.
-    - [ ] Add confirmation requirements for destructive table operations such as deleting rows/columns/cells or converting table content to text.
-    - [ ] Update Word workflows to use table tools for requirement matrices, comparison tables, and professional report tables.
-    - [ ] Add tests for table inventory, cell edit, row/column operation, merge/shading/sort contracts, destructive confirmation, and unsupported-host messaging.
+    - [x] Add Word table inventory for tables in selection/document, including row/column counts, cell previews, headings, styles, and anchors.
+    - [x] Define target schema for table by anchor/index/name-like label plus row/column/cell coordinates.
+    - [x] Implement structured operations for editing cell text, inserting/deleting rows and columns, merging cells, applying table/cell shading, setting row height/left indent, sorting rows, and inserting table formulas where supported.
+    - [x] Add confirmation requirements for destructive table operations such as deleting rows/columns/cells or converting table content to text.
+    - [x] Update Word workflows to use table tools for requirement matrices, comparison tables, and professional report tables.
+    - [x] Add tests for table inventory, cell edit, row/column operation, merge/shading/sort contracts, destructive confirmation, and unsupported-host messaging.
   - Acceptance Criteria:
-    - [ ] AI can edit Word tables without replacing whole-table OOXML for routine professional table work.
-    - [ ] Table operations return precise changed table/cell anchors and warnings for partial support.
-    - [ ] Destructive table operations fail closed unless explicitly confirmed.
-    - [ ] Tests cover representative cell, row, column, format, and safety scenarios.
-  - Notes/Evidence: The Word JavaScript API preview includes `Table`, `TableCell`, `TableCellCollection`, `TableColumn`, `TableColumnCollection`, `TableRow`, `TableRowCollection`, table formulas, merge/delete/select, shading, sorting, and table style APIs. Current Pi-Office `insertTable` is only the first slice of this surface.
+    - [x] AI can edit Word tables without replacing whole-table OOXML for routine professional table work.
+    - [x] Table operations return precise changed table/cell anchors and warnings for partial support.
+    - [x] Destructive table operations fail closed unless explicitly confirmed.
+    - [x] Tests cover representative cell, row, column, format, and safety scenarios.
+  - Notes/Evidence: The Word JavaScript API preview includes `Table`, `TableCell`, `TableCellCollection`, `TableColumn`, `TableColumnCollection`, `TableRow`, `TableRowCollection`, table formulas, merge/delete/select, shading, sorting, and table style APIs. Current Pi-Office `insertTable` is only the first slice of this surface. Closed 2026-04-27 by adding `word_table`, table inventory snippets in Word context, table anchors, structured table edit operations for inventory, cell text, add/delete rows/columns, merge cells, format table style/shading, delete table, confirmation-gated destructive operations, prompt guidance, and `word-table-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-013: Add Word header, footer, section, and page setup tools
   - Category: Feature
