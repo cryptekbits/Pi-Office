@@ -423,6 +423,45 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       };
     }
 
+    if (type === "applyListFormat") {
+      if (!supportsRequirementSet("WordApiDesktop", "1.3")) {
+        throw new Error("Word list formatting requires WordApiDesktop 1.3 and is currently desktop-only.");
+      }
+      const { range } = await resolveTargetRange();
+      const listFormat = range.listFormat;
+      const listKind = trimString(options.listKind ?? options.kind ?? action.listKind ?? action.kind) ?? "bullet";
+      const level = toNumber(options.level ?? action.level);
+      const changed: Record<string, unknown> = { listKind };
+
+      if (listKind === "bullet") {
+        listFormat.applyBulletDefault("Word2010" as Word.DefaultListBehavior);
+      } else if (listKind === "numbered" || listKind === "number") {
+        listFormat.applyNumberDefault("Word2010" as Word.DefaultListBehavior);
+      } else if (listKind === "outline" || listKind === "multilevel") {
+        listFormat.applyOutlineNumberDefault("Word2010" as Word.DefaultListBehavior);
+      } else if (listKind === "remove" || listKind === "none") {
+        listFormat.removeNumbers("AllNumbers");
+      } else {
+        throw new Error(`Unsupported Word list kind: ${listKind}.`);
+      }
+
+      if (typeof level === "number") {
+        listFormat.listLevelNumber = Math.max(1, Math.min(9, Math.trunc(level)));
+        changed.level = listFormat.listLevelNumber;
+      }
+
+      await context.sync();
+      return {
+        ok: true,
+        host: "word",
+        action: type,
+        target: action.target,
+        changed,
+        capability: "WordApiDesktop 1.3",
+        desktopOnly: true,
+      };
+    }
+
     if (type === "insertOoxml") {
       const { range } = await resolveTargetRange();
       range.insertOoxml(content, placement);

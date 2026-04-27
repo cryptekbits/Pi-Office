@@ -94,6 +94,7 @@ const EXTENSION_REGISTERED_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
     toolName !== "mcp_tool_search" &&
     toolName !== "word_search" &&
     toolName !== "word_format_text" &&
+    toolName !== "word_list_format" &&
     !RUNTIME_ONLY_OFFICE_TOOLS.has(toolName),
 );
 

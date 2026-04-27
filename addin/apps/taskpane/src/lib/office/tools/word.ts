@@ -90,6 +90,31 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     executor: "office-bridge",
   },
   {
+    name: "word_list_format",
+    hosts: ["word"],
+    category: "write-doc",
+    label: "Format Word List",
+    description:
+      "Word-only structured list formatting for converting selected or anchored paragraphs to bullets/numbering, changing levels, and removing numbering where Word desktop list APIs are available.",
+    discovery: {
+      tier: "specialized",
+      capabilityIds: ["word.list", "word.numbering", "word.outline"],
+      keywords: ["word", "list", "bullet", "numbering", "outline", "indent", "outdent", "legal"],
+      summary: "Apply Word list formatting through desktop-gated list APIs with explicit anchors.",
+      riskLevel: "medium",
+      requirementSets: [{ name: "WordApiDesktop", minVersion: "1.3", note: "ListFormat APIs are desktop-gated." }],
+      fallback: "Use edit_doc_list or office_propose_edits for reviewable text-only list wording when list APIs are unavailable.",
+    },
+    parameters: Type.Object({
+      target: Type.Optional(Type.Any({ description: "Optional Word anchor such as selection, paragraph, heading, or searchResult." })),
+      operation: Type.String({ description: "bullet, number, outlineNumber, indent, outdent, removeNumbers, or setLevel." }),
+      level: Type.Optional(Type.Number({ minimum: 1, maximum: 9, description: "List level for setLevel." })),
+      confirmed: Type.Optional(Type.Boolean({ description: "Required for broad legal/contract renumbering or removeNumbers operations." })),
+      legalSensitive: Type.Optional(Type.Boolean({ description: "Set true for contracts, legal clauses, or other numbering-sensitive documents." })),
+    }),
+    executor: "office-bridge",
+  },
+  {
     name: "edit_doc_text",
     hosts: ["word"],
     category: "write-doc",

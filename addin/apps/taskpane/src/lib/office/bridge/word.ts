@@ -130,6 +130,33 @@ export async function executeWordOfficeTool(
         };
       }
 
+      if (request.toolName === "word_list_format") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_list_format is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "formatList",
+          target: request.params.target as never,
+          options: {
+            listType: request.params.listType ?? request.params.listKind,
+            level: request.params.level,
+            direction: request.params.direction,
+            remove: request.params.remove,
+            confirmed: request.params.confirmed ?? request.params.confirmBroadChange,
+          },
+        });
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: result,
+        };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

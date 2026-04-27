@@ -744,25 +744,25 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests cover representative font, paragraph, style, and unsupported-host cases.
   - Notes/Evidence: WordApi 1.1 includes paragraph/font/style properties and range style APIs; WordApi 1.6 adds style-management improvements such as `Document.importStylesFromJson`, style shading, and table-style metadata. Current Pi-Office context capture already reads selection font and paragraph formatting, making this a natural structured-write expansion. Closed 2026-04-27 by adding `word_format_text`, structured formatting action dispatch through `formatRange`, paragraph/style/font/highlight/spacing/indent/alignment/outline-level application in `applyWordAction`, search/anchor-compatible targeting, prompt guidance, and `word-formatting-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-011: Add Word list and multilevel numbering tools
+- [x] FEATURE-011: Add Word list and multilevel numbering tools
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: The current Word editing surface can rewrite list text, but it does not expose list-aware operations for bullets, numbering, multilevel outline cleanup, legal clause numbering, acceptance-criteria lists, or nested requirement lists. Word exposes list objects, list formatting, list items, list levels, templates, and list template galleries. Pi-Office should treat list structure as document structure instead of plain text whenever the host can support it.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Add read/context support for selected and document-level list metadata, including list type, level, numbering text, paragraph anchors, and nearby headings.
-    - [ ] Define structured operations for converting paragraphs to bullets/numbered lists, changing list levels, normalizing indentation, restarting/continuing numbering, and applying multilevel templates.
-    - [ ] Add safety checks for legal or contract numbering so broad renumbering requires explicit confirmation or reviewable proposals.
-    - [ ] Add workflow guidance for business user stories, legal clauses, specs, and acceptance criteria to use list tools before text rewrites.
-    - [ ] Add tests for bullet conversion, numbered list normalization, multilevel level changes, unsupported list metadata, and deterministic targeting.
+    - [x] Add read/context support for selected and document-level list metadata, including list type, level, numbering text, paragraph anchors, and nearby headings.
+    - [x] Define structured operations for converting paragraphs to bullets/numbered lists, changing list levels, normalizing indentation, restarting/continuing numbering, and applying multilevel templates.
+    - [x] Add safety checks for legal or contract numbering so broad renumbering requires explicit confirmation or reviewable proposals.
+    - [x] Add workflow guidance for business user stories, legal clauses, specs, and acceptance criteria to use list tools before text rewrites.
+    - [x] Add tests for bullet conversion, numbered list normalization, multilevel level changes, unsupported list metadata, and deterministic targeting.
   - Acceptance Criteria:
-    - [ ] AI can normalize bullets, legal clauses, acceptance criteria, and document outlines through structured Word list tools.
-    - [ ] List operations preserve or report numbering/restart behavior rather than silently rewriting visible text only.
-    - [ ] Destructive or broad list-structure changes are reviewable or explicitly confirmed.
-    - [ ] Tests prove list edits do not require `office_execute_js` for common cases.
-  - Notes/Evidence: The Word API reference includes `List`, `ListCollection`, `ListFormat`, `ListItem`, `ListLevel`, `ListTemplate`, and `ListTemplateGallery` objects. This is a high-value AI-assistant surface because many professional Word documents encode meaning in list structure, not just words.
+    - [x] AI can normalize bullets, legal clauses, acceptance criteria, and document outlines through structured Word list tools.
+    - [x] List operations preserve or report numbering/restart behavior rather than silently rewriting visible text only.
+    - [x] Destructive or broad list-structure changes are reviewable or explicitly confirmed.
+    - [x] Tests prove list edits do not require `office_execute_js` for common cases.
+  - Notes/Evidence: The Word API reference includes `List`, `ListCollection`, `ListFormat`, `ListItem`, `ListLevel`, `ListTemplate`, and `ListTemplateGallery` objects. This is a high-value AI-assistant surface because many professional Word documents encode meaning in list structure, not just words. Closed 2026-04-27 by adding `word_list_format`, desktop-gated list-format action support for bullets/numbering/outline levels/indent/outdent/remove, broad-change confirmation checks, prompt guidance, and `word-list-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-012: Add Word table cell, row, column, and table-format tools
   - Category: Feature

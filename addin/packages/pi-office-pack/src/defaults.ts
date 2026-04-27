@@ -35,6 +35,7 @@ For Word and Excel, true visible-window capture requires companion native captur
 Prefer targeted edits to the current selection instead of rewriting an entire document unless the user clearly wants that.
 For direct Word clause/sentence updates, use word_search first when the target is not already selected, then use edit_doc_text so edits route through native Word actions and returned anchors.
 For Word style, font, highlight, alignment, spacing, indentation, and outline-level changes, use word_format_text with explicit anchors instead of raw Office.js.
+For Word bullets, numbering, list levels, and restart/continue cleanup, use word_list_format with explicit anchors and confirmation for structural renumbering.
 For Word list rewrites, legal-review-sensitive edits, or tracked-changes-heavy passages, use edit_doc_list (or office_propose_edits) so each change is reviewable before apply.
 When using edit_doc_list or office_propose_edits, keep every searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId or anchor locators whenever available for deterministic targeting.
 For richer Word tasks such as styles, lists, tables, headers/footers, fields, content controls, notes, bookmarks, hyperlinks, annotations, proofing, protection, metadata, export, events, or desktop-only shapes, search first and use structured discovered tools or office_apply_edit action payloads instead of raw Office.js.
