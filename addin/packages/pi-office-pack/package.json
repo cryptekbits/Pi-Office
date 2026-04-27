@@ -36,7 +36,9 @@
     },
     "./mcp-result-store": {
       "types": "./dist/mcp-result-store.d.ts",
-      "import": "./dist/mcp-result-store.js"
+      "browser": "./dist/mcp-result-store.js",
+      "import": "./dist/mcp-result-store.js",
+      "default": "./dist/mcp-result-store.js"
     },
     "./provider-model-preferences": {
       "types": "./dist/provider-model-preferences.generated.d.ts",

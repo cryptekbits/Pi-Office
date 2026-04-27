@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 
 import { McpResultStore } from "../../../apps/taskpane/src/lib/runtime/mcp-result-store.js";
@@ -59,6 +61,18 @@ test("MCP result store distinguishes companion handles for taskpane routing", ()
   assert.match(stored.handle.handleId, /^mcp-result-companion-/);
   assert.equal(stored.handle.source, "companion");
   assert.ok("resultHandle" in (stored.content as Record<string, unknown>));
+});
+
+test("MCP result store package subpath is exported for browser dev conditions", () => {
+  const packageJson = JSON.parse(readFileSync(join(process.cwd(), "packages", "pi-office-pack", "package.json"), "utf8")) as {
+    exports?: Record<string, Record<string, string>>;
+  };
+  const exportMap = packageJson.exports?.["./mcp-result-store"];
+
+  assert.equal(exportMap?.types, "./dist/mcp-result-store.d.ts");
+  assert.equal(exportMap?.browser, "./dist/mcp-result-store.js");
+  assert.equal(exportMap?.import, "./dist/mcp-result-store.js");
+  assert.equal(exportMap?.default, "./dist/mcp-result-store.js");
 });
 
 test("MCP result guidance tells the model to use handles instead of flooding chat", () => {
