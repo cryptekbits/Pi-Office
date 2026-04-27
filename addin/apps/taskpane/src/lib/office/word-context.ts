@@ -156,6 +156,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
     const selectionContentControls = supportsContentControls ? selection.contentControls : undefined;
     const documentContentControls = supportsContentControls ? body.contentControls : undefined;
     const documentTables = supportsTables ? body.tables : undefined;
+    const documentSections = context.document.sections;
     const pageSetup = supportsPageSetup ? context.document.pageSetup : undefined;
     const selectionListFormat = supportsDesktopLists ? selection.listFormat : undefined;
     const activeWindow = supportsViewportPages ? context.document.activeWindow : undefined;
@@ -205,6 +206,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
         : "items/id,items/title,items/tag,items/type,items/appearance,items/cannotDelete,items/cannotEdit,items/removeWhenEdited,items/placeholderText,items/text",
     );
     documentTables?.load("items/rowCount,items/values,items/style,items/styleBuiltIn,items/title,items/description");
+    documentSections.load("items/body/text");
     pageSetup?.load("topMargin,bottomMargin,leftMargin,rightMargin,pageWidth,pageHeight");
     selectionListFormat?.load("listType,listLevelNumber,listString,listValue");
     viewportPages?.load("items/index,items/width,items/height");
@@ -329,6 +331,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
     const documentContentControlList = documentContentControls?.items ?? selectionContentControls?.items ?? [];
     const selectedContentControls = selectionContentControls?.items ?? [];
     const documentTableList = documentTables?.items ?? [];
+    const documentSectionList = documentSections.items ?? [];
     const paragraphMap = bodyParagraphs.items.slice(0, 40).map((paragraph, index) => ({
       kind: /heading/i.test(String(paragraph.styleBuiltIn || paragraph.style || "")) ? "heading" : "paragraph",
       index,
@@ -536,6 +539,7 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
           fields: documentFieldsList.length,
           contentControls: documentContentControlList.length,
           tables: documentTableList.length,
+          sections: documentSectionList.length,
         },
         comments: reviewComments.slice(0, 8).map((comment) => ({
           id: comment.id,
@@ -600,6 +604,11 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
           columnCount: table.values?.[0]?.length ?? 0,
           style: table.style || table.styleBuiltIn,
           preview: table.values?.slice(0, 3).map((row) => row.slice(0, 5)) ?? [],
+        })),
+        sections: documentSectionList.slice(0, 8).map((section, index) => ({
+          id: `section:${index + 1}`,
+          index: index + 1,
+          bodyPreview: truncateLabel(section.body.text, 200),
         })),
         selectedContentControls: selectedContentControls.slice(0, 8).map((control) => ({
           id: `contentControl:${control.id}`,

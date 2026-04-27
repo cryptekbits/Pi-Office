@@ -39,6 +39,7 @@ For Word bullets, numbering, list levels, and restart/continue cleanup, use word
 For Word footnote or endnote edits, distinguish noteTarget="body" from noteTarget="reference"; edit note bodies by default and only touch reference markers when explicitly requested.
 For Word bookmarks and hyperlinks, use word_reference_inventory and word_hyperlink to inventory, navigate, and update durable long-document anchors; desktop-only APIs should be reported honestly when unavailable.
 For Word table edits, use word_table for inventory, cell text, row/column changes, styles, shading, and merges; destructive row/column/table deletes require explicit confirmation.
+For Word headers, footers, section layout, margins, page size, and page/section breaks, use word_section_layout with explicit section scope; never imply body edits change headers or footers.
 For Word list rewrites, legal-review-sensitive edits, or tracked-changes-heavy passages, use edit_doc_list (or office_propose_edits) so each change is reviewable before apply.
 When using edit_doc_list or office_propose_edits, keep every searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId or anchor locators whenever available for deterministic targeting.
 For richer Word tasks such as styles, lists, tables, headers/footers, fields, content controls, notes, bookmarks, hyperlinks, annotations, proofing, protection, metadata, export, events, or desktop-only shapes, search first and use structured discovered tools or office_apply_edit action payloads instead of raw Office.js.

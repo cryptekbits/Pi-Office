@@ -232,6 +232,39 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_section_layout") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_section_layout is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "sectionLayout",
+          content: typeof request.params.content === "string" ? request.params.content : undefined,
+          placement: typeof request.params.placement === "string" ? request.params.placement : undefined,
+          options: {
+            operation: request.params.operation,
+            sectionIndex: request.params.sectionIndex,
+            part: request.params.part,
+            headerFooterType: request.params.headerFooterType,
+            text: request.params.text,
+            margins: request.params.margins,
+            topMargin: request.params.topMargin,
+            bottomMargin: request.params.bottomMargin,
+            leftMargin: request.params.leftMargin,
+            rightMargin: request.params.rightMargin,
+            pageWidth: request.params.pageWidth,
+            pageHeight: request.params.pageHeight,
+            orientation: request.params.orientation,
+            breakType: request.params.breakType,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

@@ -677,6 +677,106 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       return { ok: true, host: "word", action: type, tableIndex, operation, count };
     }
 
+    if (type === "sectionLayout") {
+      const operation = trimString(options.operation ?? action.operation) ?? "inventory";
+      const sectionIndex = Math.max(0, Math.trunc(toNumber(options.sectionIndex ?? action.sectionIndex) ?? 0));
+      const sections = context.document.sections;
+      sections.load("items/body/text");
+      const documentPageSetup = context.document.pageSetup;
+      documentPageSetup.load("topMargin,bottomMargin,leftMargin,rightMargin,pageWidth,pageHeight");
+      await context.sync();
+      const section = sections.items[sectionIndex];
+      if (!section) {
+        throw new Error(`Could not find Word section at index ${sectionIndex + 1}.`);
+      }
+
+      const headerFooterType = (trimString(options.headerFooterType ?? action.headerFooterType) ?? "Primary") as
+        | "Primary"
+        | "FirstPage"
+        | "EvenPages";
+      const headerFooterKind = trimString(options.part ?? action.part) === "footer" ? "footer" : "header";
+      const targetHeaderFooter = () => headerFooterKind === "footer"
+        ? section.getFooter(headerFooterType)
+        : section.getHeader(headerFooterType);
+
+      if (operation === "inventory") {
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          sections: sections.items.map((entry, index) => ({
+            sectionIndex: index + 1,
+            bodyPreview: truncateLabel(entry.body.text, 180),
+          })),
+          pageSetup: {
+            topMargin: formatPoints(documentPageSetup.topMargin),
+            bottomMargin: formatPoints(documentPageSetup.bottomMargin),
+            leftMargin: formatPoints(documentPageSetup.leftMargin),
+            rightMargin: formatPoints(documentPageSetup.rightMargin),
+            pageWidth: formatPoints(documentPageSetup.pageWidth),
+            pageHeight: formatPoints(documentPageSetup.pageHeight),
+          },
+        };
+      }
+
+      if (operation === "setHeader" || operation === "setFooter" || operation === "clearHeader" || operation === "clearFooter") {
+        const bodyPart = operation.endsWith("Footer") ? section.getFooter(headerFooterType) : targetHeaderFooter();
+        const nextText = operation.startsWith("clear") ? "" : content;
+        bodyPart.insertText(nextText, Word.InsertLocation.replace);
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          sectionIndex: sectionIndex + 1,
+          headerFooterType,
+        };
+      }
+
+      if (operation === "pageSetup") {
+        if (!supportsRequirementSet("WordApiDesktop", "1.3")) {
+          throw new Error("Word page setup changes require WordApiDesktop 1.3 or newer.");
+        }
+        const pageSetup = section.pageSetup;
+        const margins = options.margins && typeof options.margins === "object" ? options.margins as Record<string, unknown> : {};
+        const top = toNumber(margins.top ?? options.topMargin ?? action.topMargin);
+        const bottom = toNumber(margins.bottom ?? options.bottomMargin ?? action.bottomMargin);
+        const left = toNumber(margins.left ?? options.leftMargin ?? action.leftMargin);
+        const right = toNumber(margins.right ?? options.rightMargin ?? action.rightMargin);
+        const pageWidth = toNumber(margins.pageWidth ?? options.pageWidth ?? action.pageWidth);
+        const pageHeight = toNumber(margins.pageHeight ?? options.pageHeight ?? action.pageHeight);
+        const orientation = trimString(options.orientation ?? action.orientation);
+        if (typeof top === "number") pageSetup.topMargin = top;
+        if (typeof bottom === "number") pageSetup.bottomMargin = bottom;
+        if (typeof left === "number") pageSetup.leftMargin = left;
+        if (typeof right === "number") pageSetup.rightMargin = right;
+        if (typeof pageWidth === "number") pageSetup.pageWidth = pageWidth;
+        if (typeof pageHeight === "number") pageSetup.pageHeight = pageHeight;
+        if (orientation) pageSetup.orientation = orientation as Word.PageOrientation;
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          sectionIndex: sectionIndex + 1,
+          changed: { top, bottom, left, right, pageWidth, pageHeight, orientation },
+        };
+      }
+
+      if (operation === "insertBreak") {
+        const { range } = await resolveTargetRange();
+        const breakType = trimString(options.breakType ?? action.breakType) ?? "Page";
+        const insertLocation = (action.placement === "before" ? Word.InsertLocation.before : Word.InsertLocation.after);
+        range.insertBreak(breakType as Word.BreakType, insertLocation);
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, breakType, placement: action.placement ?? "after" };
+      }
+
+      throw new Error(`Unsupported Word section/layout operation: ${operation}.`);
+    }
+
     if (type === "insertContentControl") {
       if (!supportsRequirementSet("WordApi", "1.1")) {
         throw new Error("Word content controls require WordApi 1.1 or newer.");

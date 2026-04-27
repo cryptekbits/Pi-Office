@@ -785,26 +785,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests cover representative cell, row, column, format, and safety scenarios.
   - Notes/Evidence: The Word JavaScript API preview includes `Table`, `TableCell`, `TableCellCollection`, `TableColumn`, `TableColumnCollection`, `TableRow`, `TableRowCollection`, table formulas, merge/delete/select, shading, sorting, and table style APIs. Current Pi-Office `insertTable` is only the first slice of this surface. Closed 2026-04-27 by adding `word_table`, table inventory snippets in Word context, table anchors, structured table edit operations for inventory, cell text, add/delete rows/columns, merge cells, format table style/shading, delete table, confirmation-gated destructive operations, prompt guidance, and `word-table-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-013: Add Word header, footer, section, and page setup tools
+- [x] FEATURE-013: Add Word header, footer, section, and page setup tools
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: Pi-Office currently reads page setup metadata but does not expose structured tools for sections, headers, footers, page breaks, margins, page size, or section-scoped edits. WordApi 1.1 exposes document sections and section header/footer bodies. Professional documents often need title-page headers, confidential footers, page numbering placeholders, odd/even header behavior, section breaks, and margin cleanup, all of which should be first-class AI-assistant operations with clear scope and host support boundaries.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Add section inventory with section indexes, body previews, page setup, and available header/footer types.
-    - [ ] Define structured actions for reading, inserting, replacing, and clearing section headers/footers with explicit section and header/footer type targets.
-    - [ ] Add page setup actions for margins, page size/orientation where supported, and page/section break insertion with scope warnings.
-    - [ ] Add support for odd/even or first-page header/footer behavior only when the active requirement set exposes the required options; otherwise report limitations.
-    - [ ] Update workflow guidance for resumes, specs, reports, and legal/professional review to use section/header/footer tools.
-    - [ ] Add tests for section inventory, header/footer edits, margin/page setup changes, page break insertion, and unsupported capability reporting.
+    - [x] Add section inventory with section indexes, body previews, page setup, and available header/footer types.
+    - [x] Define structured actions for reading, inserting, replacing, and clearing section headers/footers with explicit section and header/footer type targets.
+    - [x] Add page setup actions for margins, page size/orientation where supported, and page/section break insertion with scope warnings.
+    - [x] Add support for odd/even or first-page header/footer behavior only when the active requirement set exposes the required options; otherwise report limitations.
+    - [x] Update workflow guidance for resumes, specs, reports, and legal/professional review to use section/header/footer tools.
+    - [x] Add tests for section inventory, header/footer edits, margin/page setup changes, page break insertion, and unsupported capability reporting.
   - Acceptance Criteria:
-    - [ ] AI can create or polish title pages, headers, footers, and section layouts with explicit section scope.
-    - [ ] Header/footer edits never imply document-body edits and document-body edits do not accidentally target headers/footers.
-    - [ ] Page setup changes report old/new values and unsupported settings.
-    - [ ] Tests cover section-specific targeting and fallback behavior.
-  - Notes/Evidence: WordApi 1.1 includes `Document.sections`, `Section.body`, `Section.getHeader`, and `Section.getFooter`; current Pi-Office context reads `Document.pageSetup` but does not provide structured write tools. Some richer header/footer import options appear in later requirement sets, so tool copy must be requirement-aware.
+    - [x] AI can create or polish title pages, headers, footers, and section layouts with explicit section scope.
+    - [x] Header/footer edits never imply document-body edits and document-body edits do not accidentally target headers/footers.
+    - [x] Page setup changes report old/new values and unsupported settings.
+    - [x] Tests cover section-specific targeting and fallback behavior.
+  - Notes/Evidence: WordApi 1.1 includes `Document.sections`, `Section.body`, `Section.getHeader`, and `Section.getFooter`; current Pi-Office context reads `Document.pageSetup` but does not provide structured write tools. Some richer header/footer import options appear in later requirement sets, so tool copy must be requirement-aware. Closed 2026-04-27 by adding `word_section_layout`, section/page setup/header/footer inventory, section-scoped header/footer set/clear operations, page setup edits, break insertion, prompt guidance, and `word-section-layout-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-014: Add Word fields, TOC, bibliography, and citation tooling
   - Category: Feature
