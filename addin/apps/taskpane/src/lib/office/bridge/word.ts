@@ -292,6 +292,52 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_content_control") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_content_control is only available for Word.",
+          };
+        }
+
+        const operation = String(request.params.operation ?? "");
+        if (operation === "inventory") {
+          const rawResult = await dependencies.collectOfficeContext(request.host, {
+            includeFormatting: true,
+            maxImages: 0,
+            scope: "contentControls",
+          });
+          const payloadAware = toPayloadAwareResult(request.requestId, rawResult);
+          if (!payloadAware.success) return payloadAware;
+          return {
+            requestId: request.requestId,
+            success: true,
+            content: (payloadAware.content as { snippets?: { contentControls?: unknown } })?.snippets?.contentControls ?? [],
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "contentControlEdit",
+          target: request.params.target as never,
+          content: typeof request.params.text === "string" ? request.params.text : undefined,
+          options: {
+            operation,
+            title: request.params.title,
+            tag: request.params.tag,
+            placeholderText: request.params.placeholderText,
+            appearance: request.params.appearance,
+            cannotDelete: request.params.cannotDelete,
+            cannotEdit: request.params.cannotEdit,
+            removeWhenEdited: request.params.removeWhenEdited,
+            keepContent: request.params.keepContent,
+            select: request.params.select,
+            contentControlType: request.params.contentControlType,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

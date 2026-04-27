@@ -827,26 +827,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests protect against corrupting fields or generated tables through plain text replacement.
   - Notes/Evidence: The Word API reference includes `Field`, `FieldCollection`, `TableOfContents`, `TableOfFigures`, `TableOfAuthorities`, `Bibliography`, `Source`, and related collection/options objects. Current Pi-Office has field anchors and `insertField`, but no complete structural field/document-reference workflow. Closed 2026-04-27 by adding `word_field_reference`, field inventory/update/lock/unlock/select/unlink/delete/insert behavior, desktop-gated TOC inventory/add/update-page-numbers/delete/mark-entry operations, no-invention citation/bibliography guardrails, prompt guidance, and `word-field-reference-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-015: Add Word content-control template automation
+- [x] FEATURE-015: Add Word content-control template automation
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: Pi-Office can inspect and insert some content controls, but it does not provide a complete template automation layer for updating, validating, and filling controls by title/tag/type. WordApi 1.9 adds richer dropdown and combo box list-item support. This is a strong foundation for AI-assisted reusable templates, contract variables, form filling, guided report generation, and provenance-bound placeholders where edits must map back to named controls instead of fuzzy document text.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Add a first-class content-control inventory grouped by title, tag, type, subtype, placeholder, lock flags, remove-when-edited state, and text preview.
-    - [ ] Define structured actions for updating control text, clearing content, setting metadata, locking/unlocking, deleting wrapper-only versus content, and selecting controls.
-    - [ ] Add checkbox, dropdown, combo box, date, picture, and repeating-section handling where requirement sets support those control types.
-    - [ ] Add WordApi 1.9 list-item operations for dropdown and combo box controls, including add, delete-all, select, and value/display text mapping.
-    - [ ] Add template-fill workflow guidance that maps generated content to control IDs/tags and reports unfilled or ambiguous placeholders.
-    - [ ] Add tests for control inventory, metadata update, text fill, checkbox/dropdown/combobox behavior, lock constraints, and unsupported-host messaging.
+    - [x] Add a first-class content-control inventory grouped by title, tag, type, subtype, placeholder, lock flags, remove-when-edited state, and text preview.
+    - [x] Define structured actions for updating control text, clearing content, setting metadata, locking/unlocking, deleting wrapper-only versus content, and selecting controls.
+    - [x] Add checkbox, dropdown, combo box, date, picture, and repeating-section handling where requirement sets support those control types.
+    - [x] Add WordApi 1.9 list-item operations for dropdown and combo box controls, including add, delete-all, select, and value/display text mapping.
+    - [x] Add template-fill workflow guidance that maps generated content to control IDs/tags and reports unfilled or ambiguous placeholders.
+    - [x] Add tests for control inventory, metadata update, text fill, checkbox/dropdown/combobox behavior, lock constraints, and unsupported-host messaging.
   - Acceptance Criteria:
-    - [ ] AI can fill and maintain reusable Word templates with auditable placeholder/control mapping.
-    - [ ] Content-control updates target explicit IDs/titles/tags instead of fuzzy text when those anchors are available.
-    - [ ] Unsupported control types or host versions produce clear guidance rather than silent fallback edits.
-    - [ ] Tests cover key control types and preserve existing content-control insertion behavior.
-  - Notes/Evidence: WordApi 1.1 introduced content controls and collections; WordApi 1.7/1.9 added richer content-control subtype/list-item surfaces, including checkbox, dropdown list, and combo box support. Current context capture already lists content controls, so the missing piece is structured template automation.
+    - [x] AI can fill and maintain reusable Word templates with auditable placeholder/control mapping.
+    - [x] Content-control updates target explicit IDs/titles/tags instead of fuzzy text when those anchors are available.
+    - [x] Unsupported control types or host versions produce clear guidance rather than silent fallback edits.
+    - [x] Tests cover key control types and preserve existing content-control insertion behavior.
+  - Notes/Evidence: WordApi 1.1 introduced content controls and collections; WordApi 1.7/1.9 added richer content-control subtype/list-item surfaces, including checkbox, dropdown list, and combo box support. Current context capture already lists content controls, so the missing piece is structured template automation. Closed 2026-04-27 by adding `word_content_control`, structured content-control inventory/fill/clear/metadata/lock/delete/select operations, checkbox state handling, dropdown/combobox list-item action contracts with requirement-set checks, prompt guidance, and `word-content-control-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [x] FEATURE-016: Add deterministic footnote and endnote body targeting
   - Category: Feature

@@ -41,6 +41,7 @@ For Word bookmarks and hyperlinks, use word_reference_inventory and word_hyperli
 For Word table edits, use word_table for inventory, cell text, row/column changes, styles, shading, and merges; destructive row/column/table deletes require explicit confirmation.
 For Word headers, footers, section layout, margins, page size, and page/section breaks, use word_section_layout with explicit section scope; never imply body edits change headers or footers.
 For Word fields and generated references, use word_field_reference to inventory/update/lock/select/insert fields and desktop-gated TOC operations. Never fabricate citation or bibliography sources.
+For Word content-control templates, use word_content_control to inventory/fill/clear/update metadata/lock/delete/select explicit controls by id, title, or tag before fuzzy text edits.
 For Word list rewrites, legal-review-sensitive edits, or tracked-changes-heavy passages, use edit_doc_list (or office_propose_edits) so each change is reviewable before apply.
 When using edit_doc_list or office_propose_edits, keep every searchText under ${OFFICE_PROPOSE_EDITS_SEARCH_TEXT_MAX_LENGTH} characters and include paragraphId or anchor locators whenever available for deterministic targeting.
 For richer Word tasks such as styles, lists, tables, headers/footers, fields, content controls, notes, bookmarks, hyperlinks, annotations, proofing, protection, metadata, export, events, or desktop-only shapes, search first and use structured discovered tools or office_apply_edit action payloads instead of raw Office.js.

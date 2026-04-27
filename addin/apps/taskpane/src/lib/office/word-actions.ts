@@ -860,6 +860,103 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       };
     }
 
+    if (type === "contentControlEdit") {
+      if (!supportsRequirementSet("WordApi", "1.1")) {
+        throw new Error("Word content controls require WordApi 1.1 or newer.");
+      }
+      const operation = trimString(options.operation ?? action.operation) ?? "inventory";
+      const supportsTypedContentControls = supportsRequirementSet("WordApi", "1.5");
+      if (operation === "inventory") {
+        const controls = body.contentControls;
+        controls.load(supportsContentControlSubtypes
+          ? "items/id,items/title,items/tag,items/type,items/subtype,items/appearance,items/cannotDelete,items/cannotEdit,items/removeWhenEdited,items/placeholderText,items/text"
+          : "items/id,items/title,items/tag,items/type,items/appearance,items/cannotDelete,items/cannotEdit,items/removeWhenEdited,items/placeholderText,items/text");
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          controls: controls.items.slice(0, 60).map((control) => ({
+            id: `contentControl:${control.id}`,
+            contentControlId: control.id,
+            title: trimString(control.title),
+            tag: trimString(control.tag),
+            type: control.type,
+            subtype: supportsContentControlSubtypes ? control.subtype : undefined,
+            placeholderText: trimString(control.placeholderText),
+            text: truncateLabel(control.text, 180),
+            cannotDelete: control.cannotDelete,
+            cannotEdit: control.cannotEdit,
+            removeWhenEdited: control.removeWhenEdited,
+            appearance: control.appearance,
+          })),
+        };
+      }
+
+      const target = action.target?.kind === "contentControl"
+        ? action.target
+        : { kind: "contentControl" as const, id: trimString(options.id ?? action.id), label: trimString(options.title ?? action.title), text: trimString(options.tag ?? action.tag) };
+      const contentControl = await resolveWordContentControlTarget(target);
+      if (!contentControl) {
+        throw new Error(`Could not find the requested Word content control: ${target.id || target.label || target.text || "content control"}.`);
+      }
+
+      if (operation === "fill" || operation === "setText") {
+        contentControl.insertText(trimString(options.text ?? action.text ?? action.content) ?? content, Word.InsertLocation.replace);
+      } else if (operation === "clear") {
+        contentControl.clear();
+      } else if (operation === "select") {
+        contentControl.select();
+      } else if (operation === "delete") {
+        contentControl.delete(toBoolean(options.keepContent ?? action.keepContent) === true);
+      } else if (operation === "setMetadata") {
+        const title = trimString(options.title ?? action.title);
+        const tag = trimString(options.tag ?? action.tag);
+        const placeholderText = trimString(options.placeholderText ?? action.placeholderText);
+        const cannotDelete = toBoolean(options.cannotDelete ?? action.cannotDelete);
+        const cannotEdit = toBoolean(options.cannotEdit ?? action.cannotEdit);
+        const removeWhenEdited = toBoolean(options.removeWhenEdited ?? action.removeWhenEdited);
+        if (title) contentControl.title = title;
+        if (tag) contentControl.tag = tag;
+        if (placeholderText) contentControl.placeholderText = placeholderText;
+        if (typeof cannotDelete === "boolean") contentControl.cannotDelete = cannotDelete;
+        if (typeof cannotEdit === "boolean") contentControl.cannotEdit = cannotEdit;
+        if (typeof removeWhenEdited === "boolean") contentControl.removeWhenEdited = removeWhenEdited;
+      } else if (operation === "setCheckbox") {
+        if (!supportsRequirementSet("WordApi", "1.7")) throw new Error("Word checkbox content controls require WordApi 1.7 or newer.");
+        contentControl.checkboxContentControl.isChecked = toBoolean(options.checked ?? action.checked) === true;
+      } else if (operation === "setDropdownItems" || operation === "setComboBoxItems") {
+        if (!supportsRequirementSet("WordApi", "1.9")) throw new Error("Word dropdown/combo box item operations require WordApi 1.9 or newer.");
+        const listHost = operation === "setDropdownItems" ? contentControl.dropDownListContentControl : contentControl.comboBoxContentControl;
+        listHost.deleteAllListItems();
+        const items = Array.isArray(options.items ?? action.items) ? options.items ?? action.items : [];
+        for (const item of items as Array<{ displayText?: string; value?: string }>) {
+          const displayText = trimString(item.displayText ?? item.value);
+          if (displayText) listHost.addListItem(displayText, trimString(item.value) ?? displayText);
+        }
+      } else if (operation === "insert" || operation === "insertTyped") {
+        const { range } = await resolveTargetRange();
+        const requestedType = trimString(options.contentControlType ?? action.contentControlType);
+        const control = requestedType && supportsTypedContentControls
+          ? range.insertContentControl(requestedType as never)
+          : range.insertContentControl();
+        const title = trimString(options.title ?? action.title);
+        const tag = trimString(options.tag ?? action.tag);
+        if (title) control.title = title;
+        if (tag) control.tag = tag;
+        if (content) control.insertText(content, Word.InsertLocation.replace);
+        control.load(supportsContentControlSubtypes ? "id,title,tag,type,subtype,text" : "id,title,tag,type,text");
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, id: `contentControl:${control.id}`, title: control.title, tag: control.tag, type: control.type, subtype: supportsContentControlSubtypes ? control.subtype : undefined, text: truncateLabel(control.text, 180) };
+      } else {
+        throw new Error(`Unsupported Word content-control operation: ${operation}.`);
+      }
+
+      contentControl.load(supportsContentControlSubtypes ? "id,title,tag,type,subtype,text" : "id,title,tag,type,text");
+      await context.sync();
+      return { ok: true, host: "word", action: type, operation, id: `contentControl:${contentControl.id}`, title: contentControl.title, tag: contentControl.tag, type: contentControl.type, subtype: supportsContentControlSubtypes ? contentControl.subtype : undefined, text: truncateLabel(contentControl.text, 180) };
+    }
+
     if (type === "insertField") {
       if (!supportsRequirementSet("WordApi", "1.5")) {
         throw new Error("Word field insertion requires WordApi 1.5 or newer.");
