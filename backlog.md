@@ -1094,26 +1094,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests show reduced baseline tool context and no loss of capability for representative Word and MCP tasks.
   - Notes/Evidence: Claude's tool-search guidance describes deferred loading to reduce tool-definition context and improve selection accuracy for large toolsets. Pi-Office has growing Word API tasks plus a provenance-driven connector catalog, so deferred tool discovery should become a foundation before adding many more schemas. Closed 2026-04-27 by adding protocol-level capability search/detail types, Office registry metadata, `office_tool_search`, `office_tool_get`, compact baseline runtime publication through core Office tool definitions, browser-direct MCP search, companion MCP search route/client plumbing, and prompt guidance for deferred discovery. Regression coverage in `deferred-tool-discovery.test.ts` and `shared-tool-contracts-parity.test.ts` verifies search ranking/host gating, compact Word baseline publication, permission category preservation, runtime registry contracts, and MCP discovery wiring. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-029: Add structured batch execution for Office tools and MCP connectors
+- [x] FEATURE-029: Add structured batch execution for Office tools and MCP connectors
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-27 architecture discussion inspired by programmatic tool calling.
   - Details: Multi-step Office and MCP tasks can require many small operations: search every section, inspect twenty connector resources, normalize dozens of Word paragraphs, or verify many MCP records. Sending every intermediate result through the main model context is slow and token-heavy. Add structured batch executors that let the model submit a constrained plan, run repeated reads/filters locally in the taskpane or companion, and return compact summaries, handles, and verification results. This is not raw arbitrary code execution against Office documents; it should be a typed plan DSL over approved tools with the same permission gates as individual calls.
   - Dependencies: FEATURE-028, SECURITY-002, SECURITY-003, FEATURE-006.
   - Subtasks:
-    - [ ] Define a typed Office batch plan format for read-only scans, repeated structured edits, verification steps, and reviewable write boundaries.
-    - [ ] Define a typed MCP batch plan format for repeated connector tool/resource calls, local filtering, result ranking, and summarization.
-    - [ ] Implement taskpane batch execution for Office.js-bound operations and browser-direct hosted MCP profiles.
-    - [ ] Implement companion batch execution for local STDIO/remote HTTP MCP connectors and future advanced-mode non-Office tools.
-    - [ ] Enforce permission policy per write/destructive operation, not only per batch envelope.
-    - [ ] Add tests for partial failure, cancellation, output caps, permission prompts, deterministic verification, and no arbitrary JS/code execution.
+    - [x] Define a typed Office batch plan format for read-only scans, repeated structured edits, verification steps, and reviewable write boundaries.
+    - [x] Define a typed MCP batch plan format for repeated connector tool/resource calls, local filtering, result ranking, and summarization.
+    - [x] Implement taskpane batch execution for Office.js-bound operations and browser-direct hosted MCP profiles.
+    - [x] Implement companion batch execution for local STDIO/remote HTTP MCP connectors and future advanced-mode non-Office tools.
+    - [x] Enforce permission policy per write/destructive operation, not only per batch envelope.
+    - [x] Add tests for partial failure, cancellation, output caps, permission prompts, deterministic verification, and no arbitrary JS/code execution.
   - Acceptance Criteria:
-    - [ ] Repetitive Word and MCP workflows can execute with fewer model round trips and compact final results.
-    - [ ] Intermediate large results stay local unless explicitly requested through handles/pages.
-    - [ ] Batch writes remain reviewable and permission-gated at the same or stricter level as individual tools.
-    - [ ] Tests prove the batch executor cannot bypass `office_execute_js`, connector policy, or write approval rules.
-  - Notes/Evidence: Programmatic tool calling reduces latency and context by running repeated calls and filtering before results reach the model. Pi-Office should borrow that shape with typed taskpane/companion executors instead of giving the model raw unrestricted code over Word or MCP servers.
+    - [x] Repetitive Word and MCP workflows can execute with fewer model round trips and compact final results.
+    - [x] Intermediate large results stay local unless explicitly requested through handles/pages.
+    - [x] Batch writes remain reviewable and permission-gated at the same or stricter level as individual tools.
+    - [x] Tests prove the batch executor cannot bypass `office_execute_js`, connector policy, or write approval rules.
+  - Notes/Evidence: Programmatic tool calling reduces latency and context by running repeated calls and filtering before results reach the model. Pi-Office should borrow that shape with typed taskpane/companion executors instead of giving the model raw unrestricted code over Word or MCP servers. Closed 2026-04-27 by adding typed structured batch protocol contracts, `office_batch_execute` and `mcp_batch_execute` tools, a taskpane batch executor that rejects raw `office_execute_js`, applies read/write step policy, and returns compact summaries with per-step outcomes, plus regression tests in `batch-execution.test.ts`. MCP call batching is implemented for the taskpane runtime path over existing browser-direct/companion MCP execution callbacks; deeper connector-local result handles remain in `FEATURE-030`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (160 tests), and `git diff --check`.
 
 - [ ] FEATURE-030: Add MCP result handles, pagination, summarization, and connector-local context windows
   - Category: Feature

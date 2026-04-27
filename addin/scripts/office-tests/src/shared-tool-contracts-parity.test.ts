@@ -55,6 +55,7 @@ const FINAL_AGENT_TOOL_INVENTORY = [...OFFICE_TOOL_NAMES, ...RUNTIME_ONLY_AGENT_
 const DEFAULT_DEFERRED_WORD_BASELINE = [
   "ask_user",
   "generate_image",
+  "office_batch_execute",
   "office_apply_edit",
   "office_capture_snapshot",
   "office_get_context",
@@ -78,8 +79,13 @@ const VALID_EXECUTOR_KINDS = new Set<OfficeToolDefinition["executor"]>([
   "companion-native-capture",
   "runtime-registry",
 ]);
+const RUNTIME_ONLY_OFFICE_TOOLS = new Set<string>(["office_batch_execute", "mcp_batch_execute"]);
 const EXTENSION_REGISTERED_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
-  (toolName) => toolName !== "office_tool_search" && toolName !== "office_tool_get" && toolName !== "mcp_tool_search",
+  (toolName) =>
+    toolName !== "office_tool_search" &&
+    toolName !== "office_tool_get" &&
+    toolName !== "mcp_tool_search" &&
+    !RUNTIME_ONLY_OFFICE_TOOLS.has(toolName),
 );
 
 function sorted(values: Iterable<string>): string[] {
@@ -245,8 +251,8 @@ test("final inventory stays synchronized across protocol exports and tool-catego
   for (const officeTool of OFFICE_TOOL_NAMES) {
     const category = TOOL_CATEGORY_MAP[officeTool];
     assert.ok(
-      category === "read" || category === "write-doc" || category === "escape-hatch",
-      `${officeTool} should map to read/write-doc/escape-hatch but mapped to ${String(category)}.`,
+      category === "read" || category === "write-doc" || category === "escape-hatch" || category === "connector",
+      `${officeTool} should map to read/write-doc/escape-hatch/connector but mapped to ${String(category)}.`,
     );
   }
 
@@ -263,7 +269,9 @@ test("office tool registry has one definition, category, host rule, and executab
   const validHosts = new Set<string>(OFFICE_HOSTS);
   const bridgeDispatchNames = getBridgeDispatchedToolNames();
   assert.equal(bridgeDispatchNames.length, sorted(bridgeDispatchNames).length, "Bridge dispatch has duplicate tool handlers.");
-  assert.deepEqual(sorted(bridgeDispatchNames), protocolToolNames);
+  for (const runtimeOnlyTool of RUNTIME_ONLY_OFFICE_TOOLS) {
+    assert.equal(bridgeDispatchNames.includes(runtimeOnlyTool), false);
+  }
 
   const kernelSource = readProjectFile("apps/taskpane/src/lib/runtime/inprocess-kernel.ts");
   assert.match(kernelSource, /getCoreOfficeToolDefinitionsForHost\(this\.officeState\.host\)/);
@@ -297,11 +305,6 @@ test("office tool registry has one definition, category, host rule, and executab
 
     const supportedHosts = OFFICE_HOSTS.filter((host) => officeToolSupportsHost(definition, host));
     assert.ok(supportedHosts.length > 0, `${toolName} is not supported by any host.`);
-    assert.equal(
-      bridgeDispatchNames.filter((dispatchedToolName) => dispatchedToolName === toolName).length,
-      1,
-      `${toolName} must have exactly one taskpane bridge dispatch handler.`,
-    );
   }
 
   for (const host of OFFICE_HOSTS) {
@@ -372,7 +375,9 @@ test("extension registration and runtime-published tools stay synchronized with 
 
 test("taskpane bridge dispatch cases stay in sync with supported Office tools", async () => {
   const dispatchedToolNames = getBridgeDispatchedToolNames();
-  assert.deepEqual(sorted(dispatchedToolNames), sorted(OFFICE_TOOL_NAMES));
+  assert.deepEqual(sorted(dispatchedToolNames), sorted(OFFICE_TOOL_NAMES.filter(
+    (toolName) => !RUNTIME_ONLY_OFFICE_TOOLS.has(String(toolName)),
+  )));
 
   const executeOfficeTool = createOfficeToolExecutor({
     collectOfficeContext: async () => ({ ok: true }),

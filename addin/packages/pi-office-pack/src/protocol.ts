@@ -1138,7 +1138,9 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   office_get_context: "read",
   office_tool_search: "read",
   office_tool_get: "read",
+  office_batch_execute: "read",
   mcp_tool_search: "read",
+  mcp_batch_execute: "connector",
   office_read_section: "read",
   office_capture_snapshot: "read",
   office_capture_viewport: "read",
@@ -1263,6 +1265,51 @@ export interface McpToolSearchResponse {
   query?: string | undefined;
   results: ToolCapabilitySearchResult[];
 }
+
+export type BatchStepStatus = "completed" | "blocked" | "failed";
+
+export interface StructuredBatchStep {
+  id?: string | undefined;
+  type: string;
+  toolName?: string | undefined;
+  arguments?: Record<string, unknown> | undefined;
+  query?: string | undefined;
+  limit?: number | undefined;
+}
+
+export interface StructuredBatchStepResult {
+  id?: string | undefined;
+  index: number;
+  type: string;
+  toolName?: string | undefined;
+  status: BatchStepStatus;
+  summary: string;
+  content?: unknown;
+  error?: string | undefined;
+}
+
+export interface StructuredBatchRequest {
+  steps: StructuredBatchStep[];
+  outputByteLimit?: number | undefined;
+}
+
+export interface StructuredBatchResponse {
+  ok: boolean;
+  summary: string;
+  steps: StructuredBatchStepResult[];
+  blocked: number;
+  failed: number;
+}
+
+export type OfficeBatchStep = StructuredBatchStep;
+export type OfficeBatchStepResult = StructuredBatchStepResult;
+export interface OfficeBatchExecuteRequest extends StructuredBatchRequest {}
+export interface OfficeBatchExecuteResponse extends StructuredBatchResponse {}
+export type McpBatchStep = StructuredBatchStep;
+export type McpBatchStepResult = StructuredBatchStepResult;
+export interface McpBatchExecuteRequest extends StructuredBatchRequest {}
+export interface McpBatchExecuteResponse extends StructuredBatchResponse {}
+export type BatchExecutionResult = StructuredBatchResponse;
 
 export const AUTONOMY_LEVEL_AUTO_APPROVE: Record<AutonomyLevel, Set<ToolCategory>> = {
   off: new Set(["interaction"]),
@@ -1515,7 +1562,9 @@ export const OFFICE_TOOL_NAMES = [
   "office_get_context",
   "office_tool_search",
   "office_tool_get",
+  "office_batch_execute",
   "mcp_tool_search",
+  "mcp_batch_execute",
   "office_apply_edit",
   "edit_doc_text",
   "edit_doc_list",

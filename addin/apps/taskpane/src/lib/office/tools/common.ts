@@ -59,6 +59,40 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     compactSummary: "Find enabled connector tools without injecting all connector schemas into the prompt.",
   },
   {
+    name: "office_batch_execute",
+    hosts: "all",
+    category: "read",
+    label: "Execute Office Batch Plan",
+    description:
+      "Execute a constrained, typed batch plan over approved Office tools. This is not arbitrary code execution: escape-hatch Office.js is excluded and write steps still require explicit per-step confirmation.",
+    parameters: Type.Object({
+      steps: Type.Array(Type.Any({ description: "Typed Office batch steps." })),
+      stopOnError: Type.Optional(Type.Boolean({ description: "Stop after the first failed step. Defaults to true." })),
+    }),
+    executor: "runtime-registry",
+    deferred: false,
+    capabilityTags: ["batch", "office", "typed-plan", "structured-tools"],
+    riskLevel: "high",
+    compactSummary: "Run repeated Office reads/edits through a typed allowlisted plan with per-step policy.",
+  },
+  {
+    name: "mcp_batch_execute",
+    hosts: "all",
+    category: "connector",
+    label: "Execute MCP Batch Plan",
+    description:
+      "Execute a constrained, typed batch plan over enabled MCP connector tools. Connector policy is checked per call; disabled, destructive, or unknown tools remain unavailable.",
+    parameters: Type.Object({
+      steps: Type.Array(Type.Any({ description: "Typed MCP batch steps." })),
+      stopOnError: Type.Optional(Type.Boolean({ description: "Stop after the first failed step. Defaults to true." })),
+    }),
+    executor: "runtime-registry",
+    deferred: false,
+    capabilityTags: ["batch", "mcp", "connector", "typed-plan"],
+    riskLevel: "high",
+    compactSummary: "Run repeated connector searches/calls through a typed allowlisted plan with connector policy.",
+  },
+  {
     name: "office_get_context",
     hosts: "all",
     category: "read",

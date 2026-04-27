@@ -81,6 +81,22 @@ function searchOfficeToolsForBridge(request: OfficeToolRequest): OfficeToolResul
     };
   }
 
+  if (request.toolName === "office_batch_execute") {
+    return {
+      requestId: request.requestId,
+      success: false,
+      error: "office_batch_execute is handled by the taskpane runtime so per-step policy can use the live session.",
+    };
+  }
+
+  if (request.toolName === "mcp_batch_execute") {
+    return {
+      requestId: request.requestId,
+      success: false,
+      error: "mcp_batch_execute is handled by the taskpane runtime so connector policy can use the live session.",
+    };
+  }
+
   return undefined;
 }
 

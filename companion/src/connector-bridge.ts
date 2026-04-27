@@ -5,6 +5,8 @@ import { DEFAULT_INHERITED_ENV_VARS, StdioClientTransport } from "@modelcontextp
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type {
   CompanionConnectorDefinition,
+  McpBatchExecuteRequest,
+  McpBatchExecuteResponse,
   ConnectorCredentialSource,
   ConnectorDiagnostic,
   ConnectorRemoteHttpHeader,

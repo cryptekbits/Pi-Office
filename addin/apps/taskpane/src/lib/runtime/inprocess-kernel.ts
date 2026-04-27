@@ -67,6 +67,7 @@ import {
   type ConnectorStatusResponse,
   type ConnectorTestResponse,
   type ConnectorToolPolicyUpdateRequest,
+  type McpToolSearchRequest,
   type OfficeDocumentState,
   type ContextBreakdownEntry,
   type DeriveSubjectRequest,
@@ -123,6 +124,7 @@ import {
   type OfficeToolDefinition,
 } from "../office/tools/index.js";
 import { isBrowserDebugOfficeState } from "../office/shared";
+import { executeMcpBatchPlan, executeOfficeBatchPlan } from "./batch-executor";
 import { BrowserConnectorRuntime } from "./browser-connectors";
 import { getConnectorCatalogItem } from "./connector-catalog";
 import { CompanionClient, type CompanionSessionBinding } from "./companion-client";
@@ -1365,6 +1367,8 @@ class BrowserOfficeSession {
     private readonly executeCompanionFileTool: (sessionId: string, toolName: "read" | "grep" | "find" | "ls", params: Record<string, unknown>) => Promise<unknown>,
     private readonly executeCompanionMcpTool: (sessionId: string, toolName: string, params: Record<string, unknown>) => Promise<unknown>,
     private readonly getBrowserMcpToolNames: (scopeContext: ConnectorScopeContext) => string[],
+    private readonly searchBrowserMcpTools: (request: McpToolSearchRequest, scopeContext: ConnectorScopeContext) => unknown,
+    private readonly searchCompanionMcpTools: (sessionId: string, request: McpToolSearchRequest) => Promise<unknown>,
     private readonly executeBrowserMcpTool: (toolName: string, params: Record<string, unknown>, scopeContext: ConnectorScopeContext) => Promise<unknown>,
     private readonly executeCompanionShellCommand: (sessionId: string, request: CompanionShellExecuteRequest) => Promise<unknown>,
     private readonly executeCompanionNativeCapture: (sessionId: string, request: CompanionNativeCaptureRequest) => Promise<CompanionNativeCaptureResponse>,
@@ -2095,6 +2099,42 @@ class BrowserOfficeSession {
   private createRuntimeAgentTools(): AgentTool[] {
     return [
       {
+        name: "office_batch_execute",
+        label: "Execute Office Batch Plan",
+        description:
+          "Execute a constrained, typed batch plan over approved Office tools. This is not arbitrary code execution and cannot run office_execute_js.",
+        parameters: Type.Any(),
+        execute: async (_toolCallId, params) => {
+          const result = await executeOfficeBatchPlan({
+            host: this.officeState.host,
+            request: normalizeToolParams(params) as never,
+            invokeOfficeTool: (toolName, toolParams) => this.invokeOfficeTool(toolName, toolParams),
+          });
+          return {
+            content: toToolContent(result),
+            details: result,
+          };
+        },
+      },
+      {
+        name: "mcp_batch_execute",
+        label: "Execute MCP Batch Plan",
+        description:
+          "Execute a constrained, typed batch plan over enabled MCP connector tools. Connector policy is checked per call.",
+        parameters: Type.Any(),
+        execute: async (_toolCallId, params) => {
+          const result = await executeMcpBatchPlan({
+            request: normalizeToolParams(params) as never,
+            searchMcpTools: (request) => this.searchMcpTools(request),
+            invokeMcpTool: (toolName, toolParams) => this.invokeMcpTool(toolName, toolParams),
+          });
+          return {
+            content: toToolContent(result),
+            details: result,
+          };
+        },
+      },
+      {
         name: "ask_user",
         label: "Ask User",
         description:
@@ -2423,6 +2463,31 @@ class BrowserOfficeSession {
     }
 
     return result.content;
+  }
+
+  private async searchMcpTools(request: { query?: string; connectorId?: string; limit?: number }): Promise<unknown> {
+    const rawBrowserResults = this.searchBrowserMcpTools(request, this.connectorScopeContext()) as unknown;
+    const browserResults = Array.isArray(rawBrowserResults) ? rawBrowserResults : [];
+    const rawCompanionResults = this.companionState.status === "connected"
+      ? await this.searchCompanionMcpTools(this.sessionId, request).catch(() => ({ results: [] }))
+      : { results: [] };
+    const companionResults = Array.isArray((rawCompanionResults as { results?: unknown }).results)
+      ? (rawCompanionResults as { results: unknown[] }).results
+      : [];
+    return {
+      query: request.query,
+      results: [...browserResults, ...companionResults],
+    };
+  }
+
+  private async invokeMcpTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
+    if (this.getBrowserConnectorToolNames().includes(toolName)) {
+      return this.executeBrowserMcpTool(toolName, args, this.connectorScopeContext());
+    }
+    if (!this.getCompanionConnectorToolNames().includes(toolName)) {
+      throw new Error(`Connector tool "${toolName}" is not enabled.`);
+    }
+    return this.executeCompanionMcpTool(this.sessionId, toolName, args);
   }
 
   private async invokeAskUser(request: AskUserRequest): Promise<AskUserResponse> {
@@ -3080,6 +3145,8 @@ class InProcessKernel {
           (sessionId, toolName, params) => this.companionClient.executeFileTool(sessionId, toolName, params),
           (sessionId, toolName, params) => this.companionClient.executeMcpTool(sessionId, toolName, params),
           (scopeContext) => this.connectorRuntime.getBrowserConnectorToolNames(scopeContext),
+          (searchRequest, scopeContext) => this.connectorRuntime.searchBrowserMcpTools(searchRequest, scopeContext),
+          (sessionId, searchRequest) => this.companionClient.searchMcpTools(sessionId, searchRequest),
           (toolName, params, scopeContext) => this.connectorRuntime.executeBrowserMcpTool(toolName, params, scopeContext),
           (sessionId, request) => this.companionClient.executeShellCommand(sessionId, request),
           (sessionId, request) => this.companionClient.captureNativeViewport(sessionId, request),
