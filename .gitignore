@@ -24,6 +24,7 @@ certs/
 Thumbs.db
 .vscode/
 .idea/
+debugging-logs/
 
 # Env / local config
 .env

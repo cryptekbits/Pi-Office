@@ -776,6 +776,25 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Failed migration or unavailable secure storage fails closed without silently exposing connector tools.
   - Notes/Evidence: `FEATURE-019` deliberately kept the first broker generic and local; this task tracks the stronger storage hardening that should follow.
 
+- [x] SECURITY-009: Protect public repository main branch and add non-commercial license
+  - Category: Security
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 stakeholder request after making the repository public: "add protection so that only select few can push directly to the main, or approve PRs" and "update the license so that others can fork it for personal use, but not for commercial use and have to properly credit the original repo."
+  - Details: The public repository needs an explicit source-available license and GitHub-side governance. Personal, educational, research, and evaluation forks should be permitted with attribution, while commercial use should require written permission. `main` should not accept normal direct pushes from broad collaborators, and merge-qualifying approvals should come only from the designated owners. GitHub personal repositories do not support named-user push restrictions in classic branch protection, and repository rulesets do not support named-user bypass actors, so the practical user-owned-repo model is CODEOWNERS for approvals plus repository-admin bypass for direct pushes.
+  - Dependencies: None.
+  - Subtasks:
+    - [x] Add a repository license that permits personal non-commercial forks with attribution and blocks commercial use without permission.
+    - [x] Add `.github/CODEOWNERS` for repository-wide code-owner review by `@cryptekbits`.
+    - [x] Apply GitHub `main` protection through `gh` with PR review, code-owner review, stale-review dismissal, last-push approval, conversation resolution, and force-push/deletion blocks.
+    - [x] Document the GitHub personal-repo limitation and the repository-admin bypass model.
+  - Acceptance Criteria:
+    - [x] The repository has a visible license matching the requested personal/non-commercial/attribution terms.
+    - [x] `main` has active GitHub protection requiring PR/code-owner review for non-bypass updates.
+    - [x] Direct-push bypass is limited to the narrowest available actor model for this personal repository.
+    - [x] Future maintainers can find the governance and license posture in repo docs.
+  - Notes/Evidence: Added `LICENSE`, `.github/CODEOWNERS`, `docs/repository-governance.md`, README license/governance links, package metadata, and contribution licensing notes. `gh api repos/cryptekbits/Pi-Office/branches/main/protection` showed classic branch protection was absent, and a classic protection attempt with named user restrictions failed with `Only organization repositories can have users and team restrictions`. The applied repository ruleset uses `RepositoryRole` actor ID `5` (`Admin`) as bypass, because GitHub personal repos cannot use `OrganizationAdmin` and rulesets do not expose named-user bypass. Verification: `gh ruleset view "Protect main" --repo cryptekbits/Pi-Office`, `gh ruleset check main --repo cryptekbits/Pi-Office`, and `git diff --check`.
+
 - [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards
   - Category: Feature
   - Status: open
