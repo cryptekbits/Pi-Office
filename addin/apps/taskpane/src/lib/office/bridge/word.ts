@@ -51,6 +51,46 @@ export async function executeWordOfficeTool(
         return toPayloadAwareResult(request.requestId, result);
       }
 
+      if (request.toolName === "word_format_text") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_format_text is only available for Word.",
+          };
+        }
+
+        const params = request.params as Record<string, unknown>;
+        const options = {
+          ...(params.options && typeof params.options === "object" && !Array.isArray(params.options)
+            ? params.options as Record<string, unknown>
+            : {}),
+          ...(params.font && typeof params.font === "object" && !Array.isArray(params.font)
+            ? { font: params.font }
+            : {}),
+          style: params.style,
+          builtInStyle: params.builtInStyle,
+          alignment: params.alignment,
+          leftIndent: params.leftIndent,
+          rightIndent: params.rightIndent,
+          firstLineIndent: params.firstLineIndent,
+          lineSpacing: params.lineSpacing,
+          spaceBefore: params.spaceBefore,
+          spaceAfter: params.spaceAfter,
+          clearFormatting: params.clearFormatting,
+        };
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "formatRange",
+          target: params.target as never,
+          options,
+        });
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: result,
+        };
+      }
+
       if (request.toolName === "word_search") {
         if (request.host !== "word") {
           return {

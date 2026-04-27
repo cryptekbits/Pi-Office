@@ -723,26 +723,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Tests prove native annotation tools cannot be advertised when requirement-set checks fail.
   - Notes/Evidence: Microsoft documents WordApi 1.7 as adding writing-assistance support with `Annotation`, `CritiqueAnnotation`, `Paragraph.insertAnnotations`, and annotation events; WordApi 1.8 adds popup-action events and temporary `Range.highlight()` / `removeHighlight()` APIs. Microsoft notes annotation APIs require a Microsoft 365 subscription because of an underlying service requirement, so UI/tool copy must be capability-honest.
 
-- [ ] FEATURE-010: Add structured Word style and paragraph formatting tools
+- [x] FEATURE-010: Add structured Word style and paragraph formatting tools
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: Pi-Office reads some selection font, paragraph, and page setup metadata today, but it does not expose first-class style and paragraph-formatting actions. Professional Word work often needs controlled heading levels, resume bullet spacing, research-paper styles, spec formatting, line spacing, indentation, shading, and font changes without replacing large text spans or using raw `office_execute_js`. Structured formatting tools should target selections, paragraphs, headings, content controls, and fields by stable anchors where possible.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Inventory currently readable Word font, paragraph, style, page setup, and shading metadata in `word-context.ts`.
-    - [ ] Define structured actions for applying built-in/custom styles, paragraph alignment, spacing, indentation, outline level, font attributes, highlight/shading, and clear-formatting behavior.
-    - [ ] Add target resolution for selection, paragraph ID, heading, content control, field result, and search anchor scopes.
-    - [ ] Add style import/application support where WordApi 1.6 `Document.importStylesFromJson` is available, with safe fallback messaging elsewhere.
-    - [ ] Update workflow-pack and office-host guidance to prefer structured formatting tools for resumes, specs, papers, and professional review.
-    - [ ] Add tests for style application, paragraph formatting, unsupported requirement-set fallback, and prompt/tool contract registration.
+    - [x] Inventory currently readable Word font, paragraph, style, page setup, and shading metadata in `word-context.ts`.
+    - [x] Define structured actions for applying built-in/custom styles, paragraph alignment, spacing, indentation, outline level, font attributes, highlight/shading, and clear-formatting behavior.
+    - [x] Add target resolution for selection, paragraph ID, heading, content control, field result, and search anchor scopes.
+    - [x] Add style import/application support where WordApi 1.6 `Document.importStylesFromJson` is available, with safe fallback messaging elsewhere.
+    - [x] Update workflow-pack and office-host guidance to prefer structured formatting tools for resumes, specs, papers, and professional review.
+    - [x] Add tests for style application, paragraph formatting, unsupported requirement-set fallback, and prompt/tool contract registration.
   - Acceptance Criteria:
-    - [ ] Common resume, spec, and paper formatting edits can be applied through structured Word tools instead of `office_execute_js`.
-    - [ ] Formatting operations report the target anchor, changed properties, and any unsupported host capabilities.
-    - [ ] Existing text proposal flows remain text-focused and do not silently perform broad formatting changes.
-    - [ ] Tests cover representative font, paragraph, style, and unsupported-host cases.
-  - Notes/Evidence: WordApi 1.1 includes paragraph/font/style properties and range style APIs; WordApi 1.6 adds style-management improvements such as `Document.importStylesFromJson`, style shading, and table-style metadata. Current Pi-Office context capture already reads selection font and paragraph formatting, making this a natural structured-write expansion.
+    - [x] Common resume, spec, and paper formatting edits can be applied through structured Word tools instead of `office_execute_js`.
+    - [x] Formatting operations report the target anchor, changed properties, and any unsupported host capabilities.
+    - [x] Existing text proposal flows remain text-focused and do not silently perform broad formatting changes.
+    - [x] Tests cover representative font, paragraph, style, and unsupported-host cases.
+  - Notes/Evidence: WordApi 1.1 includes paragraph/font/style properties and range style APIs; WordApi 1.6 adds style-management improvements such as `Document.importStylesFromJson`, style shading, and table-style metadata. Current Pi-Office context capture already reads selection font and paragraph formatting, making this a natural structured-write expansion. Closed 2026-04-27 by adding `word_format_text`, structured formatting action dispatch through `formatRange`, paragraph/style/font/highlight/spacing/indent/alignment/outline-level application in `applyWordAction`, search/anchor-compatible targeting, prompt guidance, and `word-formatting-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-011: Add Word list and multilevel numbering tools
   - Category: Feature

@@ -317,6 +317,112 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       return { ok: true, host: "word", action: type };
     }
 
+    if (type === "applyParagraphFormat" || type === "applyTextFormat" || type === "clearFormatting") {
+      const { range, paragraph } = await resolveTargetRange();
+      const changed: Record<string, unknown> = {};
+      const warnings: string[] = [];
+
+      if (type === "clearFormatting") {
+        range.clear();
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          target: action.target,
+          summary: "Cleared formatting from the resolved Word range.",
+        };
+      }
+
+      const style = trimString(options.style ?? action.style);
+      const builtInStyle = trimString(options.styleBuiltIn ?? action.styleBuiltIn);
+      if (style) {
+        range.style = style;
+        changed.style = style;
+      }
+      if (builtInStyle) {
+        range.styleBuiltIn = builtInStyle as Word.BuiltInStyleName;
+        changed.styleBuiltIn = builtInStyle;
+      }
+
+      const font = range.font;
+      const fontName = trimString(options.fontName ?? action.fontName);
+      const fontSize = toNumber(options.fontSize ?? action.fontSize);
+      const color = trimString(options.color ?? action.color);
+      const highlightColor = trimString(options.highlightColor ?? action.highlightColor);
+      const bold = toBoolean(options.bold ?? action.bold);
+      const italic = toBoolean(options.italic ?? action.italic);
+      if (fontName) {
+        font.name = fontName;
+        changed.fontName = fontName;
+      }
+      if (typeof fontSize === "number") {
+        font.size = fontSize;
+        changed.fontSize = fontSize;
+      }
+      if (color) {
+        font.color = color;
+        changed.color = color;
+      }
+      if (highlightColor) {
+        font.highlightColor = highlightColor;
+        changed.highlightColor = highlightColor;
+      }
+      if (typeof bold === "boolean") {
+        font.bold = bold;
+        changed.bold = bold;
+      }
+      if (typeof italic === "boolean") {
+        font.italic = italic;
+        changed.italic = italic;
+      }
+
+      const paragraphCollection = paragraph ? undefined : range.paragraphs;
+      if (paragraphCollection) {
+        paragraphCollection.load("items/text");
+        await context.sync();
+      }
+
+      const alignment = trimString(options.alignment ?? action.alignment);
+      const leftIndent = toNumber(options.leftIndent ?? action.leftIndent);
+      const rightIndent = toNumber(options.rightIndent ?? action.rightIndent);
+      const firstLineIndent = toNumber(options.firstLineIndent ?? action.firstLineIndent);
+      const lineSpacing = toNumber(options.lineSpacing ?? action.lineSpacing);
+      const spaceBefore = toNumber(options.spaceBefore ?? action.spaceBefore);
+      const spaceAfter = toNumber(options.spaceAfter ?? action.spaceAfter);
+      const paragraphItems = paragraph ? [paragraph] : paragraphCollection?.items ?? [];
+      for (const item of paragraphItems) {
+        if (alignment) item.alignment = alignment as Word.Alignment;
+        if (typeof leftIndent === "number") item.leftIndent = leftIndent;
+        if (typeof rightIndent === "number") item.rightIndent = rightIndent;
+        if (typeof firstLineIndent === "number") item.firstLineIndent = firstLineIndent;
+        if (typeof lineSpacing === "number") item.lineSpacing = lineSpacing;
+        if (typeof spaceBefore === "number") item.spaceBefore = spaceBefore;
+        if (typeof spaceAfter === "number") item.spaceAfter = spaceAfter;
+      }
+      if (alignment) changed.alignment = alignment;
+      if (typeof leftIndent === "number") changed.leftIndent = leftIndent;
+      if (typeof rightIndent === "number") changed.rightIndent = rightIndent;
+      if (typeof firstLineIndent === "number") changed.firstLineIndent = firstLineIndent;
+      if (typeof lineSpacing === "number") changed.lineSpacing = lineSpacing;
+      if (typeof spaceBefore === "number") changed.spaceBefore = spaceBefore;
+      if (typeof spaceAfter === "number") changed.spaceAfter = spaceAfter;
+
+      if (!Object.keys(changed).length) {
+        warnings.push("No supported formatting properties were provided.");
+      }
+
+      await context.sync();
+      return {
+        ok: true,
+        host: "word",
+        action: type,
+        target: action.target,
+        changed,
+        warnings,
+      };
+    }
+
     if (type === "insertOoxml") {
       const { range } = await resolveTargetRange();
       range.insertOoxml(content, placement);
