@@ -522,6 +522,46 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Non-local production origins do not show the debug-log icon.
   - Notes/Evidence: Implemented in `Header.tsx`, `icons.tsx`, `App.tsx`, `SettingsPage.tsx`, `styles.css`, `README.md`, and `docs/privacy-and-storage.md`. Validation passed with `npm run typecheck:addin`, `npm run test:office` (215 tests), `npm run build:addin`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
 
+- [x] BUG-021: Office tool schema drift lets Word HTML be inserted as literal text
+  - Category: Bug
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 sideload debug export `debugging-logs/1.tool-failures.json`; user reported Word output containing raw `<h1>...` HTML tags after a two-page FFT document generation request.
+  - Details: The exported conversation showed the model followed the public `office_tool_get` schema by sending `ids` and then `toolNames`, but the bridge only accepted singular `toolName` or `id`, causing two schema-fetch failures. The same run then called `office_apply_edit` with a bare `html` payload; `toHostAction` treated that payload as `insertText`, so Word received literal HTML text and the tool result reported `operation: "insertText"`. This is a runtime/tool-contract issue, not only a weak-model issue.
+  - Dependencies: BUG-019 for the deferred Office tool dispatcher and registry split.
+  - Subtasks:
+    - [x] Make `office_tool_get` accept singular `toolName` / `id` and plural `toolNames` / `ids`.
+    - [x] Honor `office_tool_search.maxResults` from the public schema.
+    - [x] Infer `insertHtml` from bare top-level `html` payloads and reject empty insert payloads.
+    - [x] Reject HTML-looking `content` that would otherwise become literal `insertText`, unless literal text intent is explicit.
+    - [x] Reject non-matrix `values[].html` payloads with actionable correction copy.
+    - [x] Tighten prompt and tool descriptions toward structured Word HTML insertion, Word section-layout page breaks, no Markdown markers inside HTML, and verify-before-claiming page/layout success.
+    - [x] Add regression tests that replay the failed argument shapes from the debug export.
+  - Acceptance Criteria:
+    - [x] `office_tool_get({ ids: ["word_section_layout"] })` and `office_tool_get({ toolNames: ["word_section_layout"] })` both return tool details.
+    - [x] `office_apply_edit({ html: "<h1>Title</h1>" })` normalizes to `insertHtml`.
+    - [x] HTML-looking content cannot silently route through `insertText`.
+    - [x] The model prompt and tool registry steer new Word document generation to `action: { type: "insertHtml", content: "..." }` or discovered structured Word tools.
+  - Notes/Evidence: Fixed in `addin/apps/taskpane/src/lib/office-bridge.ts`, `addin/apps/taskpane/src/lib/office/bridge/common.ts`, `addin/apps/taskpane/src/lib/office/tools/common.ts`, `addin/packages/pi-office-pack/src/defaults.ts`, and `addin/packages/pi-office-pack/src/extension.ts`. Regression coverage added in `addin/scripts/office-tests/src/office-bridge.test.ts` and `addin/scripts/office-tests/src/deferred-tool-discovery.test.ts`. Validation passed: `npm --prefix addin run test:office` (220 tests), `npm --prefix addin run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
+- [x] BUG-022: Stale model-sync requests surface repeated Unknown session errors in chat
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 sideload debug export `debugging-logs/1.tool-failures.json`; visible conversation contained many repeated `Model change failed: Unknown session.` error entries after session/model churn.
+  - Details: The debug export showed active session `11a05567-a3bd-496c-9957-68ce2e71e8fb`, while runtime diagnostics had repeated `/v1/sessions/{old-id}/model` failures for earlier session IDs. These stale model-change failures were not the cause of the HTML-in-Word bug, but they polluted the user-visible transcript and debugging signal.
+  - Dependencies: None.
+  - Subtasks:
+    - [x] Capture the target session ID for each model-sync effect run.
+    - [x] Refresh stats/thinking capabilities only if the target session is still current.
+    - [x] Push model-change failure messages only when the failed request still targets the active session.
+    - [x] Add a regression check for stale-session suppression.
+  - Acceptance Criteria:
+    - [x] Model change failures for superseded session IDs do not append visible chat errors.
+    - [x] Real model-change failures for the current active session still surface to the user.
+    - [x] Regression coverage guards the session-ID check around `Model change failed`.
+  - Notes/Evidence: Fixed in `addin/apps/taskpane/src/app/App.tsx` by capturing `targetSessionId` and comparing it to `sessionIdRef.current` before refreshing session-specific state or pushing a visible error. Regression coverage added in `addin/scripts/office-tests/src/session-model-sync.test.ts`. Validation passed: `npm --prefix addin run test:office` (220 tests), `npm --prefix addin run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
 - [x] BUG-017: Companion-brokered OAuth callback does not update taskpane connector state
   - Category: Bug
   - Status: done

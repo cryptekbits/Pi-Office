@@ -80,6 +80,36 @@ test("toHostAction supports operation/text/html aliases from model-generated par
   assert.equal(htmlAction.type, "insertHtml");
   assert.equal(htmlAction.content, "<b>Hello</b>");
   assert.equal(htmlAction.placement, "after");
+
+  const bareHtmlAction = toHostAction({
+    html: "<h1>Executive Brief</h1>",
+  });
+  assert.equal(bareHtmlAction.type, "insertHtml");
+  assert.equal(bareHtmlAction.content, "<h1>Executive Brief</h1>");
+});
+
+test("toHostAction rejects model-generated HTML shapes that would become literal Word text", () => {
+  assert.throws(
+    () => toHostAction({ content: "<h1>Executive Brief</h1>" }),
+    /HTML-looking content/i,
+  );
+
+  const literalText = toHostAction({
+    operation: "insertText",
+    content: "<h1>Show this literal tag</h1>",
+  });
+  assert.equal(literalText.type, "insertText");
+  assert.equal(literalText.content, "<h1>Show this literal tag</h1>");
+
+  assert.throws(
+    () => toHostAction({ operation: "insertHtml", values: [{ html: "<p>Wrong shape</p>" }] }),
+    /values\[\]\.html/i,
+  );
+
+  assert.throws(
+    () => toHostAction({ operation: "insertHtml", html: "" }),
+    /requires non-empty content/i,
+  );
 });
 
 test("toHostAction supports direct matrix values payload", () => {
@@ -169,6 +199,76 @@ test("createOfficeToolExecutor dispatches apply-edit and capture requests throug
     maxImages: 4,
     scope: "slide",
   });
+});
+
+test("createOfficeToolExecutor accepts plural office_tool_get params from the public schema", async () => {
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({ ok: true }),
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const byIds = await executeOfficeTool({
+    requestId: "tool-get-ids",
+    toolName: "office_tool_get",
+    host: "word",
+    params: {
+      ids: ["word_section_layout"],
+    },
+  });
+  const byToolNames = await executeOfficeTool({
+    requestId: "tool-get-toolnames",
+    toolName: "office_tool_get",
+    host: "word",
+    params: {
+      toolNames: ["word_section_layout"],
+    },
+  });
+  const multiple = await executeOfficeTool({
+    requestId: "tool-get-multiple",
+    toolName: "office_tool_get",
+    host: "word",
+    params: {
+      toolNames: ["word_section_layout", "word_table"],
+    },
+  });
+
+  assert.equal(byIds.success, true);
+  assert.equal((byIds.content as { detail: { toolName: string } }).detail.toolName, "word_section_layout");
+  assert.equal(byToolNames.success, true);
+  assert.equal((byToolNames.content as { detail: { toolName: string } }).detail.toolName, "word_section_layout");
+  assert.equal(multiple.success, true);
+  assert.deepEqual(
+    (multiple.content as { details: Array<{ toolName: string }> }).details.map((detail) => detail.toolName),
+    ["word_section_layout", "word_table"],
+  );
+});
+
+test("createOfficeToolExecutor honors office_tool_search maxResults schema", async () => {
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({ ok: true }),
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const result = await executeOfficeTool({
+    requestId: "tool-search-max",
+    toolName: "office_tool_search",
+    host: "word",
+    params: {
+      query: "word",
+      maxResults: 2,
+    },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal((result.content as { results: unknown[] }).results.length, 2);
 });
 
 test("createOfficeToolExecutor dispatches Word navigation and formats Office runtime errors", async () => {

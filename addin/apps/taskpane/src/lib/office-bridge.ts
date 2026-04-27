@@ -31,7 +31,12 @@ function searchOfficeToolsForBridge(request: OfficeToolRequest): OfficeToolResul
       ? request.params.host
       : request.host;
     const category = typeof request.params.category === "string" ? request.params.category : undefined;
-    const limit = typeof request.params.limit === "number" ? request.params.limit : undefined;
+    const limit =
+      typeof request.params.maxResults === "number"
+        ? request.params.maxResults
+        : typeof request.params.limit === "number"
+          ? request.params.limit
+          : undefined;
     return {
       requestId: request.requestId,
       success: true,
@@ -52,20 +57,27 @@ function searchOfficeToolsForBridge(request: OfficeToolRequest): OfficeToolResul
   if (request.toolName === "office_tool_get") {
     const toolName = typeof request.params.toolName === "string" ? request.params.toolName : undefined;
     const id = typeof request.params.id === "string" ? request.params.id : undefined;
-    const lookup = toolName ?? id;
-    if (!lookup) {
+    const toolNames = Array.isArray(request.params.toolNames)
+      ? request.params.toolNames.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [];
+    const ids = Array.isArray(request.params.ids)
+      ? request.params.ids.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [];
+    const lookups = [toolName, id, ...toolNames, ...ids]
+      .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+
+    if (lookups.length === 0) {
       return {
         requestId: request.requestId,
         success: false,
-        error: "office_tool_get requires toolName or id.",
+        error: "office_tool_get requires toolName, id, toolNames, or ids.",
       };
     }
+    const details = lookups.map((lookup) => getOfficeToolCapabilityDetail(lookup, request.host));
     return {
       requestId: request.requestId,
       success: true,
-      content: {
-        detail: getOfficeToolCapabilityDetail(lookup, request.host),
-      },
+      content: details.length === 1 ? { detail: details[0] } : { details },
     };
   }
 

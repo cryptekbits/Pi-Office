@@ -161,15 +161,15 @@ const applyEditParams = Type.Object({
   mode: Type.Optional(Type.String({ description: "Legacy edit mode such as replaceSelection, insertAfterSelection, or setRangeValues." })),
   content: Type.Optional(Type.String({ description: "Legacy text, HTML, or JSON matrix payload to insert into Office." })),
   text: Type.Optional(Type.String({ description: "Alias for legacy text content. Use when operation/type is insertText." })),
-  html: Type.Optional(Type.String({ description: "Alias for legacy HTML content. Use when operation/type is insertHtml." })),
+  html: Type.Optional(Type.String({ description: "Alias for legacy HTML content. Bare html infers insertHtml when operation/type/format are omitted." })),
   format: Type.Optional(Type.String({ description: "Legacy content format such as text, html, or matrix." })),
   operation: Type.Optional(Type.String({ description: "Top-level action type alias, e.g., insertText, insertHtml, setRangeValues." })),
   type: Type.Optional(Type.String({ description: "Top-level action type alias when not wrapping with action.type." })),
-  values: Type.Optional(Type.Any({ description: "2D array of values for setRangeValues actions." })),
+  values: Type.Optional(Type.Any({ description: "2D array of values for setRangeValues actions only; do not use values[] for Word HTML insertion." })),
   action: Type.Optional(
     Type.Any({
       description:
-        "Structured host action. Prefer this over legacy mode/content for workbook, slide, comment, shape image, chart, table, and navigation-aware edits. Destructive actions should set action.options.confirmDestructive=true so the host can distinguish intentional deletes/clears from accidental ones.",
+        "Structured host action. Prefer { type: \"insertHtml\", content: \"...\" } for Word document generation with HTML, and prefer this over legacy mode/content for workbook, slide, comment, shape image, chart, table, and navigation-aware edits. Destructive actions should set action.options.confirmDestructive=true so the host can distinguish intentional deletes/clears from accidental ones.",
     }),
   ),
 });
@@ -778,7 +778,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
     pi.registerTool({
       name: "office_apply_edit",
       label: "Office Edit",
-      description: "Apply a native edit to the active Office document, selection, range, worksheet, or slide.",
+      description: "Apply a native edit to the active Office document, selection, range, worksheet, or slide. For Word HTML insertion use action: { type: \"insertHtml\", content: \"<p>...</p>\" }.",
       parameters: applyEditParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_apply_edit", params as OfficeApplyEditParams as Record<string, unknown>);

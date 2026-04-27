@@ -11,6 +11,7 @@ import {
   type OfficeToolRequest,
 } from "../../../packages/pi-office-pack/src/protocol.js";
 import { createOfficeExtension } from "../../../packages/pi-office-pack/src/extension.js";
+import { OFFICE_APPEND_SYSTEM_PROMPT } from "../../../packages/pi-office-pack/src/defaults.js";
 
 class MemoryStorage {
   private readonly store = new Map<string, string>();
@@ -195,6 +196,20 @@ test("deferred discovery protocol tools are read-only registry entries", () => {
   assert.match(getOfficeToolDefinition("office_tool_get").description, /schema|definition/i);
   assert.match(getOfficeToolDefinition("office_tool_call").description, /discovering/i);
   assert.match(getOfficeToolDefinition("mcp_tool_search").description, /connector/i);
+});
+
+test("prompt and registry steer Word document generation to structured HTML insertion", () => {
+  const applyEditDefinition = getOfficeToolDefinition("office_apply_edit");
+
+  assert.match(applyEditDefinition.description, /insertHtml/i);
+  assert.match(applyEditDefinition.description, /content/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /new Word document generation/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /"type": "insertHtml"/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /values\[\]/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /word_section_layout/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /page-break-before/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /do not mix Markdown markers/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /before claiming the document is formatted/);
 });
 
 test("in-process runtime publishes compact core tools and defers long-tail Office schemas", async () => {

@@ -823,6 +823,42 @@ function normalizeFormat(value: string | undefined): string | undefined {
   return normalized;
 }
 
+function looksLikeHtml(content: string): boolean {
+  return /<\/?[a-z][a-z0-9:-]*(?:\s[^>]*)?>/i.test(content);
+}
+
+function hasHtmlObjectValues(values: unknown): boolean {
+  return Array.isArray(values)
+    && values.some((entry) => isRecord(entry) && typeof entry.html === "string" && entry.html.trim().length > 0);
+}
+
+function validateInsertAction(action: OfficeHostAction, options?: { explicitLiteralText?: boolean }): OfficeHostAction {
+  const type = normalizeActionType(trimString(action.type)) ?? action.type;
+  if (type !== "insertHtml" && type !== "insertText") {
+    return { ...action, type };
+  }
+
+  const content = typeof action.content === "string"
+    ? action.content
+    : firstString(
+      type === "insertHtml" ? action.html : undefined,
+      action.text,
+      action.html,
+    );
+  if (content === undefined || content.length === 0) {
+    throw new Error(
+      `${type} requires non-empty content. For HTML insertion use { action: { type: "insertHtml", content: "<p>...</p>" } } or top-level { operation: "insertHtml", html: "<p>...</p>" }.`,
+    );
+  }
+  if (type === "insertText" && !options?.explicitLiteralText && looksLikeHtml(content)) {
+    throw new Error(
+      "office_apply_edit received HTML-looking content that would be inserted as literal text. Use { action: { type: \"insertHtml\", content: \"...\" } } or set operation/format to insertHtml/html. To intentionally insert literal angle-bracket text, set operation: \"insertText\" or format: \"text\".",
+    );
+  }
+
+  return { ...action, type, content };
+}
+
 function toStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -1151,14 +1187,15 @@ export function toHostAction(params: Record<string, unknown>): OfficeHostAction 
     if (isRecord(action.target)) {
       action.target = toAnchor({ anchor: action.target });
     }
-    return action;
+    return validateInsertAction(action, { explicitLiteralText: normalizeActionType(trimString(action.type)) === "insertText" });
   }
 
   const requestedType = normalizeActionType(trimString(params.operation) ?? trimString(params.type));
   const mode = normalizeMode(trimString(params.mode));
   const inferredFormatFromType =
     requestedType === "insertHtml" ? "html" : requestedType === "setRangeValues" ? "matrix" : undefined;
-  const format = normalizeFormat(trimString(params.format)) ?? inferredFormatFromType;
+  const hasHtmlAlias = typeof params.html === "string";
+  const format = normalizeFormat(trimString(params.format)) ?? inferredFormatFromType ?? (!requestedType && hasHtmlAlias ? "html" : undefined);
   const content = firstString(
     params.content,
     format === "html" ? params.html : undefined,
@@ -1167,6 +1204,12 @@ export function toHostAction(params: Record<string, unknown>): OfficeHostAction 
   ) ?? "";
   const target = toAnchor(params);
   const directValues = Array.isArray(params.values) ? (params.values as OfficeHostAction["values"]) : undefined;
+
+  if (hasHtmlObjectValues(params.values) && requestedType !== "setRangeValues" && mode !== "setRangeValues" && format !== "matrix") {
+    throw new Error(
+      "office_apply_edit received values[].html for a non-matrix edit. Use { action: { type: \"insertHtml\", content: \"...\" } } or top-level { operation: \"insertHtml\", html: \"...\" } for Word HTML insertion.",
+    );
+  }
 
   if (requestedType === "setRangeValues" || mode === "setRangeValues" || format === "matrix") {
     return {
@@ -1179,14 +1222,16 @@ export function toHostAction(params: Record<string, unknown>): OfficeHostAction 
   }
 
   const placement = trimString(params.placement) ?? (mode === "insertAfterSelection" ? "after" : mode === "insertBeforeSelection" ? "before" : "replace");
+  const type = requestedType ?? (format === "html" ? "insertHtml" : "insertText");
+  const explicitLiteralText = requestedType === "insertText" || format === "text";
 
-  return {
-    type: requestedType ?? (format === "html" ? "insertHtml" : "insertText"),
+  return validateInsertAction({
+    type,
     target,
     content,
     format,
     placement,
-  };
+  }, { explicitLiteralText });
 }
 
 export interface OfficeToolExecutorDependencies {

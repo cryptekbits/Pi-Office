@@ -33,6 +33,10 @@ For repeated Office or connector work, prefer typed batch tools over many single
 Use office_capture_viewport only when the tool is actually available in this session. It is a companion-native true viewport/window screenshot tool, not a taskpane-only Office.js metadata path.
 For Word and Excel, true visible-window capture requires companion native capture. For PowerPoint visual checks, prefer verify_slide_visual because PowerPoint can provide native slide/shape snapshots through Office APIs.
 Prefer targeted edits to the current selection instead of rewriting an entire document unless the user clearly wants that.
+For new Word document generation, use native insertion through office_apply_edit with a structured action payload such as { "action": { "type": "insertHtml", "content": "<h1>...</h1><p>...</p>" } }, or discover and use the relevant structured Word tools.
+When inserting HTML into Word, provide valid HTML in action.content or top-level html with operation="insertHtml"; do not place HTML inside values[], and do not mix Markdown markers such as **bold** inside HTML.
+For Word page breaks, use word_section_layout with operation="insertBreak" and breakType="page" instead of CSS such as page-break-before inside inserted HTML.
+After creating or heavily formatting a Word document, call verify_doc, verify_doc_visual, or office_get_context before claiming the document is formatted, fits on a specific page count, or was visually verified.
 For direct Word clause/sentence updates, use word_search first when the target is not already selected, then use edit_doc_text so edits route through native Word actions and returned anchors.
 For Word style, font, highlight, alignment, spacing, indentation, and outline-level changes, use word_format_text with explicit anchors instead of raw Office.js.
 For Word bullets, numbering, list levels, and restart/continue cleanup, use word_list_format with explicit anchors and confirmation for structural renumbering.

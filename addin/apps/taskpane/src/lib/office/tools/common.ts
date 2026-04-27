@@ -183,19 +183,19 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     category: "write-doc",
     label: "Office Edit",
     description:
-      "Apply native edits to the active Office document, worksheet, or slide. Prefer action.type/action.content; legacy operation/text params are also supported.",
+      "Apply native edits to the active Office document, worksheet, or slide. Prefer action.type/action.content; for Word HTML insertion use action: { type: \"insertHtml\", content: \"<p>...</p>\" }. Legacy operation/text/html params are also supported.",
     parameters: Type.Object({
       mode: Type.Optional(Type.String({ description: "Legacy edit mode such as replaceSelection, insertAfterSelection, or setRangeValues." })),
       content: Type.Optional(Type.String({ description: "Legacy text, HTML, or JSON matrix payload to insert into Office." })),
       text: Type.Optional(Type.String({ description: "Alias for legacy text content. Use when operation/type is insertText." })),
-      html: Type.Optional(Type.String({ description: "Alias for legacy HTML content. Use when operation/type is insertHtml." })),
+      html: Type.Optional(Type.String({ description: "Alias for legacy HTML content. Bare html infers insertHtml when operation/type/format are omitted." })),
       format: Type.Optional(Type.String({ description: "Legacy content format such as text, html, or matrix." })),
       operation: Type.Optional(Type.String({ description: "Top-level action type alias, e.g., insertText, insertHtml, setRangeValues." })),
       type: Type.Optional(Type.String({ description: "Top-level action type alias when not wrapping with action.type." })),
-      values: Type.Optional(Type.Any({ description: "2D array of values for setRangeValues actions." })),
+      values: Type.Optional(Type.Any({ description: "2D array of values for setRangeValues actions only; do not use values[] for Word HTML insertion." })),
       action: Type.Optional(
         Type.Any({
-          description: "Structured OfficeHostAction payload. Use this for precise host-specific actions.",
+          description: "Structured OfficeHostAction payload. Use { type: \"insertHtml\", content: \"...\" } for Word document generation with HTML.",
         }),
       ),
     }),

@@ -1548,6 +1548,7 @@ export function App() {
 
   useEffect(() => {
     if (!sessionId || !selectedModelKey) return;
+    const targetSessionId = sessionId;
     const model = configuredModels.find((e) => e.key === selectedModelKey);
     if (!model) return;
 
@@ -1556,16 +1557,18 @@ export function App() {
 
     void (async () => {
       try {
-        await postJson<{ ok: true }>(`/v1/sessions/${sessionId}/model`, {
+        await postJson<{ ok: true }>(`/v1/sessions/${targetSessionId}/model`, {
           provider: model.model.provider,
           modelId: model.model.modelId,
         });
-        if (active) {
-          await refreshSessionStats(sessionId);
-          await refreshThinkingCapabilities(sessionId);
+        if (active && sessionIdRef.current === targetSessionId) {
+          await refreshSessionStats(targetSessionId);
+          await refreshThinkingCapabilities(targetSessionId);
         }
       } catch (error) {
-        if (active) pushErrorMessage(`Model change failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (active && sessionIdRef.current === targetSessionId) {
+          pushErrorMessage(`Model change failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
     })();
 
