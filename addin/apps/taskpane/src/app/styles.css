@@ -394,7 +394,8 @@ a { color: var(--accent); text-decoration-thickness: 0.08em; text-underline-offs
   backdrop-filter: blur(14px);
   transition: transform 140ms ease, box-shadow 140ms ease;
 }
-.icon-button:hover { transform: translateY(-1px); }
+.icon-button:hover:not(:disabled) { transform: translateY(-1px); }
+.icon-button:disabled { cursor: wait; opacity: 0.58; }
 .icon-button svg { width: 15px; height: 15px; }
 
 /* ------------------------------------------------------------------ */
@@ -1644,22 +1645,6 @@ select:focus, input:focus, textarea:focus {
 .settings-card p { margin: 4px 0 0; font-size: 0.86rem; font-weight: 500; word-break: break-word; }
 .diagnostics-card-grid { grid-template-columns: 1fr; }
 .diagnostics-card h4 { color: var(--ink); font-size: 0.8rem; }
-.diagnostics-export-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.diagnostics-export-card > div { min-width: 0; }
-.diagnostics-export-card h4 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 0.84rem;
-}
-.diagnostics-export-card .button {
-  flex: 0 0 auto;
-  min-width: 104px;
-}
 
 .settings-meta { margin: 4px 0 0; font-size: 0.8rem; color: var(--muted); }
 
@@ -2740,14 +2725,12 @@ select:focus, input:focus, textarea:focus {
   .integration-custom-list-header,
   .integration-choice-row,
   .privacy-disclosure-row,
-  .diagnostics-export-card,
   .integration-env-row,
   .integration-diagnostic-row {
     flex-direction: column;
     align-items: flex-start;
   }
-  .privacy-disclosure-row .button,
-  .diagnostics-export-card .button {
+  .privacy-disclosure-row .button {
     width: 100%;
     max-width: none;
   }

@@ -42,7 +42,7 @@ Hosted MCP profiles send connector requests and returned tool data to the named 
 
 ## Sideload Debug Export
 
-In sideload or localhost development, Settings -> Diagnostics can export the active conversation debug log as a JSON file. The export is user-initiated and not uploaded by Pi-Office. It includes visible chat, model-emitted reasoning deltas when available, raw taskpane bridge/session events, tool calls, tool results, Office state, runtime diagnostics, prompts, and document snippets that were part of the session. Known secret-bearing fields and bearer/API-key shaped strings are redacted, but the file should still be reviewed before sharing because free-form prompts, document content, and tool results are intentionally preserved for debugging.
+In sideload or localhost development, the main chat header can copy the active conversation debug log directly to the clipboard as JSONL. The copy action is user-initiated and not uploaded by Pi-Office. It includes visible chat, model-emitted reasoning deltas when available, raw taskpane bridge/session events, tool calls, tool results, Office state, runtime diagnostics, prompts, and document snippets that were part of the session. Known secret-bearing fields and bearer/API-key shaped strings are redacted, but the clipboard contents should still be reviewed before sharing because free-form prompts, document content, and tool results are intentionally preserved for debugging.
 
 ## Telemetry Default
 

@@ -504,6 +504,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Large browser-direct and companion MCP results return summaries plus handles instead of flooding the main model context.
   - Notes/Evidence: Fixed in `protocol.ts`, `capabilities.ts`, `tools/common.ts`, `inprocess-kernel.ts`, `batch-executor.ts`, `office/bridge/word.ts`, `word-actions.ts`, `word-context.ts`, `office/bridge/common.ts`, `mcp-result-store.ts`, `browser-connectors.ts`, `companion-client.ts`, `companion/src/connector-bridge.ts`, and `companion/src/server.ts`. Regression coverage added/updated in `batch-execution.test.ts`, `deferred-tool-discovery.test.ts`, `shared-tool-contracts-parity.test.ts`, `office-bridge.test.ts`, `mcp-result-handles.test.ts`, and the Word feature tool tests. Validation on 2026-04-27: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (213 tests), `npm run build`, `npm run check:bundle`, and `npm run validate:manifests` passed. 2026-04-27 follow-up: user hit a Vite dev resolver overlay for `@pi-office/pi-office-pack/mcp-result-store`; the package subpath now declares explicit `browser`, `import`, and `default` export conditions and `mcp-result-handles.test.ts` asserts the browser-dev export contract. Validation: `npm --prefix addin run test:office` (214 tests) and `npm --prefix addin run build:taskpane` passed. 2026-04-27 follow-up: user hit `Duplicate function definition provided: office_tool_call`; runtime-registry tools are no longer also published through the core Office registry path, and shared contract tests now assert the runtime agent tool inventory has unique names. Validation: `npm --prefix addin run test:office` (214 tests), `npm --prefix addin run build:taskpane`, and in-app browser reload with zero error/warn logs passed.
 
+- [x] BUG-020: Conversation debug log is buried in Settings and file download does not work reliably in Office
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 user feedback after `FEATURE-031`: "The icon to share the conversation log (complete jsonl) should be in the main chatview only as an icon on the left of new chat icon in the task pane. And it should copy the entire log to clipboard directly."
+  - Details: The first `FEATURE-031` slice exposed the sideload log through Settings -> Diagnostics and attempted to download a JSON file. That is poor debugging UX because the action is hidden away from the active chat and Office webviews can ignore or block the download path, making the button appear to do nothing. The debug log should be available only in the main chat header, immediately before New chat, and should copy a complete JSONL payload to the clipboard from the user click.
+  - Dependencies: FEATURE-031.
+  - Subtasks:
+    - [x] Remove the Settings -> Diagnostics export card and related props/styles.
+    - [x] Add an icon-only main chat header action to the left of New chat, visible only on sideload/localhost.
+    - [x] Convert the sanitized debug bundle to JSONL and copy it directly to the clipboard, with a textarea fallback for Office webviews without `navigator.clipboard`.
+    - [x] Keep the existing redaction boundary and user-visible success/failure feedback.
+  - Acceptance Criteria:
+    - [x] The conversation log sharing action appears in the main chat header, not Settings.
+    - [x] The action copies complete JSONL to the clipboard and does not rely on browser file downloads.
+    - [x] Non-local production origins do not show the debug-log icon.
+  - Notes/Evidence: Implemented in `Header.tsx`, `icons.tsx`, `App.tsx`, `SettingsPage.tsx`, `styles.css`, `README.md`, and `docs/privacy-and-storage.md`. Validation passed with `npm run typecheck:addin`, `npm run test:office` (215 tests), `npm run build:addin`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
+
 - [x] BUG-017: Companion-brokered OAuth callback does not update taskpane connector state
   - Category: Bug
   - Status: done
@@ -1163,20 +1181,20 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
   - Status: done
   - Priority: P1
   - Source: 2026-04-27 user request: "In sideload mode, add an option to share the conversation log (including reasoning traces, tool calls - everything) so that I can share them with you for debugging."
-  - Details: Sideload and browser-preview debugging needs a shareable artifact that captures more than the rendered transcript. The export should include visible chat, model-emitted reasoning traces even when hidden by UI preferences, raw bridge/session events, tool calls, tool results, Office state, runtime diagnostics, and enough app/session metadata to reproduce failures. The artifact must stay a user-initiated local download and must not include provider API keys, bearer tokens, or connector secrets when they appear in structured fields.
+  - Details: Sideload and browser-preview debugging needs a shareable artifact that captures more than the rendered transcript. The export should include visible chat, model-emitted reasoning traces even when hidden by UI preferences, raw bridge/session events, tool calls, tool results, Office state, runtime diagnostics, and enough app/session metadata to reproduce failures. The artifact must stay user-initiated and local to the client, and must not include provider API keys, bearer tokens, or connector secrets when they appear in structured fields.
   - Dependencies: SECURITY-004, BUG-012, FEATURE-028, FEATURE-029, FEATURE-030.
   - Subtasks:
     - [x] Add a taskpane session debug-log route that exports sanitized in-process agent state, bridge events, runtime events, tool arguments/results, thinking deltas, Office state, and session stats.
     - [x] Capture raw bridge client/server traffic before UI preference filters so model-emitted thinking deltas are available in sideload debug exports.
-    - [x] Add a Settings -> Diagnostics export action visible only on dev/localhost sideload surfaces.
+    - [x] Add a local debug-log action visible only on dev/localhost sideload surfaces.
     - [x] Redact known secret-bearing fields and bearer/API-key shaped strings while preserving prompts, document snippets, tool data, and reasoning/tool traces.
     - [x] Document the export privacy boundary and add regression coverage.
   - Acceptance Criteria:
-    - [x] A sideloaded taskpane can download a JSON debug log for the active conversation.
-    - [x] The JSON includes visible conversation entries plus raw in-process session events/tool calls/results and model-emitted reasoning deltas when available.
+    - [x] A sideloaded taskpane can share a debug log for the active conversation.
+    - [x] The log includes visible conversation entries plus raw in-process session events/tool calls/results and model-emitted reasoning deltas when available.
     - [x] The export action is not shown on non-local production origins.
     - [x] Structured secret fields are redacted and tests prove obvious API key / bearer-token values do not leak.
-  - Notes/Evidence: Implemented in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `addin/apps/taskpane/src/app/App.tsx`, `addin/apps/taskpane/src/app/components/SettingsPage.tsx`, `addin/apps/taskpane/src/lib/download-utils.ts`, `README.md`, and `docs/privacy-and-storage.md`. Regression coverage added in `addin/scripts/office-tests/src/protocol-parity.test.ts` for bridge-event capture and redaction. Validation passed: `npm run typecheck:addin`; `npm run test:office` with 215 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`; `git diff --check`.
+  - Notes/Evidence: Implemented in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `addin/apps/taskpane/src/app/App.tsx`, `addin/apps/taskpane/src/app/components/SettingsPage.tsx`, `addin/apps/taskpane/src/lib/download-utils.ts`, `README.md`, and `docs/privacy-and-storage.md`. Regression coverage added in `addin/scripts/office-tests/src/protocol-parity.test.ts` for bridge-event capture and redaction. Validation passed: `npm run typecheck:addin`; `npm run test:office` with 215 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`; `git diff --check`. 2026-04-27 `BUG-020` follow-up moved the share action from Settings into the main chat header and changed the output from a downloaded JSON file to clipboard-copied JSONL.
 
 ### Improvements
 

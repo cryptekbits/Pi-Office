@@ -121,7 +121,6 @@ import type {
 } from "@pi-office/pi-office-pack/protocol";
 import { useToolPermissions } from "../hooks/useToolPermissions";
 import { applyAcceptedEdits } from "../lib/office";
-import { downloadJsonBlob } from "../lib/download-utils";
 
 function buildSelectionFingerprint(selection: OfficeStateUpdate["selection"] | undefined): string {
   if (!selection) return "";
@@ -215,12 +214,6 @@ function isSideloadDebugExportAvailable(): boolean {
   return import.meta.env.DEV || isLoopbackHost(window.location.hostname);
 }
 
-function buildDebugLogFilename(officeState: OfficeStateUpdate | undefined): string {
-  const host = officeState?.host ?? "office";
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return `pi-office-${host}-conversation-debug-${timestamp}.json`;
-}
-
 const DEBUG_EXPORT_SECRET_KEY_PATTERN =
   /(^|[-_])(api[-_]?key|authorization|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|password|client[-_]?secret|private[-_]?key|bearer|cookie|session[-_]?token)([-_]|$)/i;
 const DEBUG_EXPORT_BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/g;
@@ -251,6 +244,67 @@ function sanitizeDebugExport(value: unknown, seen = new WeakSet<object>()): unkn
     sanitized[key] = sanitizeDebugExport(entry, seen);
   }
   return sanitized;
+}
+
+function getRecordValue(value: unknown, key: string): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
+function getRecordArray(value: unknown, key: string): unknown[] {
+  const entry = getRecordValue(value, key);
+  return Array.isArray(entry) ? entry : [];
+}
+
+function formatDebugLogJsonl(bundle: unknown): string {
+  const kernel = getRecordValue(bundle, "kernel");
+  const visibleConversation = getRecordValue(bundle, "visibleConversation");
+  const records: unknown[] = [
+    {
+      type: "pi_office_debug_export",
+      version: getRecordValue(bundle, "version"),
+      exportedAt: getRecordValue(bundle, "exportedAt"),
+      source: getRecordValue(bundle, "source"),
+      sideload: getRecordValue(bundle, "sideload"),
+    },
+    { type: "app_state", data: getRecordValue(bundle, "appState") },
+    { type: "visible_conversation", data: visibleConversation },
+    { type: "kernel_snapshot", data: kernel },
+  ];
+
+  getRecordArray(visibleConversation, "messages").forEach((message, index) => {
+    records.push({ type: "visible_message", index, data: message });
+  });
+  getRecordArray(kernel, "events").forEach((event, index) => {
+    records.push({ type: "kernel_event", index, data: event });
+  });
+  records.push({ type: "redaction", data: getRecordValue(bundle, "redaction") });
+
+  return `${records.map((record) => JSON.stringify(record)).join("\n")}\n`;
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "true");
+  textArea.style.position = "fixed";
+  textArea.style.left = "-9999px";
+  textArea.style.top = "0";
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Clipboard copy was not accepted by the Office webview.");
+    }
+  } finally {
+    textArea.remove();
+  }
 }
 
 export function App() {
@@ -1819,17 +1873,20 @@ export function App() {
     pushSystemMessage("Cleared saved local chat history.");
   }, [clearHistory, pushSystemMessage]);
 
-  const handleExportConversationDebugLog = useCallback(async () => {
+  const [debugLogCopying, setDebugLogCopying] = useState(false);
+
+  const handleCopyConversationDebugLog = useCallback(async () => {
     const sid = sessionIdRef.current;
     if (!sid) {
-      pushErrorMessage("No active Pi session is available to export.");
+      pushErrorMessage("No active Pi session is available to copy.");
       return;
     }
     if (!sideloadDebugExportEnabled) {
-      pushErrorMessage("Conversation debug export is available only from the sideload/localhost taskpane.");
+      pushErrorMessage("Conversation debug log copy is available only from the sideload/localhost taskpane.");
       return;
     }
 
+    setDebugLogCopying(true);
     try {
       const kernelLog = await fetchJson<unknown>(`/v1/sessions/${sid}/debug-log`);
       const bundle = sanitizeDebugExport({
@@ -1878,12 +1935,13 @@ export function App() {
           note: "Known secret-bearing fields and bearer/API-key shaped strings are redacted. Prompts, document snippets, model-emitted reasoning traces, tool arguments, and tool results are included for debugging.",
         },
       });
-      const result = await downloadJsonBlob(bundle, buildDebugLogFilename(officeState));
-      if (result.ok) {
-        pushSystemMessage(`Exported sideload conversation debug log: ${result.savedAs ?? result.filename}.`);
-      }
+      const jsonl = formatDebugLogJsonl(bundle);
+      await copyTextToClipboard(jsonl);
+      pushSystemMessage(`Copied sideload conversation debug log to clipboard (${jsonl.length.toLocaleString()} characters JSONL).`);
     } catch (error) {
-      pushErrorMessage(`Conversation debug export failed: ${error instanceof Error ? error.message : String(error)}`);
+      pushErrorMessage(`Conversation debug log copy failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setDebugLogCopying(false);
     }
   }, [
     activeChatId,
@@ -2014,7 +2072,6 @@ export function App() {
           connectorAuditPreference={connectorAuditPreference}
           connectorScopeContext={connectorScopeContext}
           runtimeDiagnostics={runtimeDiagnostics}
-          sideloadDebugExportAvailable={sideloadDebugExportEnabled}
           sessionStats={sessionStats}
           preferences={preferences}
           enabledModels={enabledModels}
@@ -2047,7 +2104,6 @@ export function App() {
           onRetryCompanion={handleRetryCompanion}
           onSaveCompanionEndpoint={handleSaveCompanionEndpoint}
           onClearRuntimeDiagnostics={clearRuntimeDiagnostics}
-          onExportConversationDebugLog={handleExportConversationDebugLog}
         />
       </div>
     );
@@ -2064,6 +2120,9 @@ export function App() {
         connectionState={connectionState}
         chatSubject={chatSubject}
         historyOpen={historyOpen}
+        debugLogCopyAvailable={sideloadDebugExportEnabled}
+        debugLogCopying={debugLogCopying}
+        onCopyConversationDebugLog={() => void handleCopyConversationDebugLog()}
         onSettingsClick={() => setSettingsOpen(true)}
         onNewChat={() => {
           if (messages.some((m) => m.role === "user" || m.role === "assistant")) {

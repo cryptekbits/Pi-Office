@@ -213,6 +213,17 @@ export function DiagnosticsIcon() {
   );
 }
 
+export function ConversationLogIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M7 2h8.2L20 6.8V20c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2Zm7 2v4h4l-4-4ZM8 11h8V9H8v2Zm0 4h8v-2H8v2Zm0 4h5v-2H8v2Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export function NewChatIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

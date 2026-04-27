@@ -1,4 +1,4 @@
-import { GearIcon, HistoryIcon, NewChatIcon } from "../../lib/icons";
+import { ConversationLogIcon, GearIcon, HistoryIcon, NewChatIcon } from "../../lib/icons";
 import { connectionLabel } from "../../lib/helpers";
 
 interface HeaderProps {
@@ -6,6 +6,9 @@ interface HeaderProps {
   connectionState: string;
   chatSubject: string | undefined;
   historyOpen: boolean;
+  debugLogCopyAvailable: boolean;
+  debugLogCopying: boolean;
+  onCopyConversationDebugLog: () => void;
   onSettingsClick: () => void;
   onNewChat: () => void;
   onHistoryToggle: () => void;
@@ -16,6 +19,9 @@ export function Header({
   connectionState,
   chatSubject,
   historyOpen,
+  debugLogCopyAvailable,
+  debugLogCopying,
+  onCopyConversationDebugLog,
   onSettingsClick,
   onNewChat,
   onHistoryToggle,
@@ -44,6 +50,18 @@ export function Header({
       )}
 
       <div className="topbar-right">
+        {debugLogCopyAvailable && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Copy conversation debug log"
+            title={debugLogCopying ? "Copying conversation debug log..." : "Copy conversation debug log"}
+            onClick={onCopyConversationDebugLog}
+            disabled={debugLogCopying}
+          >
+            <ConversationLogIcon />
+          </button>
+        )}
         <button
           type="button"
           className="icon-button"
