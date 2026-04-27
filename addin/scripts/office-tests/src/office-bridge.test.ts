@@ -110,6 +110,11 @@ test("toHostAction rejects model-generated HTML shapes that would become literal
     () => toHostAction({ operation: "insertHtml", html: "" }),
     /requires non-empty content/i,
   );
+
+  assert.throws(
+    () => toHostAction({ operation: "insertHtml", html: "<p>$$E=mc^2$$</p>" }),
+    /LaTeX\/Markdown math.*word_equation/i,
+  );
 });
 
 test("toHostAction rejects Gemini Pro JSON-string action without falling back to empty insertText", () => {
@@ -665,6 +670,41 @@ test("verify_doc flags corrupted numbered heading order from saved document cont
   assert.match(payload.summary, /before a section 1 heading|appears after/i);
   assert.ok(payload.warnings?.some((warning) => /Malformed heading order/.test(warning)));
   assert.ok(payload.details.warnings?.some((warning) => /Heading1 but looks like body text/.test(warning)));
+});
+
+test("verify_doc flags literal LaTeX and empty heading paragraphs in Word context", async () => {
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({
+      summary: "Word context captured",
+      state: { host: "word" },
+      snippets: {
+        headings: [
+          { text: "", styleBuiltIn: "Heading2" },
+          { text: "1. Method", styleBuiltIn: "Heading2" },
+        ],
+        paragraphs: [
+          { text: "The result is $$E=mc^2$$.", styleBuiltIn: "Normal" },
+        ],
+      },
+    }),
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const result = await executeOfficeTool({
+    requestId: "verify-literal-latex",
+    toolName: "verify_doc" as OfficeToolRequest["toolName"],
+    host: "word",
+    params: { scope: "document" },
+  } as OfficeToolRequest);
+
+  assert.equal(result.success, true);
+  const payload = result.content as { warnings?: string[]; details: { warnings?: string[] } };
+  assert.ok(payload.warnings?.some((warning) => /literal LaTeX/i.test(warning)));
+  assert.ok(payload.details.warnings?.some((warning) => /heading but has no visible text/i.test(warning)));
 });
 
 test("summarizeOfficeToolError includes code, location, statement, and traces when present", () => {

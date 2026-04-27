@@ -35,6 +35,7 @@ import {
   serializeOfficeRuntimeError,
 } from "./shared";
 import { matchesWordHeading, matchesWordParagraph } from "./word-navigate";
+import { countWordOoxmlMathObjects, createWordEquationOoxml } from "./word-equations";
 
 export type NormalizedWordBreakType =
   | "Page"
@@ -75,6 +76,70 @@ export function countWordOoxmlBreaks(ooxml: string, breakType: NormalizedWordBre
     return 0;
   }
   return (ooxml.match(/<w:br\b[^>]*\bw:type=["']page["'][^>]*(?:\/>|>)/gi) ?? []).length;
+}
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function normalizeOoxmlText(value: string | undefined): string {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function wordParagraphsFromOoxml(ooxml: string): string[] {
+  return ooxml.match(/<w:p\b[\s\S]*?<\/w:p>/gi) ?? [];
+}
+
+function paragraphTextFromOoxml(paragraphOoxml: string): string {
+  const textParts = Array.from(paragraphOoxml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/gi))
+    .map((match) => decodeXmlText(match[1] ?? ""));
+  const tabs = paragraphOoxml.match(/<w:tab\b[^>]*\/>/gi)?.length ?? 0;
+  return normalizeOoxmlText(`${textParts.join("")}${tabs ? " ".repeat(tabs) : ""}`);
+}
+
+export function wordOoxmlHasAdjacentPageBreak(
+  ooxml: string,
+  targetText: string | undefined,
+  placement: string | undefined,
+): boolean {
+  const normalizedTarget = normalizeOoxmlText(targetText);
+  if (!normalizedTarget) {
+    return false;
+  }
+
+  const paragraphs = wordParagraphsFromOoxml(ooxml);
+  const targetIndex = paragraphs.findIndex((paragraph) => {
+    const paragraphText = paragraphTextFromOoxml(paragraph);
+    if (!paragraphText) {
+      return false;
+    }
+    return paragraphText === normalizedTarget ||
+      paragraphText.includes(normalizedTarget) ||
+      normalizedTarget.includes(paragraphText);
+  });
+  if (targetIndex < 0) {
+    return false;
+  }
+  if (countWordOoxmlBreaks(paragraphs[targetIndex] ?? "", "Page") > 0) {
+    return true;
+  }
+
+  const direction = placement === "before" ? -1 : 1;
+  for (let index = targetIndex + direction; index >= 0 && index < paragraphs.length; index += direction) {
+    const paragraph = paragraphs[index] ?? "";
+    if (countWordOoxmlBreaks(paragraph, "Page") > 0) {
+      return true;
+    }
+    if (paragraphTextFromOoxml(paragraph)) {
+      return false;
+    }
+  }
+  return false;
 }
 
 export async function applyWordAction(action: OfficeHostAction): Promise<unknown> {
@@ -718,6 +783,65 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       return { ok: true, host: "word", action: type };
     }
 
+    if (type === "insertEquation") {
+      const latex = trimString(options.latex ?? action.latex ?? action.content);
+      if (!latex) {
+        throw new Error("word_equation requires a non-empty latex parameter.");
+      }
+      const display = trimString(options.display ?? action.display) === "inline" ? "inline" : "block";
+      const equation = createWordEquationOoxml(latex, display);
+      const beforeOoxml = body.getOoxml();
+      await context.sync();
+      const beforeMathCount = countWordOoxmlMathObjects(beforeOoxml.value);
+
+      if (action.target?.kind === "document") {
+        const documentPlacement =
+          action.placement === "start" || action.placement === "end" || action.placement === "replace"
+            ? action.placement
+            : "end";
+        const documentInsertLocation: Word.InsertLocation.start | Word.InsertLocation.end | Word.InsertLocation.replace =
+          documentPlacement === "start"
+            ? Word.InsertLocation.start
+            : documentPlacement === "replace"
+              ? Word.InsertLocation.replace
+              : Word.InsertLocation.end;
+        body.insertOoxml(equation.ooxml, documentInsertLocation);
+      } else {
+        const { range } = await resolveTargetRange();
+        range.insertOoxml(equation.ooxml, placement);
+      }
+
+      const afterOoxml = body.getOoxml();
+      await context.sync();
+      const afterMathCount = countWordOoxmlMathObjects(afterOoxml.value);
+      if (afterMathCount <= beforeMathCount) {
+        throw new Error(
+          "word_equation inserted OfficeMath OOXML but post-write verification did not find a new persisted m:oMath object. Do not claim rendered equation success without verify_doc or verify_doc_visual evidence.",
+        );
+      }
+      return {
+        ok: true,
+        host: "word",
+        action: type,
+        target: action.target,
+        placement: action.target?.kind === "document" ? (action.placement ?? "end") : (action.placement ?? "replace"),
+        requestedFormat: "latex",
+        resolvedFormat: "omml",
+        display: equation.display,
+        normalizedLatex: equation.normalizedLatex,
+        warnings: equation.warnings.length ? equation.warnings : undefined,
+        unsupportedCommands: equation.unsupportedCommands.length ? equation.unsupportedCommands : undefined,
+        verification: {
+          method: "body.getOoxml",
+          persisted: true,
+          beforeMathCount,
+          afterMathCount,
+          evidence: equation.evidence,
+          note: "Equation success is based on persisted OfficeMath (m:oMath) evidence; use verify_doc_visual when visual equation layout matters.",
+        },
+      };
+    }
+
     if (type === "addComment") {
       const { range } = await resolveTargetRange();
       const comment = range.insertComment(content);
@@ -963,6 +1087,46 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         const beforeOoxml = breakType === "Page" ? body.getOoxml() : undefined;
         await context.sync();
         const beforeBreakCount = beforeOoxml ? countWordOoxmlBreaks(beforeOoxml.value, breakType) : undefined;
+        const targetText = trimString(
+          action.target?.text ??
+          action.target?.label ??
+          action.target?.searchQuery ??
+          range.text,
+        );
+        const allowDuplicatePageBreak =
+          toBoolean(options.allowDuplicatePageBreak ?? options.allowDuplicate ?? action.allowDuplicatePageBreak) === true;
+        if (
+          breakType === "Page" &&
+          !allowDuplicatePageBreak &&
+          beforeOoxml?.value &&
+          wordOoxmlHasAdjacentPageBreak(beforeOoxml.value, targetText, action.placement)
+        ) {
+          return {
+            ok: true,
+            host: "word",
+            action: type,
+            operation,
+            requestedBreakType,
+            resolvedBreakType: breakType,
+            target: {
+              kind: action.target?.kind ?? "selection",
+              text: truncateLabel(range.text, 140),
+            },
+            placement: action.placement ?? "after",
+            skipped: true,
+            warnings: [
+              "Skipped duplicate page-break insertion because a persisted page break already exists adjacent to the resolved target. Set allowDuplicatePageBreak=true only when an additional break is intentional.",
+            ],
+            verification: {
+              method: "body.getOoxml",
+              persisted: true,
+              alreadyPresent: true,
+              beforeBreakCount,
+              afterBreakCount: beforeBreakCount,
+              note: "The requested page break was already present next to the target, so no additional break was inserted.",
+            },
+          };
+        }
         range.insertBreak(breakType as Word.BreakType, insertLocation);
         const afterOoxml = breakType === "Page" ? body.getOoxml() : undefined;
         await context.sync();

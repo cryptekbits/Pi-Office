@@ -193,13 +193,21 @@ function collectStructuredTextEntries(source: unknown, paths: string[][]): Array
       continue;
     }
     for (const entry of value) {
-      const text = textFromUnknown(entry);
-      if (text) {
-        entries.push({ text, style: styleFromUnknown(entry) });
+      const text = textFromUnknown(entry) ?? "";
+      const style = styleFromUnknown(entry);
+      if (text || style) {
+        entries.push({ text, style });
       }
     }
   }
   return entries;
+}
+
+function looksLikeLatexMathContent(value: string): boolean {
+  return /\$\$[\s\S]+?\$\$/.test(value) ||
+    /\\\[[\s\S]+?\\\]/.test(value) ||
+    /\\\([\s\S]+?\\\)/.test(value) ||
+    /\\(?:frac|sqrt|sum|int|prod|alpha|beta|gamma|delta|theta|lambda|sigma|omega)\b/.test(value);
 }
 
 function numberedHeading(text: string): { number: number; label: string } | undefined {
@@ -254,15 +262,28 @@ function toWordStructuralWarnings(payload: Record<string, unknown>): string[] {
     }
   }
 
-  for (const [index, entry] of paragraphs.entries()) {
+  for (const [index, entry] of [...headings, ...paragraphs].entries()) {
     const style = entry.style ?? "";
     const wordCount = entry.text.split(/\s+/).filter(Boolean).length;
+    if (/heading\s*[1-6]?|heading[1-6]?/i.test(style) && !entry.text.trim()) {
+      warnings.push(
+        `Document structure warning: paragraph ${index + 1} is styled as a heading but has no visible text. Verify duplicate page breaks or empty heading paragraphs before claiming formatted output.`,
+      );
+      break;
+    }
     if (/heading\s*1|heading1/i.test(style) && (entry.text.length > 180 || wordCount > 24)) {
       warnings.push(
         `Document structure warning: paragraph ${index + 1} is styled as Heading1 but looks like body text. Verify heading levels before claiming formatted output.`,
       );
       break;
     }
+  }
+
+  const literalMath = [...headings, ...paragraphs].find((entry) => looksLikeLatexMathContent(entry.text));
+  if (literalMath) {
+    warnings.push(
+      "Document structure warning: literal LaTeX or Markdown math delimiters were found in Word text. Use word_equation and verify persisted OfficeMath before claiming rendered equations.",
+    );
   }
 
   return Array.from(new Set(warnings));
@@ -1047,6 +1068,11 @@ function validateInsertAction(
   if (type === "insertText" && !options?.explicitLiteralText && looksLikeHtml(content)) {
     throw new Error(
       "office_apply_edit received HTML-looking content that would be inserted as literal text. Use { action: { type: \"insertHtml\", content: \"...\" } } or set operation/format to insertHtml/html. To intentionally insert literal angle-bracket text, set operation: \"insertText\" or format: \"text\".",
+    );
+  }
+  if (type === "insertHtml" && looksLikeLatexMathContent(content)) {
+    throw new Error(
+      "office_apply_edit insertHtml contains LaTeX/Markdown math that Word would insert as literal text. Use word_equation with latex, target, and placement, then verify_doc or verify_doc_visual before claiming rendered equations. To intentionally show raw LaTeX, use insertText explicitly.",
     );
   }
 

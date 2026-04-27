@@ -801,7 +801,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       name: "office_apply_edit",
       label: "Office Edit",
       description:
-        "Apply a native edit to the active Office document, selection, range, worksheet, or slide. Pass action as an object, not a JSON string. For Word full-document generation use action: { type: \"replaceDocumentHtml\", content: \"<h1>...</h1>\" } or append later sections with target.kind=document and placement=end.",
+        "Apply a native edit to the active Office document, selection, range, worksheet, or slide. Pass action as an object, not a JSON string. For Word full-document generation use action: { type: \"replaceDocumentHtml\", content: \"<h1>...</h1>\" } or append later sections with target.kind=document and placement=end. Use word_equation for LaTeX/math instead of insertHtml.",
       parameters: applyEditParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_apply_edit", params as OfficeApplyEditParams as Record<string, unknown>);

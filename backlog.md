@@ -623,6 +623,46 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Regression coverage prevents the final-state pattern where no page break exists but the tool result and assistant response imply a verified two-page document.
   - Notes/Evidence: Closed by parsing JSON-object strings passed as `office_tool_call.arguments`, normalizing Word break types to Office.js casing (`page` -> `Page`), passing explicit `target` through `word_section_layout`, and making `insertBreak` return requested/resolved break type, target preview, placement, and OOXML verification counts. Page breaks now fail when a post-write OOXML check does not find a new persisted `w:br w:type="page"`; prompt guidance says not to claim page breaks or page counts from tool-call success alone. Regression coverage in `addin/scripts/office-tests/src/deferred-tool-discovery.test.ts` covers the JSON-string `arguments` shape, and `addin/scripts/office-tests/src/word-section-layout-tools.test.ts` covers break-type casing, OOXML counting, target forwarding, and no-claim guidance. Validation passed: `npm --prefix addin run test:office` (226 tests), `npm --prefix addin run typecheck`, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`.
 
+- [x] BUG-026: Repeated Word page-break calls can create duplicate breaks and empty heading paragraphs
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 Gemini 3.1 Pro Preview follow-up run in `debugging-logs/3.not-perfect-gemini.json`; saved DOCX structural inspection of `debugging-logs/debugging-doc.docx`.
+  - Details: The `BUG-025` fix made `word_section_layout.insertBreak` return honest OOXML evidence, but the next Gemini Pro run exposed an idempotence gap. The model generated the Word document with `replaceDocumentHtml`, inserted a page break before `Business Impact and ROI`, verified the document, then repeated the exact same `word_section_layout.insertBreak` call against the same heading and placement. The first call returned `beforeBreakCount: 0` and `afterBreakCount: 1`; the second returned `beforeBreakCount: 1` and `afterBreakCount: 2`. The saved DOCX contains two persisted `<w:br w:type="page">` entries in empty `Heading2` paragraphs immediately before `Business Impact and ROI`, producing an extra page break/blank-space artifact. This is not a false-success bug anymore; the tool accurately inserted what it was asked to insert twice. The runtime and verification layer need duplicate-break protection and warnings so models do not damage layout through repeated "ensure page break" loops.
+  - Dependencies: BUG-025, FEATURE-013, FEATURE-031.
+  - Subtasks:
+    - [x] Make `word_section_layout.insertBreak` idempotent for same target/placement/page-break combinations when an adjacent persisted page break already exists, or require an explicit `allowDuplicate: true` override.
+    - [x] Return a warning or no-op result when a page break already exists immediately before/after the resolved target.
+    - [x] Extend `verify_doc` to flag duplicate adjacent page breaks, empty heading paragraphs, and page-break-only heading paragraphs.
+    - [x] Add regression coverage using the `debugging-logs/3.not-perfect-gemini.json` sequence: one successful break before `Business Impact and ROI`, a second identical call, and final verification.
+    - [x] Tighten prompt/tool guidance from "use page break" to "insert at most one page break per target unless the user explicitly asks for another."
+  - Acceptance Criteria:
+    - [x] Repeating the same page-break insertion before the same heading cannot silently create duplicate blank-page layout artifacts.
+    - [x] If a duplicate break is intentionally allowed, the result clearly reports that an existing adjacent break was present.
+    - [x] `verify_doc` surfaces duplicate break and empty-heading warnings that a model must address before claiming professional layout.
+    - [x] Tests prove the saved-DOCX corruption pattern from this run is blocked or warned.
+  - Notes/Evidence: Closed by adding adjacent persisted-page-break detection around the resolved Word target before `insertBreak` mutates the document. Repeating the same page-break request now returns a no-op result with `skipped: true`, `alreadyPresent: true`, OOXML count evidence, and a warning unless `allowDuplicatePageBreak=true` is explicitly supplied. `verify_doc` now flags heading-styled empty paragraphs so duplicate break artifacts are not treated as professional layout. Regression coverage lives in `addin/scripts/office-tests/src/word-section-layout-tools.test.ts` and `addin/scripts/office-tests/src/office-bridge.test.ts`.
+
+- [x] BUG-027: Word LaTeX/equation requests can fall back to literal text while the assistant claims rendered equations
+  - Category: Bug
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 Gemini 3.1 Pro Preview follow-up run in `debugging-logs/3.not-perfect-gemini.json`; user asked "Can you insert an equation in the document using Latex?"
+  - Details: The taskpane chat renderer supports Markdown math through `remark-math`, `rehype-katex`, and KaTeX CSS, but the active Word document does not render KaTeX/LaTeX just because HTML containing `$$...$$` is inserted. In the Gemini run, the model searched for `insert equation math latex`, found no dedicated Word equation tool, then used `office_apply_edit.insertHtml` with literal `<p>$$ ... $$</p>` blocks. `verify_doc` showed literal LaTeX text in Word, including one glued paragraph `$$ X_k = ... $$At its core...`, and the saved/document context had no fields or math objects. The final assistant nevertheless claimed it used "standard LaTeX notation for the formulas so they render clearly." This creates a capability-honesty and document-quality bug: until native equation insertion exists, models must not claim LaTeX rendered as a Word equation.
+  - Dependencies: FEATURE-032, BUG-021, BUG-024, FEATURE-031.
+  - Subtasks:
+    - [x] Add prompt and tool guidance that `$$...$$` inside `insertHtml` inserts literal Word text, not native equations.
+    - [x] Make `verify_doc` flag literal Markdown/LaTeX math delimiters in Word body text, especially after an equation-related user request.
+    - [x] Add a correction path so `office_apply_edit.insertHtml` either warns on math-delimited content or tells the model to use `word_equation` once available.
+    - [x] Add regression coverage for the Gemini shape that inserts `<p>$$ X(f) = ... $$</p>` with `office_apply_edit`.
+    - [x] Update final-answer guidance so models only claim Word equation success after verification sees `m:oMath` / `m:oMathPara` or another native equation evidence signal.
+  - Acceptance Criteria:
+    - [x] A LaTeX/equation request cannot end with an unqualified "rendered clearly" claim when the Word body contains literal `$$` text.
+    - [x] Verification reports whether equations are native Word math objects, literal text, images, or unsupported.
+    - [x] Models receive a precise correction when they try to use Word HTML insertion for LaTeX math.
+    - [x] Regression tests cover both literal-LaTeX warning behavior and the future native equation success path.
+  - Notes/Evidence: Closed by adding a first-class `word_equation` Office tool, rejecting `office_apply_edit.insertHtml` payloads that contain LaTeX/Markdown math delimiters or common LaTeX math commands, and making `verify_doc` warn when literal LaTeX remains in Word text. Native equation success now requires persisted OfficeMath evidence from `m:oMath` counts returned by `word_equation` or subsequent verification. Regression coverage lives in `addin/scripts/office-tests/src/word-equation-tools.test.ts`, `addin/scripts/office-tests/src/office-bridge.test.ts`, and `addin/scripts/office-tests/src/deferred-tool-discovery.test.ts`.
+
 - [x] BUG-017: Companion-brokered OAuth callback does not update taskpane connector state
   - Category: Bug
   - Status: done
@@ -1297,6 +1337,31 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Structured secret fields are redacted and tests prove obvious API key / bearer-token values do not leak.
   - Notes/Evidence: Implemented in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `addin/apps/taskpane/src/app/App.tsx`, `addin/apps/taskpane/src/app/components/SettingsPage.tsx`, `addin/apps/taskpane/src/lib/download-utils.ts`, `README.md`, and `docs/privacy-and-storage.md`. Regression coverage added in `addin/scripts/office-tests/src/protocol-parity.test.ts` for bridge-event capture and redaction. Validation passed: `npm run typecheck:addin`; `npm run test:office` with 215 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`; `git diff --check`. 2026-04-27 `BUG-020` follow-up moved the share action from Settings into the main chat header and changed the output from a downloaded JSON file to clipboard-copied JSONL.
 
+- [ ] FEATURE-032: Add Word-native LaTeX and OfficeMath equation insertion
+  - Category: Feature
+  - Status: in progress
+  - Priority: P1
+  - Source: 2026-04-27 user feedback after `debugging-logs/3.not-perfect-gemini.json`: Gemini inserted literal LaTeX into Word, while the user expected research-paper-quality equations and noted the taskpane may already have LaTeX/KaTeX rendering.
+  - Details: Pi-Office chat can render LaTeX-like math with KaTeX, but professional Word documents need native OfficeMath equations that remain editable in Word, survive DOCX round trips, work with research-paper formatting, and can be verified structurally. Microsoft documents that modern Word supports UnicodeMath and LaTeX linear equation input through the equation editor, and that the modern built-in equation editor uses Office Math Markup Language (OMML) in Office files. Office.js does not expose a dedicated `insertEquation` API in the current tool surface, but Word `Range.insertOoxml` can insert OOXML; Pi-Office already exposes `word.insertOoxml` capability and `office_apply_edit` has an `insertOoxml` action path. The best native path is a first-class `word_equation` tool that accepts LaTeX or MathML, converts it to OMML, wraps it in safe WordprocessingML/OOXML for inline or display placement, inserts it through `Range.insertOoxml`, and verifies persisted `m:oMath` / `m:oMathPara` nodes. Candidate conversion routes need careful licensing and runtime review: `latex-to-omml` is MIT but depends on older `mathjax-node` and `mathml2omml`; `mathml2omml` is LGPL-3.0-or-later; MathJax 4 can serialize TeX to MathML under Apache-2.0, but MathML-to-OMML still needs an audited converter or first-party subset implementation.
+  - Dependencies: FEATURE-004, FEATURE-014, BUG-027, SECURITY-005, SECURITY-004.
+  - Subtasks:
+    - [x] Decide the conversion pipeline: browser-only MathJax/Temml plus audited MathML-to-OMML subset, dependency-backed converter, optional companion converter, or hybrid fallback.
+    - [x] Run a license/provenance review for candidate libraries (`latex-to-omml`, `mathml2omml`, MathJax, Temml, and any XSLT/OMML helpers) before adding dependencies.
+    - [x] Define a `word_equation` schema with `latex`, optional `mathml`, `display: inline|block`, `target`, `placement`, optional caption/numbering metadata, and explicit fallback policy.
+    - [x] Implement OMML insertion through `Range.insertOoxml` using safe XML escaping and a minimal WordprocessingML wrapper for inline and display equations.
+    - [x] Support common research-paper equation features: fractions, sums, integrals, limits, Greek letters, subscripts/superscripts, and display equations.
+    - [ ] Add matrix support and optional equation numbering/caption metadata.
+    - [x] Make verification count `m:oMath` / `m:oMathPara`, detect leftover literal `$$`, and report conversion warnings or unsupported LaTeX commands.
+    - [x] Add tests with the FFT formulas from the Gemini log plus representative research-paper equations.
+    - [x] Update prompt/tool guidance so equation requests route to `word_equation`, not `office_apply_edit.insertHtml`.
+  - Acceptance Criteria:
+    - [ ] `word_equation` inserts editable native Word equations, not images and not literal `$$` text, for the supported LaTeX subset.
+    - [ ] Verification returns native math evidence including count, target, placement, display/inline mode, and any conversion warnings.
+    - [ ] Unsupported LaTeX commands fail with actionable correction guidance or a clearly labeled fallback, without claiming native success.
+    - [ ] Research-paper workflows can add equations while preserving surrounding paragraph flow and avoiding glued equation/prose paragraphs.
+    - [ ] Dependency choices and license/provenance decisions are documented before implementation lands.
+  - Notes/Evidence: First implementation slice added `word_equation` with a first-party lightweight LaTeX-to-OMML subset, avoiding new dependency/license risk while preserving the researched dependency notes for a future fuller converter. The tool accepts LaTeX, `display`, `target`, and `placement`, inserts OfficeMath through `Range.insertOoxml` / `Body.insertOoxml`, returns persisted `m:oMath` verification counts, and reports unsupported-command warnings. Supported first slice covers fractions, square roots, sums/products/integrals as symbols with scripts, Greek letters, operators, and subscript/superscript forms, including the FFT formula shape from the Gemini run. Matrix support, MathML input, and equation numbering/caption metadata remain open. Local code confirms chat-only math rendering via `ChatView.tsx` (`remark-math` + `rehype-katex`) and KaTeX CSS import in `main.tsx`. Microsoft Support states Word supports UnicodeMath and LaTeX linear formats through the equation UI, and Microsoft Support also states the modern Office equation editor uses OMML as the preferred equation format in Office files. Microsoft Learn documents `Word.Range.insertOoxml`, and OOXML math reference material identifies `m:oMathPara` and `m:oMath` as the document representation for mathematical text. NPM research found `latex-to-omml@2.1.1` (MIT, depends on `mathjax-node` and `mathml2omml`), `mathml2omml@0.5.0` (LGPL-3.0-or-later), `mathjax@4.1.1` (Apache-2.0), and `temml@0.13.2` (MIT).
+
 ### Improvements
 
 - [x] IMPROVEMENT-001: Clean up worktree hygiene for untracked archive and generated artifacts
@@ -1427,6 +1492,62 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Each extracted module owns a cohesive Office.js feature family with typed inputs/outputs or clear helper contracts.
     - [ ] Existing Office tests, build, bundle, manifests, and diff whitespace checks remain green.
   - Notes/Evidence: After `IMPROVEMENT-003`, the remaining action files are still large enough to slow feature work, even though Excel formatting/table-filter helpers and the PowerPoint icon catalog have been extracted.
+
+- [ ] IMPROVEMENT-010: Update GitHub Actions workflow for Node 24 runner transition
+  - Category: Improvement
+  - Status: open
+  - Priority: P2
+  - Source: 2026-04-27 CI annotation on run `24986830664` after publishing `SECURITY-009`.
+  - Details: GitHub Actions warned that `actions/checkout@v4` and `actions/setup-node@v4` run on Node.js 20, which GitHub plans to replace with Node.js 24 by default on June 2, 2026 and remove from the runner on September 16, 2026. The workflow is currently green, but the repository should update actions or explicitly validate Node 24 behavior before the deprecation window.
+  - Dependencies: None.
+  - Subtasks:
+    - [ ] Check whether newer `actions/checkout` and `actions/setup-node` versions support Node 24.
+    - [ ] Update `.github/workflows/ci.yml` to Node-24-compatible actions or set the documented temporary compatibility flag with an expiration note.
+    - [ ] Run CI after the change and record the result.
+  - Acceptance Criteria:
+    - [ ] CI no longer emits the Node.js 20 action deprecation annotation.
+    - [ ] Install, typecheck, build, bundle budget, manifest validation, and Office tests still pass on GitHub Actions.
+  - Notes/Evidence: CI run `24986830664` passed, but emitted GitHub's Node.js 20 deprecation warning for `actions/checkout@v4` and `actions/setup-node@v4`.
+
+- [ ] IMPROVEMENT-011: Calibrate ask-user, fast-draft, and creativity steering for professional artifact generation
+  - Category: Improvement
+  - Status: in progress
+  - Priority: P1
+  - Source: 2026-04-27 user feedback after `debugging-logs/3.not-perfect-gemini.json`: the user expected some models to use `ask_user`, but also noted that many users prefer shortcuts and too many questions can become annoying.
+  - Details: The current global prompt tells models to use `ask_user` whenever subjective choices such as tone, audience, format, scope, or style matter, and says "Do not guess - ask." In practice, Gemini Pro did not mention `ask_user` in reasoning and drafted immediately. That was not necessarily wrong for the initial prompt because the user provided a clear audience, artifact type, and page target, and autonomy was set to `extreme`; however, the steering is too binary. Pi-Office needs a product-level decision policy that supports both fast drafting and clarification-first workflows. Professional output quality should come from a "creative brief" defaulting layer: if the user gave enough constraints, proceed with tasteful assumptions and state them briefly; if missing choices would materially change the result, ask one compact `ask_user` question with 2-3 options; if the user selects an "ask me first" mode, clarify more; if the user selects fast draft/high autonomy, avoid interrupting and produce a strong first version with suggested refinements.
+  - Dependencies: FEATURE-003, FEATURE-028, FEATURE-031.
+  - Subtasks:
+    - [x] Replace the broad "Do not guess - ask" instruction with a clearer ask-vs-assume decision tree tied to autonomy and task ambiguity.
+    - [x] Add prompt guidance that caps clarification to one compact `ask_user` call by default, with 2-3 high-impact options and an optional free-form note.
+    - [x] Add fast-draft defaults for common professional artifacts: audience, tone, depth, visual density, creativity level, and verification gates.
+    - [ ] Add UI or preference language that distinguishes "Draft now" from "Ask me first" without asking users to manage low-level autonomy settings.
+    - [x] Add tests or prompt snapshots proving `ask_user` guidance remains visible and does not conflict with tool-permission guidance.
+  - Acceptance Criteria:
+    - [ ] Models can decide when to ask versus proceed without over-questioning clear requests.
+    - [ ] `ask_user` is used for high-impact ambiguity, not as a generic permission prompt and not ignored because the instruction is too broad.
+    - [ ] Fast-draft users still get useful AI-generated output quickly, with assumptions and follow-up refinement chips rather than a long preflight questionnaire.
+    - [ ] Professional artifact prompts explicitly encode creativity/taste defaults instead of relying on model personality alone.
+  - Notes/Evidence: First steering slice replaced the absolute "Do not guess - ask" guidance with an ask-vs-assume policy: ask only for high-impact ambiguity, proceed with a tasteful fast draft when the user signals speed or gives enough constraints, keep clarification compact, and scale creativity to artifact type and user intent. Prompt regression coverage now checks that fast-draft guidance remains visible. UI preference language for "Draft now" versus "Ask me first" remains open. `debugging-logs/3.not-perfect-gemini.json` used `openrouter::google/gemini-3.1-pro-preview`, `thinkingLevel: high`, and `autonomyLevel: extreme`. The model generated a serviceable executive FFT draft immediately, which matches a fast-draft preference, but it did not reason about `ask_user` at all. Current prompt guidance lives in `addin/packages/pi-office-pack/src/defaults.ts`; runtime `ask_user` exists in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` and the Office pack extension.
+
+- [x] IMPROVEMENT-012: Define native parallel-tool and Office write-serialization policy
+  - Category: Improvement
+  - Status: done
+  - Priority: P2
+  - Source: 2026-04-27 analysis of Gemini tool-calling flow in `debugging-logs/3.not-perfect-gemini.json`; user asked whether native parallel tool call support exists.
+  - Details: The local `@mariozechner/pi-agent-core` README says `toolExecution: "parallel"` is the default: tool calls in the same assistant message can be preflighted sequentially, executed concurrently, and emitted in source order. Pi-Office does not currently pass an explicit `toolExecution` option when constructing `Agent`, so it inherits the core default. Separately, `office_batch_execute` runs its typed plan sequentially and is the safer route for repeated Office reads/edits. Gemini did not emit multiple tool calls in a single assistant message in this run; it used many sequential turns. Product policy should distinguish provider/model-native parallel tool calls from Pi-Office batch execution. Parallel reads/searches are useful, but parallel Word writes can conflict through Office.js context, active selection, and range mutation state. Pi-Office should explicitly serialize document mutations or enforce a document write lock, while encouraging batch/read plans for latency-sensitive multi-step work.
+  - Dependencies: FEATURE-029, SECURITY-002, SECURITY-003, BUG-026.
+  - Subtasks:
+    - [x] Decide whether the taskpane `Agent` should explicitly set `toolExecution: "parallel"` or `"sequential"` for Office sessions instead of relying on the library default.
+    - [x] Add a document mutation lock or scheduler so Office write tools cannot run concurrently against the same Word/Excel/PowerPoint document/session.
+    - [x] Allow or encourage parallelism for read-only tool calls where results do not depend on active selection mutation.
+    - [x] Update prompt guidance to prefer `office_batch_execute` for repeated bounded Office plans, and to avoid parallel independent writes against the same document.
+    - [x] Add regression tests for concurrent write attempts, duplicate write prevention, and source-order result emission if parallel mode remains enabled.
+  - Acceptance Criteria:
+    - [x] The runtime has an explicit, documented policy for native parallel tool calls versus structured batch execution.
+    - [x] Concurrent Office writes cannot corrupt document state or duplicate layout actions because of active-selection or stale-range races.
+    - [x] Models get concise guidance about when parallel/batch tool use is appropriate.
+    - [x] Tests cover the selected execution policy for read-only and write-doc categories.
+  - Notes/Evidence: Closed by explicitly setting taskpane Office sessions to `toolExecution: "sequential"` when constructing the Pi agent. This serializes native model-emitted tool calls for the Office taskpane instead of inheriting pi-agent-core's documented `parallel` default. Prompt guidance now distinguishes native parallel tool-call support from Pi-Office's safer ordered Office-write policy: independent connector/read calls can be parallel where supported, while Office writes should use `office_batch_execute` or wait for prior write results. Regression coverage asserts the explicit sequential runtime setting and the prompt guidance. `addin/node_modules/@mariozechner/pi-agent-core/README.md` documents `toolExecution: "parallel"` as the default. `addin/apps/taskpane/src/lib/runtime/batch-executor.ts` currently executes Office batch steps in a `for` loop, awaiting each step before starting the next.
 
 - [ ] IMPROVEMENT-004: Build a professional PowerPoint visual asset and icon pipeline
   - Category: Improvement

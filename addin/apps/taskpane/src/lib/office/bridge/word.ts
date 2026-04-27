@@ -341,6 +341,37 @@ export async function executeWordOfficeTool(
             pageHeight: request.params.pageHeight,
             orientation: request.params.orientation,
             breakType: request.params.breakType,
+            allowDuplicatePageBreak: request.params.allowDuplicatePageBreak ?? request.params.allowDuplicate,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
+      if (request.toolName === "word_equation") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_equation is only available for Word.",
+          };
+        }
+        const latex = trimString(request.params.latex ?? request.params.content ?? request.params.text);
+        if (!latex) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_equation requires a non-empty latex parameter.",
+          };
+        }
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "insertEquation",
+          target: request.params.target as never,
+          content: latex,
+          placement: typeof request.params.placement === "string" ? request.params.placement : undefined,
+          options: {
+            latex,
+            display: request.params.display,
+            altText: request.params.altText,
           },
         });
         return { requestId: request.requestId, success: true, content: result };

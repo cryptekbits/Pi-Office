@@ -5,6 +5,7 @@ import { createOfficeToolExecutor } from "../../../apps/taskpane/src/lib/office-
 import {
   countWordOoxmlBreaks,
   normalizeWordBreakType,
+  wordOoxmlHasAdjacentPageBreak,
 } from "../../../apps/taskpane/src/lib/office/word-actions.js";
 import { WORD_OFFICE_TOOL_DEFINITIONS } from "../../../apps/taskpane/src/lib/office/tools/word.js";
 import { OFFICE_APPEND_SYSTEM_PROMPT } from "../../../packages/pi-office-pack/src/defaults.js";
@@ -62,6 +63,7 @@ test("Word section layout bridge dispatches structured actions and enforces Word
   assert.equal((calls[1]?.action.target as { kind?: string }).kind, "heading");
   assert.equal((calls[1]?.action.options as Record<string, unknown>).operation, "insertBreak");
   assert.equal((calls[1]?.action.options as Record<string, unknown>).breakType, "page");
+  assert.equal((calls[1]?.action.options as Record<string, unknown>).allowDuplicatePageBreak, undefined);
   assert.equal(calls[1]?.action.placement, "before");
 
   const unsupported = await executeOfficeTool({
@@ -83,6 +85,17 @@ test("Word page-break helpers normalize Office.js casing and count persisted OOX
   const ooxml = '<w:p><w:r><w:br w:type="page"/></w:r></w:p><w:p><w:r><w:br/></w:r></w:p><w:br w:type="page"></w:br>';
   assert.equal(countWordOoxmlBreaks(ooxml, "Page"), 2);
   assert.equal(countWordOoxmlBreaks(ooxml, "SectionNext"), 0);
+});
+
+test("Word page-break helper detects an existing adjacent break before a heading", () => {
+  const ooxml = [
+    '<w:p><w:r><w:t>1. Executive Summary</w:t></w:r></w:p>',
+    '<w:p><w:r><w:br w:type="page"/></w:r></w:p>',
+    '<w:p><w:r><w:t>7. Conclusion</w:t></w:r></w:p>',
+  ].join("");
+
+  assert.equal(wordOoxmlHasAdjacentPageBreak(ooxml, "7. Conclusion", "before"), true);
+  assert.equal(wordOoxmlHasAdjacentPageBreak(ooxml, "1. Executive Summary", "before"), false);
 });
 
 test("Word section layout guidance separates headers and footers from document body edits", () => {

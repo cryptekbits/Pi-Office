@@ -1485,6 +1485,7 @@ class BrowserOfficeSession {
 
     this.agent = new Agent({
       getApiKey: (provider) => this.modelRegistry.getApiKey(provider),
+      toolExecution: "sequential",
       beforeToolCall: async (ctx) => {
         const toolName = ctx.toolCall.name;
         if (this.shouldAutoApproveTool(toolName)) return undefined;

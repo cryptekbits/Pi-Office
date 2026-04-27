@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createBrowserDebugOfficeState } from "../../../apps/taskpane/src/lib/office/shared.js";
@@ -414,6 +415,11 @@ test("protocol parity: session debug log captures bridge traffic and redacts sec
   assert.match(debugLog.redaction.note, /tool arguments/);
 
   socket.close();
+});
+
+test("protocol parity: in-process Office sessions use sequential tool execution", () => {
+  const source = readFileSync("apps/taskpane/src/lib/runtime/inprocess-kernel.ts", "utf8");
+  assert.match(source, /toolExecution:\s*"sequential"/);
 });
 
 test("protocol parity: tool permission timeouts deny across gated categories", async () => {

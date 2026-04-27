@@ -101,6 +101,7 @@ const EXTENSION_REGISTERED_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
     toolName !== "word_hyperlink" &&
     toolName !== "word_table" &&
     toolName !== "word_section_layout" &&
+    toolName !== "word_equation" &&
     toolName !== "word_field_reference" &&
     toolName !== "word_content_control" &&
     toolName !== "word_building_block" &&
@@ -443,6 +444,7 @@ test("deferred Word tool bridge action types are implemented by applyWordAction"
     { toolName: "word_hyperlink" as OfficeToolRequest["toolName"], params: { operation: "add", address: "https://example.com" } },
     { toolName: "word_table" as OfficeToolRequest["toolName"], params: { operation: "setCellText", tableIndex: 1, rowIndex: 1, columnIndex: 1, text: "x" } },
     { toolName: "word_section_layout" as OfficeToolRequest["toolName"], params: { operation: "inventory" } },
+    { toolName: "word_equation" as OfficeToolRequest["toolName"], params: { latex: "E=mc^2" } },
     { toolName: "word_field_reference" as OfficeToolRequest["toolName"], params: { operation: "updateField", fieldId: "field:1" } },
     { toolName: "word_field_reference" as OfficeToolRequest["toolName"], params: { operation: "tocInventory" } },
     { toolName: "word_content_control" as OfficeToolRequest["toolName"], params: { operation: "fill", text: "x" } },
@@ -472,6 +474,7 @@ test("deferred Word tool bridge action types are implemented by applyWordAction"
     "critiqueAnnotation",
     "editTableCell",
     "fieldAction",
+    "insertEquation",
     "manageHyperlink",
     "proofingStats",
     "protectionAwareness",

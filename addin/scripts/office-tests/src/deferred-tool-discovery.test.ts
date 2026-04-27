@@ -212,9 +212,12 @@ test("prompt and registry steer Word document generation to structured HTML inse
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /JSON-encoded string/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /values\[\]/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /word_section_layout/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /word_equation/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /page-break-before/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /parallel tool calls/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /Do not claim a page break landed/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /do not mix Markdown markers/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /fast draft/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /before claiming the document is formatted/);
 });
 

@@ -15,7 +15,7 @@ const officeActionSchema = Type.Object(
       description:
         "Structured action type. Use insertHtml for Word HTML, replaceDocumentHtml/appendDocumentHtml for document-scope generation, insertText for literal text, or setRangeValues for Excel matrices.",
     }),
-    content: Type.Optional(Type.String({ description: "Action payload. For insertHtml this must be valid HTML, not Markdown." })),
+    content: Type.Optional(Type.String({ description: "Action payload. For insertHtml this must be valid HTML, not Markdown or LaTeX math; use word_equation for formulas." })),
     html: Type.Optional(Type.String({ description: "HTML alias for action.content when type is insertHtml." })),
     text: Type.Optional(Type.String({ description: "Text alias for action.content when type is insertText." })),
     target: Type.Optional(officeActionTargetSchema),
@@ -208,7 +208,7 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     category: "write-doc",
     label: "Office Edit",
     description:
-      "Apply native edits to the active Office document, worksheet, or slide. Prefer an object action; action must be an object, not a JSON string. For Word full-document generation use action: { type: \"replaceDocumentHtml\", content: \"<h1>...</h1>\" } or action: { type: \"insertHtml\", target: { kind: \"document\" }, placement: \"end\", content: \"<h2>...</h2>\" }. Legacy operation/text/html params are also supported.",
+      "Apply native edits to the active Office document, worksheet, or slide. Prefer an object action; action must be an object, not a JSON string. For Word full-document generation use action: { type: \"replaceDocumentHtml\", content: \"<h1>...</h1>\" } or action: { type: \"insertHtml\", target: { kind: \"document\" }, placement: \"end\", content: \"<h2>...</h2>\" }. Use word_equation for LaTeX/math instead of insertHtml. Legacy operation/text/html params are also supported.",
     parameters: Type.Object({
       mode: Type.Optional(Type.String({ description: "Legacy edit mode such as replaceSelection, insertAfterSelection, or setRangeValues." })),
       content: Type.Optional(Type.String({ description: "Legacy text, HTML, or JSON matrix payload to insert into Office." })),
