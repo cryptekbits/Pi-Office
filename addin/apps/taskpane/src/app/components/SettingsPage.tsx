@@ -122,6 +122,7 @@ interface SettingsPageProps {
   connectorAuditPreference: ConnectorAuditPreference | undefined;
   connectorScopeContext: ConnectorScopeContext | undefined;
   runtimeDiagnostics: RuntimeRequestFailureDiagnostic[];
+  sideloadDebugExportAvailable: boolean;
   sessionStats: SessionStatsResponse | undefined;
   preferences: UserPreferences;
   enabledModels: Set<string>;
@@ -154,6 +155,7 @@ interface SettingsPageProps {
   onRetryCompanion: () => Promise<void> | void;
   onSaveCompanionEndpoint: (endpoint: string) => Promise<void> | void;
   onClearRuntimeDiagnostics: () => void;
+  onExportConversationDebugLog: () => Promise<void> | void;
 }
 
 export function SettingsPage({
@@ -168,6 +170,7 @@ export function SettingsPage({
   connectorAuditPreference,
   connectorScopeContext,
   runtimeDiagnostics,
+  sideloadDebugExportAvailable,
   sessionStats,
   preferences,
   enabledModels,
@@ -200,6 +203,7 @@ export function SettingsPage({
   onRetryCompanion,
   onSaveCompanionEndpoint,
   onClearRuntimeDiagnostics,
+  onExportConversationDebugLog,
 }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [settingsDetailLevel, setSettingsDetailLevel] = useState<SettingsDetailLevel>("simple");
@@ -340,7 +344,9 @@ export function SettingsPage({
           {activeTab === "diagnostics" && (
             <DiagnosticsSection
               diagnostics={runtimeDiagnostics}
+              sideloadDebugExportAvailable={sideloadDebugExportAvailable}
               onClear={onClearRuntimeDiagnostics}
+              onExportConversationDebugLog={onExportConversationDebugLog}
             />
           )}
           {activeTab === "tools" && (
@@ -483,11 +489,28 @@ function formatDiagnosticTimestamp(timestamp: number): string {
 
 function DiagnosticsSection({
   diagnostics,
+  sideloadDebugExportAvailable,
   onClear,
+  onExportConversationDebugLog,
 }: {
   diagnostics: RuntimeRequestFailureDiagnostic[];
+  sideloadDebugExportAvailable: boolean;
   onClear: () => void;
+  onExportConversationDebugLog: () => Promise<void> | void;
 }) {
+  const [isExporting, setIsExporting] = useState(false);
+  const handleExport = useCallback(async () => {
+    if (!window.confirm("Export the current conversation debug log? It can include prompts, document snippets, reasoning traces, tool inputs, and tool results.")) {
+      return;
+    }
+    setIsExporting(true);
+    try {
+      await onExportConversationDebugLog();
+    } finally {
+      setIsExporting(false);
+    }
+  }, [onExportConversationDebugLog]);
+
   return (
     <section className="settings-section">
       <div className="settings-section-header">
@@ -501,6 +524,25 @@ function DiagnosticsSection({
       <p className="settings-note">
         Captures recent route/auth/connector request failures from the in-process runtime.
       </p>
+      {sideloadDebugExportAvailable && (
+        <article className="settings-card diagnostics-export-card">
+          <div>
+            <h4>Sideload conversation log</h4>
+            <p>
+              Export the current visible chat, model-emitted reasoning traces, raw bridge events, tool calls, tool results, Office state, and runtime diagnostics.
+            </p>
+            <p className="settings-meta">Known secret fields are redacted. Review the JSON before sharing.</p>
+          </div>
+          <button
+            type="button"
+            className="button button-solid"
+            onClick={() => void handleExport()}
+            disabled={isExporting}
+          >
+            {isExporting ? "Exporting..." : "Export log"}
+          </button>
+        </article>
+      )}
       {!diagnostics.length ? (
         <p className="settings-note">No runtime failures recorded in this session.</p>
       ) : (

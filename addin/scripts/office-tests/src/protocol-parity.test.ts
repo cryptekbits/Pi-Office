@@ -366,6 +366,56 @@ test("protocol parity: tool_permission request/response + session approval cachi
   socket.close();
 });
 
+test("protocol parity: session debug log captures bridge traffic and redacts secret fields", async () => {
+  const { runtime, socket, session } = await openSessionHarness("debug-log");
+  const sessionId = (session as { sessionId: string }).sessionId;
+
+  const requestMessage = waitForServerMessage(socket, (payload) => payload.type === "tool_permission_request");
+  const decisionPromise = (session as {
+    requestToolPermission: (toolName: string, params: Record<string, unknown>) => Promise<unknown>;
+  }).requestToolPermission("office_apply_edit", {
+    apiKey: "sk-debug-secret-1234567890",
+    nested: {
+      authorization: "Bearer debugtoken1234567890",
+      keep: "visible-context",
+    },
+  });
+
+  const outbound = await requestMessage;
+  const request = outbound.request as { requestId: string };
+  socket.send(
+    JSON.stringify({
+      type: "tool_permission_response",
+      requestId: request.requestId,
+      decision: {
+        toolName: "office_apply_edit",
+        allowed: false,
+        scope: "once",
+      },
+    }),
+  );
+  await decisionPromise;
+
+  const debugLog = await runtime.dispatchKernelRequest(`/v1/sessions/${sessionId}/debug-log`) as {
+    sessionId: string;
+    events: Array<{ direction: string; type: string; payload: unknown }>;
+    agent: unknown;
+    redaction: { note: string };
+  };
+  const serialized = JSON.stringify(debugLog);
+
+  assert.equal(debugLog.sessionId, sessionId);
+  assert.ok(debugLog.events.some((event) => event.direction === "client" && event.type === "client_ready"));
+  assert.ok(debugLog.events.some((event) => event.direction === "server" && event.type === "tool_permission_request"));
+  assert.ok(debugLog.events.some((event) => event.direction === "client" && event.type === "tool_permission_response"));
+  assert.match(serialized, /visible-context/);
+  assert.doesNotMatch(serialized, /sk-debug-secret/);
+  assert.doesNotMatch(serialized, /debugtoken1234567890/);
+  assert.match(debugLog.redaction.note, /tool arguments/);
+
+  socket.close();
+});
+
 test("protocol parity: tool permission timeouts deny across gated categories", async () => {
   const { socket, session } = await openSessionHarness("tool-permission-timeout");
 

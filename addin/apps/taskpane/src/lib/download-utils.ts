@@ -4,20 +4,16 @@ export interface DownloadResult {
   savedAs?: string;
 }
 
-export async function downloadPngBlob(
+export async function downloadBlob(
   blob: Blob,
   suggestedName: string,
+  types?: Array<{ description: string; accept: Record<string, string[]> }>,
 ): Promise<DownloadResult> {
   if (typeof window.showSaveFilePicker === "function") {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName,
-        types: [
-          {
-            description: "PNG Image",
-            accept: { "image/png": [".png"] },
-          },
-        ],
+        ...(types ? { types } : {}),
       });
       const writable = await handle.createWritable();
       await writable.write(blob);
@@ -43,6 +39,31 @@ export async function downloadPngBlob(
   } catch {
     return { ok: false, filename: suggestedName };
   }
+}
+
+export async function downloadPngBlob(
+  blob: Blob,
+  suggestedName: string,
+): Promise<DownloadResult> {
+  return downloadBlob(blob, suggestedName, [
+    {
+      description: "PNG Image",
+      accept: { "image/png": [".png"] },
+    },
+  ]);
+}
+
+export async function downloadJsonBlob(
+  value: unknown,
+  suggestedName: string,
+): Promise<DownloadResult> {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+  return downloadBlob(blob, suggestedName, [
+    {
+      description: "JSON",
+      accept: { "application/json": [".json"] },
+    },
+  ]);
 }
 
 export function base64ToBlob(base64: string, mimeType: string): Blob {

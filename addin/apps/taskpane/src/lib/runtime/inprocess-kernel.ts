@@ -165,6 +165,40 @@ interface PendingEditProposal {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+type DebugLogDirection = "client" | "server" | "runtime";
+
+interface ConversationDebugLogEvent {
+  sequence: number;
+  timestamp: string;
+  direction: DebugLogDirection;
+  type: string;
+  payload: unknown;
+}
+
+interface ConversationDebugLogExport {
+  version: 1;
+  exportedAt: string;
+  sessionId: string;
+  documentKey: string;
+  windowId?: string | undefined;
+  documentState: OfficeDocumentState;
+  officeState: unknown;
+  companion: unknown;
+  pendingRequests: {
+    askUser: number;
+    toolPermissions: number;
+    editProposals: number;
+  };
+  sessionApprovedTools: string[];
+  agent: unknown;
+  stats: SessionStatsResponse;
+  events: ConversationDebugLogEvent[];
+  redaction: {
+    secretFields: string;
+    note: string;
+  };
+}
+
 const AUTH_STORAGE_KEY = "pi-office-auth";
 const AUTH_STORAGE_KEY_VERSION = 2;
 const AUTH_CRYPTO_KEY_STORAGE_KEY = "pi-office-auth-key-v1";
@@ -736,6 +770,54 @@ function stripBinaryData(value: unknown): unknown {
   }
 
   return Object.fromEntries(Object.entries(next).map(([key, entry]) => [key, stripBinaryData(entry)]));
+}
+
+const DEBUG_SECRET_KEY_PATTERN =
+  /(^|[-_])(api[-_]?key|authorization|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|password|client[-_]?secret|private[-_]?key|bearer|cookie|session[-_]?token)([-_]|$)/i;
+const DEBUG_BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/g;
+const DEBUG_API_KEY_PATTERN = /\b(sk|pk|ghp|github_pat|glpat|xox[baprs])-[-A-Za-z0-9_]{12,}\b/g;
+
+function redactDebugString(value: string): string {
+  return value
+    .replace(DEBUG_BEARER_PATTERN, "Bearer [redacted]")
+    .replace(DEBUG_API_KEY_PATTERN, "$1-[redacted]");
+}
+
+function sanitizeDebugPayload(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value == null) return value;
+  if (typeof value === "string") return redactDebugString(value);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "function") return `[function ${(value as { name?: string }).name || "anonymous"}]`;
+  if (typeof value !== "object") return String(value);
+
+  if (seen.has(value)) return "[circular]";
+  seen.add(value);
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: redactDebugString(value.message),
+      stack: value.stack ? redactDebugString(value.stack) : undefined,
+    };
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeDebugPayload(entry, seen));
+  }
+
+  const record = value as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(record)) {
+    if (DEBUG_SECRET_KEY_PATTERN.test(key)) {
+      sanitized[key] = entry == null || typeof entry === "boolean" || typeof entry === "number"
+        ? entry
+        : "[redacted]";
+      continue;
+    }
+    sanitized[key] = sanitizeDebugPayload(entry, seen);
+  }
+  return sanitized;
 }
 
 function toToolText(value: unknown): string {
@@ -1360,6 +1442,8 @@ class BrowserOfficeSession {
   private readonly pendingPermissions = new Map<string, PendingToolPermission>();
   private readonly pendingEditProposals = new Map<string, PendingEditProposal>();
   private readonly sessionApprovedTools = new Set<string>();
+  private readonly debugEvents: ConversationDebugLogEvent[] = [];
+  private debugEventSequence = 0;
   private readonly agent: Agent;
   private unsubscribeAgent: (() => void) | undefined;
 
@@ -1417,6 +1501,23 @@ class BrowserOfficeSession {
     this.unsubscribeAgent = this.agent.subscribe((event) => {
       this.send({ type: "session_event", event });
     });
+
+    this.recordDebugEvent("runtime", {
+      type: "session_initialized",
+      host: request.host,
+      documentId: request.documentId,
+      saved: request.saved,
+      title: request.title,
+      model: this.agent.state.model
+        ? {
+            provider: String(this.agent.state.model.provider),
+            id: this.agent.state.model.id,
+            name: this.agent.state.model.name,
+          }
+        : undefined,
+      thinkingLevel: this.agent.state.thinkingLevel,
+      toolNames: this.agent.state.tools.map((tool) => tool.name),
+    });
   }
 
   get documentState(): OfficeDocumentState {
@@ -1440,6 +1541,13 @@ class BrowserOfficeSession {
     const tools = this.buildTools();
     this.agent.setTools(tools);
     this.agent.setSystemPrompt(this.buildSystemPrompt(tools.map((tool) => tool.name)));
+    this.recordDebugEvent("runtime", {
+      type: "companion_state_updated",
+      companion: this.companionState,
+      connectorCount: this.companionConnectors.length,
+      connectorToolNames: this.companionState.connectorToolNames ?? [],
+      toolNames: tools.map((tool) => tool.name),
+    });
   }
 
   getCompanionConnectors(): ConnectorStatus[] {
@@ -1448,6 +1556,51 @@ class BrowserOfficeSession {
 
   getCapabilities(): CapabilityResolution[] {
     return this.resolveCapabilities();
+  }
+
+  exportDebugLog(): ConversationDebugLogExport {
+    return {
+      version: 1,
+      exportedAt: nowIso(),
+      sessionId: this.sessionId,
+      documentKey: this.documentKey,
+      windowId: this.windowId,
+      documentState: this.documentState,
+      officeState: sanitizeDebugPayload(this.officeState),
+      companion: sanitizeDebugPayload(this.companionState),
+      pendingRequests: {
+        askUser: this.pendingAskUser.size,
+        toolPermissions: this.pendingPermissions.size,
+        editProposals: this.pendingEditProposals.size,
+      },
+      sessionApprovedTools: [...this.sessionApprovedTools].sort(),
+      agent: sanitizeDebugPayload({
+        model: this.agent.state.model
+          ? {
+              provider: String(this.agent.state.model.provider),
+              id: this.agent.state.model.id,
+              name: this.agent.state.model.name,
+              contextWindow: this.agent.state.model.contextWindow,
+              reasoning: this.agent.state.model.reasoning,
+            }
+          : undefined,
+        thinkingLevel: this.agent.state.thinkingLevel,
+        isStreaming: this.agent.state.isStreaming,
+        systemPrompt: this.agent.state.systemPrompt,
+        tools: this.agent.state.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        })),
+        messages: this.agent.state.messages,
+      }),
+      stats: this.getStats(),
+      events: this.debugEvents.map((entry) => ({ ...entry })),
+      redaction: {
+        secretFields: DEBUG_SECRET_KEY_PATTERN.source,
+        note: "Known secret-bearing fields and bearer/API-key shaped strings are redacted. Prompts, document snippets, reasoning deltas, tool arguments, and tool results are intentionally included for sideload debugging.",
+      },
+    };
   }
 
   attachBridge(socket: LocalBridgeSocket): void {
@@ -1476,9 +1629,22 @@ class BrowserOfficeSession {
     const tools = this.buildTools();
     this.agent.setTools(tools);
     this.agent.setSystemPrompt(this.buildSystemPrompt(tools.map((tool) => tool.name)));
+    this.recordDebugEvent("runtime", {
+      type: "office_state_updated",
+      host: next.host,
+      document: next.document,
+      selection: next.selection,
+      toolNames: tools.map((tool) => tool.name),
+    });
   }
 
   async prompt(text: string, mode: PromptMode = "prompt", images?: PromptImagePayload[]): Promise<void> {
+    this.recordDebugEvent("runtime", {
+      type: "prompt_request",
+      mode,
+      text,
+      images,
+    });
     const visualNote = describeAttachedImages(images);
     const input = composeOfficeAwarePrompt(
       visualNote ? `${text.trim()}\n\n${visualNote}` : text,
@@ -1513,6 +1679,7 @@ class BrowserOfficeSession {
   }
 
   async abort(): Promise<void> {
+    this.recordDebugEvent("runtime", { type: "abort_requested" });
     this.agent.abort();
   }
 
@@ -1525,11 +1692,23 @@ class BrowserOfficeSession {
     this.agent.setThinkingLevel(
       this.normalizeThinkingLevel(this.getPreferences().defaultThinkingLevel, model) as PiThinkingLevel,
     );
+    this.recordDebugEvent("runtime", {
+      type: "model_changed",
+      provider,
+      modelId,
+      modelName: model.name,
+      thinkingLevel: this.agent.state.thinkingLevel,
+    });
   }
 
   setThinkingLevel(level: ThinkingLevel): void {
     const normalized = this.normalizeThinkingLevel(level, this.agent.state.model);
     this.agent.setThinkingLevel(normalized as PiThinkingLevel);
+    this.recordDebugEvent("runtime", {
+      type: "thinking_level_changed",
+      requestedLevel: level,
+      activeLevel: normalized,
+    });
   }
 
   getThinkingCapabilities(): ThinkingCapabilities {
@@ -1775,6 +1954,8 @@ class BrowserOfficeSession {
   }
 
   handleClientMessage(message: BridgeClientMessage): void {
+    this.recordDebugEvent("client", message);
+
     if (message.type === "client_ready") {
       this.send({ type: "connection_state", state: "ready" });
       this.sendAvailableCheckpoints(this.officeState.document.id);
@@ -1832,6 +2013,7 @@ class BrowserOfficeSession {
   }
 
   async dispose(): Promise<void> {
+    this.recordDebugEvent("runtime", { type: "session_disposed" });
     this.rejectAllPending(new Error("Session disposed."));
     this.agent.abort();
     this.unsubscribeAgent?.();
@@ -2706,7 +2888,21 @@ class BrowserOfficeSession {
     }
   }
 
+  private recordDebugEvent(direction: DebugLogDirection, payload: unknown): void {
+    const record = payload && typeof payload === "object" ? payload as { type?: unknown } : undefined;
+    const type = typeof record?.type === "string" ? record.type : direction;
+    this.debugEventSequence += 1;
+    this.debugEvents.push({
+      sequence: this.debugEventSequence,
+      timestamp: nowIso(),
+      direction,
+      type,
+      payload: sanitizeDebugPayload(payload),
+    });
+  }
+
   private send(message: BridgeServerMessage): void {
+    this.recordDebugEvent("server", message);
     for (const socket of this.bridgeSockets) {
       socket.emitServerMessage(message);
     }
@@ -3351,6 +3547,12 @@ class InProcessKernel {
     if (statsMatch) {
       const session = this.getSession(statsMatch[1] ?? "");
       return session.getStats() as T;
+    }
+
+    const debugLogMatch = method === "GET" ? path.match(/^\/v1\/sessions\/([^/]+)\/debug-log$/) : null;
+    if (debugLogMatch) {
+      const session = this.getSession(debugLogMatch[1] ?? "");
+      return session.exportDebugLog() as T;
     }
 
     const promptSuggestionsMatch = method === "POST" ? path.match(/^\/v1\/sessions\/([^/]+)\/prompt-suggestions$/) : null;

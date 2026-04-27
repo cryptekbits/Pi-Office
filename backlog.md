@@ -1158,6 +1158,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Users can understand and clear locally cached connector results.
   - Notes/Evidence: Claude context-management guidance highlights tool-result bloat as a separate problem from tool-definition bloat. Pi-Office already has connector provenance, tool policy, browser-direct hosted MCP, and companion-routed MCP; result handles and connector-local context are the missing scalability layer. Closed 2026-04-27 by adding `McpResultHandle`/page/summarize/clear protocol types, `mcp_result_get`, `mcp_result_summarize`, and `mcp_result_clear` tool entries, in-memory taskpane MCP result storage with summaries/pages/TTL metadata, browser-direct MCP execution returning summaries plus handles for large payloads, prompt guidance for handle/page use, and regression coverage in `mcp-result-handles.test.ts`. 2026-04-27 `BUG-019` follow-up moved the store into the shared Office pack, added source-tagged browser/companion handle IDs, routed taskpane result tools to browser or companion by handle source, and added companion `get`/`summarize`/`clear` result endpoints so companion-routed local STDIO and remote HTTP MCP calls no longer return large raw outputs directly. Persistent companion storage and OS-keychain-backed token hardening remain future work. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`; `BUG-019` follow-up validation passed `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (213 tests), `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
+- [x] FEATURE-031: Add sideload conversation debug export
+  - Category: Feature
+  - Status: done
+  - Priority: P1
+  - Source: 2026-04-27 user request: "In sideload mode, add an option to share the conversation log (including reasoning traces, tool calls - everything) so that I can share them with you for debugging."
+  - Details: Sideload and browser-preview debugging needs a shareable artifact that captures more than the rendered transcript. The export should include visible chat, model-emitted reasoning traces even when hidden by UI preferences, raw bridge/session events, tool calls, tool results, Office state, runtime diagnostics, and enough app/session metadata to reproduce failures. The artifact must stay a user-initiated local download and must not include provider API keys, bearer tokens, or connector secrets when they appear in structured fields.
+  - Dependencies: SECURITY-004, BUG-012, FEATURE-028, FEATURE-029, FEATURE-030.
+  - Subtasks:
+    - [x] Add a taskpane session debug-log route that exports sanitized in-process agent state, bridge events, runtime events, tool arguments/results, thinking deltas, Office state, and session stats.
+    - [x] Capture raw bridge client/server traffic before UI preference filters so model-emitted thinking deltas are available in sideload debug exports.
+    - [x] Add a Settings -> Diagnostics export action visible only on dev/localhost sideload surfaces.
+    - [x] Redact known secret-bearing fields and bearer/API-key shaped strings while preserving prompts, document snippets, tool data, and reasoning/tool traces.
+    - [x] Document the export privacy boundary and add regression coverage.
+  - Acceptance Criteria:
+    - [x] A sideloaded taskpane can download a JSON debug log for the active conversation.
+    - [x] The JSON includes visible conversation entries plus raw in-process session events/tool calls/results and model-emitted reasoning deltas when available.
+    - [x] The export action is not shown on non-local production origins.
+    - [x] Structured secret fields are redacted and tests prove obvious API key / bearer-token values do not leak.
+  - Notes/Evidence: Implemented in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, `addin/apps/taskpane/src/app/App.tsx`, `addin/apps/taskpane/src/app/components/SettingsPage.tsx`, `addin/apps/taskpane/src/lib/download-utils.ts`, `README.md`, and `docs/privacy-and-storage.md`. Regression coverage added in `addin/scripts/office-tests/src/protocol-parity.test.ts` for bridge-event capture and redaction. Validation passed: `npm run typecheck:addin`; `npm run test:office` with 215 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`; `git diff --check`.
+
 ### Improvements
 
 - [x] IMPROVEMENT-001: Clean up worktree hygiene for untracked archive and generated artifacts

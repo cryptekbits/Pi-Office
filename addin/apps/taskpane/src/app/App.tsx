@@ -121,6 +121,7 @@ import type {
 } from "@pi-office/pi-office-pack/protocol";
 import { useToolPermissions } from "../hooks/useToolPermissions";
 import { applyAcceptedEdits } from "../lib/office";
+import { downloadJsonBlob } from "../lib/download-utils";
 
 function buildSelectionFingerprint(selection: OfficeStateUpdate["selection"] | undefined): string {
   if (!selection) return "";
@@ -203,6 +204,53 @@ function createDefaultCompanionState(): CompanionState {
       localMcp: false,
     },
   };
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return ["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"].includes(hostname.toLowerCase());
+}
+
+function isSideloadDebugExportAvailable(): boolean {
+  if (typeof window === "undefined") return false;
+  return import.meta.env.DEV || isLoopbackHost(window.location.hostname);
+}
+
+function buildDebugLogFilename(officeState: OfficeStateUpdate | undefined): string {
+  const host = officeState?.host ?? "office";
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `pi-office-${host}-conversation-debug-${timestamp}.json`;
+}
+
+const DEBUG_EXPORT_SECRET_KEY_PATTERN =
+  /(^|[-_])(api[-_]?key|authorization|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|password|client[-_]?secret|private[-_]?key|bearer|cookie|session[-_]?token)([-_]|$)/i;
+const DEBUG_EXPORT_BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/g;
+const DEBUG_EXPORT_API_KEY_PATTERN = /\b(sk|pk|ghp|github_pat|glpat|xox[baprs])-[-A-Za-z0-9_]{12,}\b/g;
+
+function sanitizeDebugExport(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value == null) return value;
+  if (typeof value === "string") {
+    return value
+      .replace(DEBUG_EXPORT_BEARER_PATTERN, "Bearer [redacted]")
+      .replace(DEBUG_EXPORT_API_KEY_PATTERN, "$1-[redacted]");
+  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "function") return "[function]";
+  if (typeof value !== "object") return String(value);
+  if (seen.has(value)) return "[circular]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((entry) => sanitizeDebugExport(entry, seen));
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (DEBUG_EXPORT_SECRET_KEY_PATTERN.test(key)) {
+      sanitized[key] = entry == null || typeof entry === "boolean" || typeof entry === "number"
+        ? entry
+        : "[redacted]";
+      continue;
+    }
+    sanitized[key] = sanitizeDebugExport(entry, seen);
+  }
+  return sanitized;
 }
 
 export function App() {
@@ -315,6 +363,7 @@ export function App() {
       officeState?.document.workspaceDir,
     ],
   );
+  const sideloadDebugExportEnabled = useMemo(() => isSideloadDebugExportAvailable(), []);
 
   const hasConversation = useMemo(
     () => messages.some((e) => e.role === "user" || e.role === "assistant"),
@@ -1770,6 +1819,102 @@ export function App() {
     pushSystemMessage("Cleared saved local chat history.");
   }, [clearHistory, pushSystemMessage]);
 
+  const handleExportConversationDebugLog = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) {
+      pushErrorMessage("No active Pi session is available to export.");
+      return;
+    }
+    if (!sideloadDebugExportEnabled) {
+      pushErrorMessage("Conversation debug export is available only from the sideload/localhost taskpane.");
+      return;
+    }
+
+    try {
+      const kernelLog = await fetchJson<unknown>(`/v1/sessions/${sid}/debug-log`);
+      const bundle = sanitizeDebugExport({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        source: "pi-office-taskpane-sideload-debug-export",
+        sideload: {
+          origin: window.location.origin,
+          href: window.location.href,
+          hostname: window.location.hostname,
+          viteDev: import.meta.env.DEV,
+          userAgent: navigator.userAgent,
+        },
+        appState: {
+          sessionId: sid,
+          connectionState,
+          documentState,
+          officeState,
+          companion,
+          selectedModelKey,
+          thinkingLevel,
+          availableThinkingLevels,
+          activeToolName,
+          isBusy,
+          chatSubject,
+          activeChatId,
+          promptSuggestions,
+          localQueue,
+          remoteQueue,
+          sessionStats,
+          runtimeDiagnostics,
+          preferences,
+          authStatus,
+          providers,
+          connectors,
+          connectorStatuses,
+          connectorDiagnostics,
+          connectorAuditPreference,
+        },
+        visibleConversation: {
+          messages,
+          showThinkingTraces: preferences.showThinkingTraces,
+        },
+        kernel: kernelLog,
+        redaction: {
+          note: "Known secret-bearing fields and bearer/API-key shaped strings are redacted. Prompts, document snippets, model-emitted reasoning traces, tool arguments, and tool results are included for debugging.",
+        },
+      });
+      const result = await downloadJsonBlob(bundle, buildDebugLogFilename(officeState));
+      if (result.ok) {
+        pushSystemMessage(`Exported sideload conversation debug log: ${result.savedAs ?? result.filename}.`);
+      }
+    } catch (error) {
+      pushErrorMessage(`Conversation debug export failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [
+    activeChatId,
+    activeToolName,
+    authStatus,
+    availableThinkingLevels,
+    chatSubject,
+    companion,
+    connectionState,
+    connectorAuditPreference,
+    connectorDiagnostics,
+    connectorStatuses,
+    connectors,
+    documentState,
+    isBusy,
+    localQueue,
+    messages,
+    officeState,
+    preferences,
+    promptSuggestions,
+    providers,
+    pushErrorMessage,
+    pushSystemMessage,
+    remoteQueue,
+    runtimeDiagnostics,
+    selectedModelKey,
+    sessionStats,
+    sideloadDebugExportEnabled,
+    thinkingLevel,
+  ]);
+
   const handleRetryCompanion = useCallback(async () => {
     try {
       await refreshCompanionState(true);
@@ -1869,6 +2014,7 @@ export function App() {
           connectorAuditPreference={connectorAuditPreference}
           connectorScopeContext={connectorScopeContext}
           runtimeDiagnostics={runtimeDiagnostics}
+          sideloadDebugExportAvailable={sideloadDebugExportEnabled}
           sessionStats={sessionStats}
           preferences={preferences}
           enabledModels={enabledModels}
@@ -1901,6 +2047,7 @@ export function App() {
           onRetryCompanion={handleRetryCompanion}
           onSaveCompanionEndpoint={handleSaveCompanionEndpoint}
           onClearRuntimeDiagnostics={clearRuntimeDiagnostics}
+          onExportConversationDebugLog={handleExportConversationDebugLog}
         />
       </div>
     );

@@ -1644,6 +1644,22 @@ select:focus, input:focus, textarea:focus {
 .settings-card p { margin: 4px 0 0; font-size: 0.86rem; font-weight: 500; word-break: break-word; }
 .diagnostics-card-grid { grid-template-columns: 1fr; }
 .diagnostics-card h4 { color: var(--ink); font-size: 0.8rem; }
+.diagnostics-export-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.diagnostics-export-card > div { min-width: 0; }
+.diagnostics-export-card h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+.diagnostics-export-card .button {
+  flex: 0 0 auto;
+  min-width: 104px;
+}
 
 .settings-meta { margin: 4px 0 0; font-size: 0.8rem; color: var(--muted); }
 
@@ -2724,12 +2740,14 @@ select:focus, input:focus, textarea:focus {
   .integration-custom-list-header,
   .integration-choice-row,
   .privacy-disclosure-row,
+  .diagnostics-export-card,
   .integration-env-row,
   .integration-diagnostic-row {
     flex-direction: column;
     align-items: flex-start;
   }
-  .privacy-disclosure-row .button {
+  .privacy-disclosure-row .button,
+  .diagnostics-export-card .button {
     width: 100%;
     max-width: none;
   }

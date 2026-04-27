@@ -40,6 +40,10 @@ Connector records also store the selected setup profile, redacted config metadat
 
 Hosted MCP profiles send connector requests and returned tool data to the named provider endpoint through the optional companion. Local STDIO profiles run a command on the companion machine and send tool results back into the active Pi-Office session. Non-read-only or unknown MCP tools are disabled unless a user explicitly enables them from the connector details view.
 
+## Sideload Debug Export
+
+In sideload or localhost development, Settings -> Diagnostics can export the active conversation debug log as a JSON file. The export is user-initiated and not uploaded by Pi-Office. It includes visible chat, model-emitted reasoning deltas when available, raw taskpane bridge/session events, tool calls, tool results, Office state, runtime diagnostics, prompts, and document snippets that were part of the session. Known secret-bearing fields and bearer/API-key shaped strings are redacted, but the file should still be reviewed before sharing because free-form prompts, document content, and tool results are intentionally preserved for debugging.
+
 ## Telemetry Default
 
 Pi-Office does not enable product analytics or telemetry by default. Provider services, connector services, and locally installed connector runtimes may have their own logging and retention policies outside Pi-Office.

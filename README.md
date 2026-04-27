@@ -59,6 +59,8 @@ This starts the taskpane web host on `https://localhost:3443`.
 
 Opening `https://localhost:3443` directly in a normal browser starts dev-only browser preview mode. The preview uses a synthetic unsaved Office context so the React taskpane, settings, provider catalog, connector setup UI, and browser-safe runtime surfaces can be debugged without Word/Excel/PowerPoint. Real Office.js document reads, edits, selection refresh, and visual snapshots still require sideloading inside an Office host. Use `?piOfficeHost=excel` or `?piOfficeHost=powerpoint` to preview host-specific chrome, and `?piOfficeBrowserDebug=0` to disable the fallback.
 
+In sideload or localhost development, Settings -> Diagnostics exposes **Export log** for the active conversation. The JSON includes visible chat, model-emitted reasoning deltas when the provider sends them, raw bridge/session events, tool calls, tool results, Office state, and runtime diagnostics. Known secret-bearing fields are redacted, but prompts and document snippets are intentionally included, so review the file before sharing it for debugging.
+
 5. Optionally start the local companion:
 
 ```bash
