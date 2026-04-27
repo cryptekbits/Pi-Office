@@ -28,6 +28,7 @@ test("MCP result store pages, summarizes, and clears large connector payloads", 
 
   assert.ok(stored.handle.pageCount > 1);
   assert.equal(stored.handle.connectorId, "parallel");
+  assert.match(stored.handle.handleId, /^mcp-result-browser-/);
   assert.ok("resultHandle" in (stored.content as Record<string, unknown>));
 
   const page = store.getPage({ handleId: stored.handle.handleId, page: 1 });
@@ -42,6 +43,22 @@ test("MCP result store pages, summarizes, and clears large connector payloads", 
   const clearOne = store.clear({ handleId: stored.handle.handleId });
   assert.equal(clearOne.cleared, 1);
   assert.throws(() => store.getPage({ handleId: stored.handle.handleId }), /Unknown or expired/);
+});
+
+test("MCP result store distinguishes companion handles for taskpane routing", () => {
+  const store = new McpResultStore();
+  const stored = store.store({
+    source: "companion",
+    connectorId: "local-docs",
+    connectorName: "Local Docs",
+    toolName: "local_docs_search",
+    value: "x".repeat(3_000),
+    pageSizeBytes: 1024,
+  });
+
+  assert.match(stored.handle.handleId, /^mcp-result-companion-/);
+  assert.equal(stored.handle.source, "companion");
+  assert.ok("resultHandle" in (stored.content as Record<string, unknown>));
 });
 
 test("MCP result guidance tells the model to use handles instead of flooding chat", () => {

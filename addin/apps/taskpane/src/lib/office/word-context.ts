@@ -649,6 +649,10 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
   const maxResults = typeof params.maxResults === "number"
     ? Math.max(1, Math.min(50, Math.trunc(params.maxResults)))
     : 20;
+  const objectTypes = Array.isArray(params.objectTypes)
+    ? new Set(params.objectTypes.map((entry) => String(entry).toLowerCase()))
+    : undefined;
+  const wants = (...types: string[]) => !objectTypes?.size || types.some((type) => objectTypes.has(type.toLowerCase()));
 
   return Word.run(async (context) => {
     const body = context.document.body;
@@ -666,7 +670,10 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
     const fields = supportsFields ? body.fields : undefined;
     const contentControls = supportsContentControls ? body.contentControls : undefined;
     const trackedChanges = supportsTrackedChanges ? body.getTrackedChanges() : undefined;
-    const nativeMatches = body.search(query, { matchCase: false, matchWholeWord: false });
+    const nativeMatches = body.search(query, {
+      matchCase: params.matchCase === true,
+      matchWholeWord: params.matchWholeWord === true,
+    });
 
     paragraphs.load(
       supportsParagraphIds
@@ -690,14 +697,16 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
     paragraphs.items.forEach((paragraph, index) => {
       if (!wordSearchMatchesText(paragraph.text, query)) return;
       const style = String(paragraph.styleBuiltIn || paragraph.style || "");
+      const objectType = /heading/i.test(style) ? "heading" : "paragraph";
+      if (!wants(objectType, "text")) return;
       push({
         anchor: {
-          kind: /heading/i.test(style) ? "heading" : "paragraph",
+          kind: objectType,
           label: truncateLabel(paragraph.text),
           text: truncateLabel(paragraph.text, 240),
           paragraphId: supportsParagraphIds ? paragraph.uniqueLocalId : undefined,
         },
-        objectType: /heading/i.test(style) ? "heading" : "paragraph",
+        objectType,
         rank: index + 1,
         contextPreview: truncateText(paragraph.text, 320),
       });
@@ -705,9 +714,18 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
 
     nativeMatches.items.slice(0, maxResults).forEach((match, index) => {
       if (results.length >= maxResults) return;
+      if (!wants("searchResult", "text", "range")) return;
       push({
-        anchor: { kind: "range", label: `Search match ${index + 1}`, text: truncateLabel(match.text, 180) },
-        objectType: "range",
+        anchor: {
+          kind: "searchResult",
+          id: `searchResult:${index + 1}`,
+          searchResultId: `searchResult:${index + 1}`,
+          searchQuery: query,
+          searchResultIndex: index + 1,
+          label: `Search match ${index + 1}`,
+          text: truncateLabel(match.text, 180),
+        },
+        objectType: "searchResult",
         rank: index + 1,
         contextPreview: truncateText(match.text, 320),
       });
@@ -715,6 +733,7 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
 
     (comments?.items ?? []).forEach((comment, index) => {
       if (!wordSearchMatchesText(comment.content, query)) return;
+      if (!wants("comment")) return;
       push({
         anchor: { kind: "comment", commentId: comment.id, label: `Comment ${index + 1}`, text: truncateLabel(comment.content, 180) },
         objectType: "comment",
@@ -726,6 +745,7 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
 
     (trackedChanges?.items ?? []).forEach((change, index) => {
       if (!wordSearchMatchesText(change.text, query)) return;
+      if (!wants("revision", "trackedChange")) return;
       push({
         anchor: { kind: "revision", revisionId: `revision:${index + 1}`, label: `Revision ${index + 1}`, text: truncateLabel(change.text, 180) },
         objectType: "revision",
@@ -738,6 +758,7 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
     (fields?.items ?? []).forEach((field, index) => {
       const fieldText = `${field.code ?? ""} ${field.result?.text ?? ""}`;
       if (!wordSearchMatchesText(fieldText, query)) return;
+      if (!wants("field")) return;
       push({
         anchor: { kind: "field", id: `field:${index + 1}`, label: `Field ${index + 1}`, text: truncateLabel(field.result?.text || field.code, 180) },
         objectType: "field",
@@ -749,6 +770,7 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
     (contentControls?.items ?? []).forEach((control) => {
       const controlText = `${control.title ?? ""} ${control.tag ?? ""} ${control.text ?? ""}`;
       if (!wordSearchMatchesText(controlText, query)) return;
+      if (!wants("contentControl")) return;
       push({
         anchor: { kind: "contentControl", id: `contentControl:${control.id}`, label: control.title || control.tag || `Content control ${control.id}`, text: truncateLabel(control.text, 180) },
         objectType: "contentControl",
@@ -759,6 +781,7 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
 
     (footnotes?.items ?? []).forEach((note, index) => {
       if (!wordSearchMatchesText(note.body.text, query) && !wordSearchMatchesText(note.reference.text, query)) return;
+      if (!wants("footnote")) return;
       push({
         anchor: { kind: "footnote", id: `footnote:${index + 1}`, label: `Footnote ${index + 1}`, text: truncateLabel(note.body.text, 180), noteTarget: "body" },
         objectType: "footnote",
@@ -769,6 +792,7 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
 
     (endnotes?.items ?? []).forEach((note, index) => {
       if (!wordSearchMatchesText(note.body.text, query) && !wordSearchMatchesText(note.reference.text, query)) return;
+      if (!wants("endnote")) return;
       push({
         anchor: { kind: "endnote", id: `endnote:${index + 1}`, label: `Endnote ${index + 1}`, text: truncateLabel(note.body.text, 180), noteTarget: "body" },
         objectType: "endnote",

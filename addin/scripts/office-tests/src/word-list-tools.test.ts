@@ -43,8 +43,8 @@ test("Word list bridge dispatches structured list action and enforces Word-only 
 
   assert.equal(result.success, true);
   assert.equal(calls[0]?.host, "word");
-  assert.equal(calls[0]?.action.type, "formatList");
-  assert.equal((calls[0]?.action.options as Record<string, unknown>).listType, "bullet");
+  assert.equal(calls[0]?.action.type, "applyListFormat");
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).listKind, "bullet");
 
   const unsupported = await executeOfficeTool({
     requestId: "word-list-excel",

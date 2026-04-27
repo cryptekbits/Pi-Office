@@ -13,6 +13,15 @@ function toNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function toOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function toZeroBasedIndex(value: unknown): number | undefined {
+  const number = toOptionalNumber(value);
+  return typeof number === "number" ? Math.max(0, Math.trunc(number) - 1) : undefined;
+}
+
 function toStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((entry) => String(entry)).filter(Boolean) : [];
 }
@@ -61,26 +70,35 @@ export async function executeWordOfficeTool(
         }
 
         const params = request.params as Record<string, unknown>;
+        const font = params.font && typeof params.font === "object" && !Array.isArray(params.font)
+          ? params.font as Record<string, unknown>
+          : {};
+        const paragraph = params.paragraph && typeof params.paragraph === "object" && !Array.isArray(params.paragraph)
+          ? params.paragraph as Record<string, unknown>
+          : {};
         const options = {
           ...(params.options && typeof params.options === "object" && !Array.isArray(params.options)
             ? params.options as Record<string, unknown>
             : {}),
-          ...(params.font && typeof params.font === "object" && !Array.isArray(params.font)
-            ? { font: params.font }
-            : {}),
           style: params.style,
-          builtInStyle: params.builtInStyle,
+          styleBuiltIn: params.styleBuiltIn ?? params.builtInStyle,
           alignment: params.alignment,
-          leftIndent: params.leftIndent,
-          rightIndent: params.rightIndent,
-          firstLineIndent: params.firstLineIndent,
-          lineSpacing: params.lineSpacing,
-          spaceBefore: params.spaceBefore,
-          spaceAfter: params.spaceAfter,
+          fontName: font.name ?? params.fontName,
+          fontSize: font.size ?? params.fontSize,
+          color: font.color ?? params.color,
+          bold: font.bold ?? params.bold,
+          italic: font.italic ?? params.italic,
+          highlightColor: font.highlightColor ?? params.highlightColor,
+          leftIndent: paragraph.leftIndent ?? params.leftIndent,
+          rightIndent: paragraph.rightIndent ?? params.rightIndent,
+          firstLineIndent: paragraph.firstLineIndent ?? params.firstLineIndent,
+          lineSpacing: paragraph.lineSpacing ?? params.lineSpacing,
+          spaceBefore: paragraph.spaceBefore ?? params.spaceBefore,
+          spaceAfter: paragraph.spaceAfter ?? params.spaceAfter,
           clearFormatting: params.clearFormatting,
         };
         const result = await dependencies.applyHostAction(request.host, {
-          type: "formatRange",
+          type: request.params.clearFormatting === true ? "clearFormatting" : "applyTextFormat",
           target: params.target as never,
           options,
         });
@@ -122,6 +140,8 @@ export async function executeWordOfficeTool(
           objectTypes: toStringArray(request.params.objectTypes),
           maxResults: toNumber(request.params.maxResults ?? request.params.limit, 20),
           includeContext: request.params.includeContext !== false,
+          matchCase: request.params.matchCase === true,
+          matchWholeWord: request.params.matchWholeWord === true,
         });
         return {
           requestId: request.requestId,
@@ -139,14 +159,33 @@ export async function executeWordOfficeTool(
           };
         }
 
+        const operation = String(request.params.operation ?? request.params.listType ?? request.params.listKind ?? "bullet");
+        const listKindMap: Record<string, string> = {
+          bullet: "bullet",
+          bullets: "bullet",
+          number: "numbered",
+          numbered: "numbered",
+          outlineNumber: "outline",
+          outline: "outline",
+          multilevel: "outline",
+          removeNumbers: "remove",
+          remove: "remove",
+          none: "remove",
+          setLevel: "numbered",
+        };
+        if (operation === "indent" || operation === "outdent") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: `word_list_format operation ${operation} is not implemented by the current Word list executor; use setLevel with an explicit level instead.`,
+          };
+        }
         const result = await dependencies.applyHostAction(request.host, {
-          type: "formatList",
+          type: "applyListFormat",
           target: request.params.target as never,
           options: {
-            listType: request.params.listType ?? request.params.listKind,
+            listKind: listKindMap[operation] ?? request.params.listType ?? request.params.listKind ?? operation,
             level: request.params.level,
-            direction: request.params.direction,
-            remove: request.params.remove,
             confirmed: request.params.confirmed ?? request.params.confirmBroadChange,
           },
         });
@@ -166,11 +205,19 @@ export async function executeWordOfficeTool(
           };
         }
 
+        const operation = String(request.params.operation ?? "inventory");
+        if (operation === "add" || operation === "delete") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_reference_inventory is read-only. Bookmark add/delete needs a separate write-doc tool before it can be exposed.",
+          };
+        }
         const result = await dependencies.applyHostAction(request.host, {
-          type: "bookmark",
+          type: "bookmarkAction",
           target: request.params.target as never,
           options: {
-            operation: request.params.operation,
+            operation,
             name: request.params.name,
             preserve: request.params.preserve,
           },
@@ -188,15 +235,19 @@ export async function executeWordOfficeTool(
         }
 
         const result = await dependencies.applyHostAction(request.host, {
-          type: "hyperlink",
+          type: "manageHyperlink",
           target: request.params.target as never,
-          content: typeof request.params.text === "string" ? request.params.text : undefined,
+          content: typeof request.params.textToDisplay === "string"
+            ? request.params.textToDisplay
+            : typeof request.params.text === "string"
+              ? request.params.text
+              : undefined,
           options: {
             operation: request.params.operation,
             address: request.params.address,
             subAddress: request.params.subAddress,
             screenTip: request.params.screenTip,
-            text: request.params.text,
+            textToDisplay: request.params.textToDisplay ?? request.params.text,
           },
         });
         return { requestId: request.requestId, success: true, content: result };
@@ -211,19 +262,43 @@ export async function executeWordOfficeTool(
           };
         }
 
+        const operation = String(request.params.operation ?? "inventory");
+        const type = operation === "inventory"
+          ? "inspectTable"
+          : operation === "setCellText"
+            ? "editTableCell"
+            : "modifyTable";
+        const tableOperationMap: Record<string, string> = {
+          formatTable: "setStyle",
+          deleteTable: "deleteTable",
+          addRows: "addRows",
+          addColumns: "addColumns",
+          deleteRows: "deleteRows",
+          deleteColumns: "deleteColumns",
+          clear: "clear",
+        };
+        if (operation === "mergeCells") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_table mergeCells is not implemented by the current Word table executor.",
+          };
+        }
         const result = await dependencies.applyHostAction(request.host, {
-          type: "tableEdit",
+          type,
           target: request.params.target as never,
           values: Array.isArray(request.params.values) ? request.params.values as never : undefined,
           options: {
-            operation: request.params.operation,
-            tableIndex: request.params.tableIndex,
-            rowIndex: request.params.rowIndex,
-            columnIndex: request.params.columnIndex,
+            operation: tableOperationMap[operation] ?? operation,
+            tableIndex: toZeroBasedIndex(request.params.tableIndex),
+            rowIndex: toZeroBasedIndex(request.params.rowIndex),
+            columnIndex: toZeroBasedIndex(request.params.columnIndex),
             rowCount: request.params.rowCount,
             columnCount: request.params.columnCount,
+            count: request.params.count,
             text: request.params.text,
             style: request.params.style,
+            styleBuiltIn: request.params.styleBuiltIn,
             shadingColor: request.params.shadingColor,
             alignment: request.params.alignment,
             confirmDestructive: request.params.confirmDestructive,
@@ -243,14 +318,19 @@ export async function executeWordOfficeTool(
 
         const result = await dependencies.applyHostAction(request.host, {
           type: "sectionLayout",
-          content: typeof request.params.content === "string" ? request.params.content : undefined,
+          content: typeof request.params.text === "string"
+            ? request.params.text
+            : typeof request.params.content === "string"
+              ? request.params.content
+              : undefined,
           placement: typeof request.params.placement === "string" ? request.params.placement : undefined,
           options: {
             operation: request.params.operation,
-            sectionIndex: request.params.sectionIndex,
+            sectionIndex: toZeroBasedIndex(request.params.sectionIndex),
             part: request.params.part,
             headerFooterType: request.params.headerFooterType,
             text: request.params.text,
+            confirmDestructive: request.params.confirmDestructive,
             margins: request.params.margins,
             topMargin: request.params.topMargin,
             bottomMargin: request.params.bottomMargin,
@@ -274,14 +354,31 @@ export async function executeWordOfficeTool(
           };
         }
 
+        const operation = String(request.params.operation ?? "inventory");
+        const fieldTarget = request.params.target ?? (typeof request.params.fieldId === "string"
+          ? { kind: "field", id: request.params.fieldId }
+          : undefined);
+        const fieldOperationMap: Record<string, { type: string; operation?: string }> = {
+          inventory: { type: "fieldAction", operation: "inventory" },
+          insertField: { type: "insertField" },
+          updateField: { type: "fieldAction", operation: "update" },
+          lockField: { type: "fieldAction", operation: "lock" },
+          unlockField: { type: "fieldAction", operation: "unlock" },
+          unlinkField: { type: "fieldAction", operation: "unlink" },
+          selectField: { type: "fieldAction", operation: "select" },
+          tocInventory: { type: "tocAction", operation: "inventory" },
+          updateTocPageNumbers: { type: "tocAction", operation: "updatePageNumbers" },
+        };
+        const mapped = fieldOperationMap[operation] ?? { type: "fieldAction", operation };
         const result = await dependencies.applyHostAction(request.host, {
-          type: "fieldReference",
-          target: request.params.target as never,
+          type: mapped.type,
+          target: fieldTarget as never,
           content: typeof request.params.text === "string" ? request.params.text : undefined,
           options: {
-            operation: request.params.operation,
+            operation: mapped.operation,
             fieldType: request.params.fieldType,
             fieldText: request.params.fieldText ?? request.params.text,
+            text: request.params.fieldText ?? request.params.text,
             lock: request.params.lock,
             confirmDestructive: request.params.confirmDestructive,
             tocIndex: request.params.tocIndex,
@@ -301,7 +398,13 @@ export async function executeWordOfficeTool(
           };
         }
 
-        const operation = String(request.params.operation ?? "");
+        const requestedOperation = String(request.params.operation ?? "");
+        const operation =
+          requestedOperation === "deleteWrapper" || requestedOperation === "deleteContent"
+            ? "delete"
+            : requestedOperation === "lock" || requestedOperation === "unlock"
+              ? "setMetadata"
+              : requestedOperation;
         if (operation === "inventory") {
           const rawResult = await dependencies.collectOfficeContext(request.host, {
             includeFormatting: true,
@@ -330,9 +433,12 @@ export async function executeWordOfficeTool(
             cannotDelete: request.params.cannotDelete,
             cannotEdit: request.params.cannotEdit,
             removeWhenEdited: request.params.removeWhenEdited,
-            keepContent: request.params.keepContent,
+            keepContent: requestedOperation === "deleteWrapper" ? true : request.params.keepContent,
+            confirmDestructive: request.params.confirmDestructive,
             select: request.params.select,
             contentControlType: request.params.contentControlType,
+            ...(requestedOperation === "lock" ? { cannotEdit: true, cannotDelete: true } : {}),
+            ...(requestedOperation === "unlock" ? { cannotEdit: false, cannotDelete: false } : {}),
           },
         });
         return { requestId: request.requestId, success: true, content: result };
@@ -353,7 +459,11 @@ export async function executeWordOfficeTool(
           content: typeof request.params.content === "string" ? request.params.content : undefined,
           placement: typeof request.params.placement === "string" ? request.params.placement : undefined,
           options: {
-            operation: request.params.operation,
+            operation: request.params.operation === "insertApprovedText" && typeof request.params.text === "string"
+              ? "insertApprovedText"
+              : request.params.operation === "insertApprovedText"
+                ? "insert"
+                : request.params.operation,
             name: request.params.name,
             category: request.params.category,
             blockType: request.params.blockType,
@@ -361,6 +471,8 @@ export async function executeWordOfficeTool(
             insertType: request.params.insertType,
             approved: request.params.approved,
             provenanceApproved: request.params.provenanceApproved,
+            provenance: request.params.provenance,
+            text: request.params.text,
           },
         });
         return { requestId: request.requestId, success: true, content: result };
@@ -376,16 +488,20 @@ export async function executeWordOfficeTool(
         }
 
         const result = await dependencies.applyHostAction(request.host, {
-          type: "annotationReview",
+          type: "critiqueAnnotation",
           target: request.params.target as never,
           content: typeof request.params.message === "string" ? request.params.message : undefined,
           options: {
-            operation: request.params.operation,
+            operation: request.params.operation === "insert" || request.params.operation === "fallbackProposal"
+              ? "propose"
+              : request.params.operation,
             colorScheme: request.params.colorScheme,
             start: request.params.start,
             length: request.params.length,
             replacement: request.params.replacement,
             annotationId: request.params.annotationId,
+            edits: request.params.fallbackEdits,
+            critiques: request.params.critiques,
           },
         });
         return { requestId: request.requestId, success: true, content: result };
@@ -405,8 +521,9 @@ export async function executeWordOfficeTool(
           target: request.params.target as never,
           content: typeof request.params.baselinePath === "string" ? request.params.baselinePath : undefined,
           options: {
-            operation: request.params.operation,
+            operation: request.params.operation === "diagnostics" ? "inventory" : request.params.operation,
             baselinePath: request.params.baselinePath,
+            filePath: request.params.baselinePath,
             compareTarget: request.params.compareTarget,
             confirmReviewStateChange: request.params.confirmReviewStateChange,
           },
@@ -424,7 +541,7 @@ export async function executeWordOfficeTool(
         }
 
         const result = await dependencies.applyHostAction(request.host, {
-          type: "qualityCheck",
+          type: "proofingStats",
           target: request.params.target as never,
           options: {
             scope: request.params.scope,
@@ -446,15 +563,13 @@ export async function executeWordOfficeTool(
         }
 
         const result = await dependencies.applyHostAction(request.host, {
-          type: "collaborationGuard",
+          type: "protectionAwareness",
           target: request.params.target as never,
           options: {
-            operation: request.params.operation,
-            protectionType: request.params.protectionType,
-            password: request.params.password,
             reviewerName: request.params.reviewerName,
             visible: request.params.visible,
-            confirmProtectionChange: request.params.confirmProtectionChange,
+            includeReviewers: request.params.includeReviewers,
+            includeRevisions: request.params.includeRevisions,
           },
         });
         return { requestId: request.requestId, success: true, content: result };

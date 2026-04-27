@@ -185,12 +185,15 @@ test("Office tool registry search ranks host-gated deferred tools with permissio
 test("deferred discovery protocol tools are read-only registry entries", () => {
   assert.ok(OFFICE_TOOL_NAMES.includes("office_tool_search"));
   assert.ok(OFFICE_TOOL_NAMES.includes("office_tool_get"));
+  assert.ok(OFFICE_TOOL_NAMES.includes("office_tool_call"));
   assert.ok(OFFICE_TOOL_NAMES.includes("mcp_tool_search"));
   assert.equal(TOOL_CATEGORY_MAP.office_tool_search, "read");
   assert.equal(TOOL_CATEGORY_MAP.office_tool_get, "read");
+  assert.equal(TOOL_CATEGORY_MAP.office_tool_call, "write-doc");
   assert.equal(TOOL_CATEGORY_MAP.mcp_tool_search, "read");
   assert.match(getOfficeToolDefinition("office_tool_search").description, /registry/i);
   assert.match(getOfficeToolDefinition("office_tool_get").description, /schema|definition/i);
+  assert.match(getOfficeToolDefinition("office_tool_call").description, /discovering/i);
   assert.match(getOfficeToolDefinition("mcp_tool_search").description, /connector/i);
 });
 
@@ -224,6 +227,7 @@ test("in-process runtime publishes compact core tools and defers long-tail Offic
   assert.ok(toolNames.includes("office_get_context"));
   assert.ok(toolNames.includes("office_tool_search"));
   assert.ok(toolNames.includes("office_tool_get"));
+  assert.ok(toolNames.includes("office_tool_call"));
   assert.ok(toolNames.includes("office_apply_edit"));
   assert.ok(toolNames.includes("ask_user"));
   assert.ok(!toolNames.includes("edit_doc_list"), "Word list edit schema should be deferred behind office_tool_search.");

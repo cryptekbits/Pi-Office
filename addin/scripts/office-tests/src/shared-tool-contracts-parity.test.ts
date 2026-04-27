@@ -59,6 +59,7 @@ const DEFAULT_DEFERRED_WORD_BASELINE = [
   "office_apply_edit",
   "office_capture_snapshot",
   "office_get_context",
+  "office_tool_call",
   "office_navigate",
   "office_read_section",
   "office_tool_get",
@@ -81,6 +82,7 @@ const VALID_EXECUTOR_KINDS = new Set<OfficeToolDefinition["executor"]>([
   "runtime-registry",
 ]);
 const RUNTIME_ONLY_OFFICE_TOOLS = new Set<string>([
+  "office_tool_call",
   "office_batch_execute",
   "mcp_batch_execute",
   "mcp_result_get",
@@ -416,6 +418,74 @@ test("taskpane bridge dispatch cases stay in sync with supported Office tools", 
   } as OfficeToolRequest);
   assert.equal(unsupported.success, false);
   assert.match(String(unsupported.error), /not supported by the taskpane bridge/);
+});
+
+test("deferred Word tool bridge action types are implemented by applyWordAction", async () => {
+  const wordActionsSource = readProjectFile("apps/taskpane/src/lib/office/word-actions.ts");
+  const dispatchedActions: string[] = [];
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({ snippets: { contentControls: [] } }),
+    applyHostAction: async (_host, action) => {
+      dispatchedActions.push(String(action.type));
+      return { ok: true, action: action.type };
+    },
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const requests: Array<{ toolName: OfficeToolRequest["toolName"]; params: Record<string, unknown> }> = [
+    { toolName: "word_format_text" as OfficeToolRequest["toolName"], params: { font: { bold: true } } },
+    { toolName: "word_list_format" as OfficeToolRequest["toolName"], params: { listKind: "bullet" } },
+    { toolName: "word_reference_inventory" as OfficeToolRequest["toolName"], params: { operation: "inventory" } },
+    { toolName: "word_hyperlink" as OfficeToolRequest["toolName"], params: { operation: "add", address: "https://example.com" } },
+    { toolName: "word_table" as OfficeToolRequest["toolName"], params: { operation: "setCellText", tableIndex: 1, rowIndex: 1, columnIndex: 1, text: "x" } },
+    { toolName: "word_section_layout" as OfficeToolRequest["toolName"], params: { operation: "inventory" } },
+    { toolName: "word_field_reference" as OfficeToolRequest["toolName"], params: { operation: "updateField", fieldId: "field:1" } },
+    { toolName: "word_field_reference" as OfficeToolRequest["toolName"], params: { operation: "tocInventory" } },
+    { toolName: "word_content_control" as OfficeToolRequest["toolName"], params: { operation: "fill", text: "x" } },
+    { toolName: "word_building_block" as OfficeToolRequest["toolName"], params: { operation: "insertApprovedText", text: "Approved text", provenance: "unit-test" } },
+    { toolName: "word_annotation_review" as OfficeToolRequest["toolName"], params: { operation: "insert", critiques: [{ text: "Tighten" }] } },
+    { toolName: "word_redline_review" as OfficeToolRequest["toolName"], params: { operation: "diagnostics" } },
+    { toolName: "word_proofing_stats" as OfficeToolRequest["toolName"], params: { scope: "document" } },
+    { toolName: "word_collab_guard" as OfficeToolRequest["toolName"], params: { includeRevisions: true } },
+  ];
+
+  for (const [index, request] of requests.entries()) {
+    const result = await executeOfficeTool({
+      requestId: `word-action-contract-${index}`,
+      toolName: request.toolName,
+      host: "word",
+      params: request.params,
+    } as OfficeToolRequest);
+    assert.equal(result.success, true, `${request.toolName} should dispatch successfully: ${result.error ?? ""}`);
+  }
+
+  assert.deepEqual(sorted(dispatchedActions), sorted([
+    "applyListFormat",
+    "applyTextFormat",
+    "bookmarkAction",
+    "buildingBlock",
+    "contentControlEdit",
+    "critiqueAnnotation",
+    "editTableCell",
+    "fieldAction",
+    "manageHyperlink",
+    "proofingStats",
+    "protectionAwareness",
+    "reviewExchange",
+    "sectionLayout",
+    "tocAction",
+  ]));
+
+  for (const actionType of dispatchedActions) {
+    assert.match(
+      wordActionsSource,
+      new RegExp(`type === "${escapeRegExp(actionType)}"`),
+      `${actionType} is dispatched by bridge/word.ts but not handled by word-actions.ts.`,
+    );
+  }
 });
 
 test("automated validation commands remain exposed in package scripts and CI gate", () => {

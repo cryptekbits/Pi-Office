@@ -37,7 +37,8 @@ test("Word protection bridge dispatches non-mutating protection action", async (
   } as OfficeToolRequest);
 
   assert.equal(result.success, true);
-  assert.equal(calls[0]?.action.type, "collaborationGuard");
+  assert.equal(calls[0]?.action.type, "protectionAwareness");
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).operation, undefined);
 });
 
 test("Word protection guidance warns before risky writes", () => {

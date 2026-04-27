@@ -1388,6 +1388,7 @@ export class BrowserConnectorRuntime {
     this.state.scopeOverrides = this.state.scopeOverrides.filter((entry) => entry.connectorId !== storedConnectorId);
     this.state.oauthFlows = this.state.oauthFlows.filter((entry) => entry.connectorId !== storedConnectorId);
     this.state.logs = this.state.logs.filter((entry) => entry.connectorId !== storedConnectorId);
+    this.resultStore.clear();
     if (existing) {
       this.appendLog({
         connectorId: undefined,
@@ -1403,6 +1404,7 @@ export class BrowserConnectorRuntime {
 
   async clearAll(): Promise<{ ok: true }> {
     this.state = createConnectorState();
+    this.resultStore.clear();
     try {
       localStorage.removeItem(CONNECTOR_STORAGE_KEY);
       localStorage.removeItem(CONNECTOR_CRYPTO_KEY_STORAGE_KEY);

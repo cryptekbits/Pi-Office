@@ -8,7 +8,7 @@ import { OFFICE_TOOL_NAMES, TOOL_CATEGORY_MAP, type OfficeToolRequest } from "..
 test("protocol exposes typed batch tools with safe categories", () => {
   assert.ok(OFFICE_TOOL_NAMES.includes("office_batch_execute"));
   assert.ok(OFFICE_TOOL_NAMES.includes("mcp_batch_execute"));
-  assert.equal(TOOL_CATEGORY_MAP.office_batch_execute, "read");
+  assert.equal(TOOL_CATEGORY_MAP.office_batch_execute, "write-doc");
   assert.equal(TOOL_CATEGORY_MAP.mcp_batch_execute, "connector");
 });
 
@@ -48,7 +48,8 @@ test("office batch execution runs allowlisted steps and rejects raw Office.js", 
   assert.match(rejected.steps[0]?.error ?? "", /not allowed inside structured batches/i);
 });
 
-test("batch execution stops on write step unless explicitly allowed", async () => {
+test("office batch execution relies on outer write-doc permission instead of model-supplied approval flags", async () => {
+  const calls: string[] = [];
   const result = await executeOfficeBatchPlan({
     host: "word",
     request: {
@@ -56,11 +57,14 @@ test("batch execution stops on write step unless explicitly allowed", async () =
         { id: "write", type: "tool", toolName: "office_apply_edit", arguments: { action: { type: "insertText", content: "x" } } },
       ],
     },
-    invokeOfficeTool: async () => ({ ok: true }),
+    invokeOfficeTool: async (toolName) => {
+      calls.push(toolName);
+      return { ok: true };
+    },
   });
 
-  assert.equal(result.ok, false);
-  assert.match(result.steps[0]?.error ?? "", /requires reviewRequired=true or confirmed=true/i);
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ["office_apply_edit"]);
 });
 
 test("taskpane bridge keeps office_batch_execute runtime-owned", async () => {

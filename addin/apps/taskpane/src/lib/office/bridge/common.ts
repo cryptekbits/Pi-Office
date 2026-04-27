@@ -682,6 +682,8 @@ export function toAnchor(params: Record<string, unknown>): OfficeAnchor {
           ? "notesRegion"
         : typeof anchorRecord.slideIndex === "number"
           ? "slide"
+          : typeof anchorRecord.searchResultIndex === "number" || trimString(anchorRecord.searchResultId)
+            ? "searchResult"
             : trimString(anchorRecord.slideId)
               ? "slide"
             : trimString(anchorRecord.shapeId)
@@ -706,18 +708,31 @@ export function toAnchor(params: Record<string, unknown>): OfficeAnchor {
                                 ? "contentControl"
                                 : anchorId?.startsWith("field:")
                                   ? "field"
-                                  : "selection";
+                                  : trimString(anchorRecord.bookmarkName)
+                                    ? "bookmark"
+                                    : trimString(anchorRecord.hyperlinkId) || trimString(anchorRecord.hyperlinkAddress)
+                                      ? "hyperlink"
+                                      : "selection";
 
   return {
     kind: (explicitKind ?? inferredKind) as OfficeAnchor["kind"],
     label: trimString(anchorRecord.label) ?? trimString(anchorRecord.layoutName) ?? trimString(anchorRecord.slideMasterName),
     id: anchorId ?? layoutId ?? slideMasterId,
     text: trimString(anchorRecord.text) ?? trimString(params.target),
+    searchQuery: trimString(anchorRecord.searchQuery),
     sheetName: trimString(anchorRecord.sheetName),
     address: trimString(anchorRecord.address),
     paragraphId: trimString(anchorRecord.paragraphId),
+    searchResultId: trimString(anchorRecord.searchResultId),
+    searchResultIndex: typeof anchorRecord.searchResultIndex === "number" ? anchorRecord.searchResultIndex : undefined,
+    objectType: trimString(anchorRecord.objectType),
+    occurrenceIndex: typeof anchorRecord.occurrenceIndex === "number" ? anchorRecord.occurrenceIndex : undefined,
     commentId: trimString(anchorRecord.commentId),
     revisionId: trimString(anchorRecord.revisionId),
+    noteTarget: anchorRecord.noteTarget === "reference" ? "reference" : anchorRecord.noteTarget === "body" ? "body" : undefined,
+    bookmarkName: trimString(anchorRecord.bookmarkName),
+    hyperlinkId: trimString(anchorRecord.hyperlinkId),
+    hyperlinkAddress: trimString(anchorRecord.hyperlinkAddress),
     slideId: trimString(anchorRecord.slideId),
     slideIndex: typeof anchorRecord.slideIndex === "number" ? anchorRecord.slideIndex : undefined,
     shapeId: trimString(anchorRecord.shapeId),
