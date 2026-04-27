@@ -122,7 +122,7 @@ export const PI_OFFICE_CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     id: "mcp_connectors",
     label: "Read-safe MCP connectors",
     owner: "companion-only",
-    tools: ["mcp", "mcp_tool_search", "mcp_batch_execute"],
+    tools: ["mcp", "mcp_tool_search", "mcp_batch_execute", "mcp_result_get", "mcp_result_summarize", "mcp_result_clear"],
     requiresCompanion: true,
     requiresSavedDocument: false,
     honestyLabel: "Runs verified read-safe local stdio or remote HTTP MCP tools through the companion.",

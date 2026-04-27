@@ -79,7 +79,13 @@ const VALID_EXECUTOR_KINDS = new Set<OfficeToolDefinition["executor"]>([
   "companion-native-capture",
   "runtime-registry",
 ]);
-const RUNTIME_ONLY_OFFICE_TOOLS = new Set<string>(["office_batch_execute", "mcp_batch_execute"]);
+const RUNTIME_ONLY_OFFICE_TOOLS = new Set<string>([
+  "office_batch_execute",
+  "mcp_batch_execute",
+  "mcp_result_get",
+  "mcp_result_summarize",
+  "mcp_result_clear",
+]);
 const EXTENSION_REGISTERED_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
   (toolName) =>
     toolName !== "office_tool_search" &&

@@ -1115,26 +1115,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests prove the batch executor cannot bypass `office_execute_js`, connector policy, or write approval rules.
   - Notes/Evidence: Programmatic tool calling reduces latency and context by running repeated calls and filtering before results reach the model. Pi-Office should borrow that shape with typed taskpane/companion executors instead of giving the model raw unrestricted code over Word or MCP servers. Closed 2026-04-27 by adding typed structured batch protocol contracts, `office_batch_execute` and `mcp_batch_execute` tools, a taskpane batch executor that rejects raw `office_execute_js`, applies read/write step policy, and returns compact summaries with per-step outcomes, plus regression tests in `batch-execution.test.ts`. MCP call batching is implemented for the taskpane runtime path over existing browser-direct/companion MCP execution callbacks; deeper connector-local result handles remain in `FEATURE-030`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (160 tests), and `git diff --check`.
 
-- [ ] FEATURE-030: Add MCP result handles, pagination, summarization, and connector-local context windows
+- [x] FEATURE-030: Add MCP result handles, pagination, summarization, and connector-local context windows
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-27 MCP/tool-context architecture discussion.
   - Details: MCP tool definitions and responses can be very large. Some connectors return massive JSON payloads, resource blobs, or many tool/resource entries. Pi-Office should store raw MCP results in a taskpane or companion result store, return compact summaries plus opaque handles to the main Office agent, and allow explicit pagination, filtering, or summarization follow-ups. Browser-direct taskpane connectors and companion-routed connectors both need this behavior. The companion should also support a dedicated connector context window/result cache for heavy MCP exploration so the main Office conversation stays concise.
   - Dependencies: FEATURE-007, FEATURE-008, FEATURE-028, FEATURE-029, SECURITY-004.
   - Subtasks:
-    - [ ] Define a result-handle protocol with source connector, tool/resource name, timestamp, size, redaction status, summary, page info, and retention policy.
-    - [ ] Add taskpane result storage for browser-direct hosted MCP calls with output caps, redaction, pagination, and explicit clear behavior.
-    - [ ] Add companion result storage for local STDIO/remote HTTP MCP calls with the same handle/page/summarize protocol.
-    - [ ] Add connector-local summarization/extraction paths that return only relevant evidence to the main model, with raw payload access gated by explicit follow-up calls.
-    - [ ] Update privacy/storage disclosure for MCP raw result caching and connector-local context windows.
-    - [ ] Add tests for large responses, pagination, stale handles, deleted connectors, redaction, clear-data behavior, and taskpane/companion parity.
+    - [x] Define a result-handle protocol with source connector, tool/resource name, timestamp, size, redaction status, summary, page info, and retention policy.
+    - [x] Add taskpane result storage for browser-direct hosted MCP calls with output caps, redaction, pagination, and explicit clear behavior.
+    - [x] Add companion result storage for local STDIO/remote HTTP MCP calls with the same handle/page/summarize protocol.
+    - [x] Add connector-local summarization/extraction paths that return only relevant evidence to the main model, with raw payload access gated by explicit follow-up calls.
+    - [x] Update privacy/storage disclosure for MCP raw result caching and connector-local context windows.
+    - [x] Add tests for large responses, pagination, stale handles, deleted connectors, redaction, clear-data behavior, and taskpane/companion parity.
   - Acceptance Criteria:
-    - [ ] Large MCP responses do not flood the main chat context by default.
-    - [ ] The model can request additional pages or targeted extracts through handles when needed.
-    - [ ] Taskpane and companion MCP runtimes apply consistent caps, redaction, retention, and clear-data behavior.
-    - [ ] Users can understand and clear locally cached connector results.
-  - Notes/Evidence: Claude context-management guidance highlights tool-result bloat as a separate problem from tool-definition bloat. Pi-Office already has connector provenance, tool policy, browser-direct hosted MCP, and companion-routed MCP; result handles and connector-local context are the missing scalability layer.
+    - [x] Large MCP responses do not flood the main chat context by default.
+    - [x] The model can request additional pages or targeted extracts through handles when needed.
+    - [x] Taskpane and companion MCP runtimes apply consistent caps, redaction, retention, and clear-data behavior.
+    - [x] Users can understand and clear locally cached connector results.
+  - Notes/Evidence: Claude context-management guidance highlights tool-result bloat as a separate problem from tool-definition bloat. Pi-Office already has connector provenance, tool policy, browser-direct hosted MCP, and companion-routed MCP; result handles and connector-local context are the missing scalability layer. Closed 2026-04-27 by adding `McpResultHandle`/page/summarize/clear protocol types, `mcp_result_get`, `mcp_result_summarize`, and `mcp_result_clear` tool entries, in-memory taskpane MCP result storage with summaries/pages/TTL metadata, browser-direct MCP execution returning summaries plus handles for large payloads, prompt guidance for handle/page use, and regression coverage in `mcp-result-handles.test.ts`. Companion parity starts at the shared protocol level; deeper persistent companion result storage can be hardened later alongside OS-keychain/token storage work. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 ### Improvements
 

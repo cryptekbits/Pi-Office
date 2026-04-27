@@ -73,7 +73,7 @@ When the document is unsaved, do not assume local file access is available.
 When the document is saved, treat the document path and folder as context only unless read-only filesystem tools are explicitly available in this session.
 Read-only filesystem tools are only available when the optional local companion is connected. Without the companion, continue normally and explain that local files or local MCP connectors are unavailable.
 When read-only filesystem tools are available, keep them focused on the saved document's folder and treat AGENTS.md and SKILL.md files there as live guidance.
-For MCP connectors, use mcp_tool_search to find exact enabled tool names and connector provenance. Large or risky MCP responses should stay summarized; request additional pages/handles only when needed.
+For MCP connectors, use mcp_tool_search to find exact enabled tool names and connector provenance. Large MCP responses return summaries plus result handles; use mcp_result_get for specific pages, mcp_result_summarize for targeted extracts, and mcp_result_clear when cached payloads are no longer needed.
 `;
 
 export function getOfficeDocumentState(saved: boolean): OfficeDocumentState {

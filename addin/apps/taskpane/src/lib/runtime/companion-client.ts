@@ -426,6 +426,32 @@ export class CompanionClient {
     });
   }
 
+  async getMcpResult(
+    browserSessionId: string,
+    request: import("@pi-office/pi-office-pack/protocol").McpResultPageRequest,
+  ): Promise<import("@pi-office/pi-office-pack/protocol").McpResultPageResponse> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      throw new Error("Optional companion is not connected for this taskpane session.");
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/mcp/results/get`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  async clearMcpResults(browserSessionId: string): Promise<{ ok: true; cleared: number }> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      throw new Error("Optional companion is not connected for this taskpane session.");
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/mcp/results`, {
+      method: "DELETE",
+    });
+  }
+
   async searchMcpTools(
     browserSessionId: string,
     request: McpToolSearchRequest,

@@ -1141,6 +1141,9 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   office_batch_execute: "read",
   mcp_tool_search: "read",
   mcp_batch_execute: "connector",
+  mcp_result_get: "read",
+  mcp_result_summarize: "read",
+  mcp_result_clear: "connector",
   office_read_section: "read",
   office_capture_snapshot: "read",
   office_capture_viewport: "read",
@@ -1310,6 +1313,55 @@ export type McpBatchStepResult = StructuredBatchStepResult;
 export interface McpBatchExecuteRequest extends StructuredBatchRequest {}
 export interface McpBatchExecuteResponse extends StructuredBatchResponse {}
 export type BatchExecutionResult = StructuredBatchResponse;
+
+export interface McpResultHandle {
+  handleId: string;
+  source: "browser" | "companion";
+  connectorId?: string | undefined;
+  connectorName?: string | undefined;
+  toolName?: string | undefined;
+  createdAt: string;
+  expiresAt?: string | undefined;
+  sizeBytes: number;
+  pageSizeBytes: number;
+  pageCount: number;
+  summary: string;
+  redacted: boolean;
+}
+
+export interface McpResultPageRequest {
+  handleId: string;
+  page?: number | undefined;
+}
+
+export interface McpResultPageResponse {
+  ok: true;
+  handle: McpResultHandle;
+  page: number;
+  content: string;
+  hasNextPage: boolean;
+}
+
+export interface McpResultSummarizeRequest {
+  handleId: string;
+  query?: string | undefined;
+  maxChars?: number | undefined;
+}
+
+export interface McpResultSummarizeResponse {
+  ok: true;
+  handle: McpResultHandle;
+  summary: string;
+}
+
+export interface McpResultClearRequest {
+  handleId?: string | undefined;
+}
+
+export interface McpResultClearResponse {
+  ok: true;
+  cleared: number;
+}
 
 export const AUTONOMY_LEVEL_AUTO_APPROVE: Record<AutonomyLevel, Set<ToolCategory>> = {
   off: new Set(["interaction"]),
@@ -1565,6 +1617,9 @@ export const OFFICE_TOOL_NAMES = [
   "office_batch_execute",
   "mcp_tool_search",
   "mcp_batch_execute",
+  "mcp_result_get",
+  "mcp_result_summarize",
+  "mcp_result_clear",
   "office_apply_edit",
   "edit_doc_text",
   "edit_doc_list",

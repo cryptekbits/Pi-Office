@@ -51,11 +51,16 @@ import type {
   ConnectorToolPolicyUpdateResponse,
   ConnectorTransport,
   ConnectorVerificationSnapshot,
+  McpResultClearRequest,
+  McpResultClearResponse,
+  McpResultPageRequest,
+  McpResultPageResponse,
   McpToolSearchRequest,
   ToolCapabilitySearchResult,
 } from "@pi-office/pi-office-pack/protocol";
 import { executeBrowserMcpTool, probeBrowserMcpConnector, type BrowserMcpConnectorConfig } from "./browser-mcp-client";
 import { getConnectorCatalogItem, listConnectorCatalog } from "./connector-catalog";
+import { McpResultStore } from "./mcp-result-store";
 
 const CONNECTOR_STORAGE_KEY = "pi-office-connectors";
 const CONNECTOR_STORAGE_VERSION = 1;
@@ -548,6 +553,7 @@ function buildCustomConnectorCatalogItem(name = "Custom MCP"): ConnectorCatalogI
 
 export class BrowserConnectorRuntime {
   private state: StoredConnectorState = createConnectorState();
+  private readonly resultStore = new McpResultStore();
   readonly ready: Promise<void>;
 
   constructor() {
@@ -661,7 +667,26 @@ export class BrowserConnectorRuntime {
     if (!config) {
       throw new Error(`Connector tool "${toolName}" requires the companion.`);
     }
-    return executeBrowserMcpTool(config, toolName, params);
+    const raw = await executeBrowserMcpTool(config, toolName, params);
+    return this.resultStore.store({
+      source: "browser",
+      connectorId: record.connectorId,
+      connectorName: record.name,
+      toolName,
+      value: raw,
+    }).content;
+  }
+
+  getMcpResult(request: McpResultPageRequest): McpResultPageResponse {
+    return this.resultStore.getPage(request);
+  }
+
+  summarizeMcpResult(request: import("@pi-office/pi-office-pack/protocol").McpResultSummarizeRequest) {
+    return this.resultStore.summarize(request);
+  }
+
+  clearMcpResults(request: McpResultClearRequest = {}): McpResultClearResponse {
+    return this.resultStore.clear(request);
   }
 
   getStatusResponse(scopeContext?: ConnectorScopeContext): ConnectorStatusResponse {

@@ -1370,6 +1370,9 @@ class BrowserOfficeSession {
     private readonly searchBrowserMcpTools: (request: McpToolSearchRequest, scopeContext: ConnectorScopeContext) => unknown,
     private readonly searchCompanionMcpTools: (sessionId: string, request: McpToolSearchRequest) => Promise<unknown>,
     private readonly executeBrowserMcpTool: (toolName: string, params: Record<string, unknown>, scopeContext: ConnectorScopeContext) => Promise<unknown>,
+    private readonly getBrowserMcpResultPage: (request: { handleId: string; page?: number | undefined }) => unknown,
+    private readonly summarizeBrowserMcpResult: (request: { handleId: string; query?: string | undefined; maxChars?: number | undefined }) => unknown,
+    private readonly clearBrowserMcpResults: (request: { handleId?: string | undefined }) => unknown,
     private readonly executeCompanionShellCommand: (sessionId: string, request: CompanionShellExecuteRequest) => Promise<unknown>,
     private readonly executeCompanionNativeCapture: (sessionId: string, request: CompanionNativeCaptureRequest) => Promise<CompanionNativeCaptureResponse>,
     request: OfficeSessionOpenRequest,
@@ -2132,6 +2135,46 @@ class BrowserOfficeSession {
             content: toToolContent(result),
             details: result,
           };
+        },
+      },
+      {
+        name: "mcp_result_get",
+        label: "Get MCP Result Page",
+        description: "Retrieve a page from a cached browser-direct MCP result handle.",
+        parameters: Type.Any(),
+        execute: async (_toolCallId, params) => {
+          const typed = normalizeToolParams(params);
+          const result = this.getBrowserMcpResultPage({
+            handleId: String(typed.handleId ?? ""),
+            page: typeof typed.page === "number" ? typed.page : undefined,
+          });
+          return normalizeExternalToolResult(result);
+        },
+      },
+      {
+        name: "mcp_result_summarize",
+        label: "Summarize MCP Result",
+        description: "Return a compact extract from a cached MCP result handle.",
+        parameters: Type.Any(),
+        execute: async (_toolCallId, params) => {
+          const typed = normalizeToolParams(params);
+          const result = this.summarizeBrowserMcpResult({
+            handleId: String(typed.handleId ?? ""),
+            query: typeof typed.query === "string" ? typed.query : undefined,
+            maxChars: typeof typed.maxChars === "number" ? typed.maxChars : undefined,
+          });
+          return normalizeExternalToolResult(result);
+        },
+      },
+      {
+        name: "mcp_result_clear",
+        label: "Clear MCP Result Cache",
+        description: "Clear one cached MCP result handle or all browser-direct MCP result handles.",
+        parameters: Type.Any(),
+        execute: async (_toolCallId, params) => {
+          const typed = normalizeToolParams(params);
+          const result = this.clearBrowserMcpResults({ handleId: typeof typed.handleId === "string" ? typed.handleId : undefined });
+          return normalizeExternalToolResult(result);
         },
       },
       {
@@ -3148,6 +3191,9 @@ class InProcessKernel {
           (searchRequest, scopeContext) => this.connectorRuntime.searchBrowserMcpTools(searchRequest, scopeContext),
           (sessionId, searchRequest) => this.companionClient.searchMcpTools(sessionId, searchRequest),
           (toolName, params, scopeContext) => this.connectorRuntime.executeBrowserMcpTool(toolName, params, scopeContext),
+          (request) => this.connectorRuntime.getMcpResult(request),
+          (request) => this.connectorRuntime.summarizeMcpResult(request),
+          (request) => this.connectorRuntime.clearMcpResults(request),
           (sessionId, request) => this.companionClient.executeShellCommand(sessionId, request),
           (sessionId, request) => this.companionClient.captureNativeViewport(sessionId, request),
           request,
