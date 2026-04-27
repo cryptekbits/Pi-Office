@@ -36,7 +36,7 @@ test("Word bookmark/hyperlink bridge dispatches structured actions", async () =>
     requestId: "bookmark",
     toolName: "word_reference_inventory" as OfficeToolRequest["toolName"],
     host: "word",
-    params: { operation: "add", name: "PiOffice_Target_1", target: { kind: "selection" } },
+    params: { operation: "inventory" },
   } as OfficeToolRequest);
   const hyperlink = await executeOfficeTool({
     requestId: "hyperlink",
@@ -47,8 +47,8 @@ test("Word bookmark/hyperlink bridge dispatches structured actions", async () =>
 
   assert.equal(bookmark.success, true);
   assert.equal(hyperlink.success, true);
-  assert.equal(calls[0]?.action.type, "bookmark");
-  assert.equal(calls[1]?.action.type, "hyperlink");
+  assert.equal(calls[0]?.action.type, "bookmarkAction");
+  assert.equal(calls[1]?.action.type, "manageHyperlink");
   assert.equal((calls[1]?.action.options as Record<string, unknown>).address, "https://example.com");
 });
 

@@ -16,6 +16,12 @@ import type {
   ConnectorDiagnostic,
   ConnectorOAuthStartResponse,
   ConnectorStatus,
+  McpResultClearRequest,
+  McpResultClearResponse,
+  McpResultPageRequest,
+  McpResultPageResponse,
+  McpResultSummarizeRequest,
+  McpResultSummarizeResponse,
   McpToolSearchRequest,
   McpToolSearchResponse,
   OfficeStateUpdate,
@@ -428,8 +434,8 @@ export class CompanionClient {
 
   async getMcpResult(
     browserSessionId: string,
-    request: import("@pi-office/pi-office-pack/protocol").McpResultPageRequest,
-  ): Promise<import("@pi-office/pi-office-pack/protocol").McpResultPageResponse> {
+    request: McpResultPageRequest,
+  ): Promise<McpResultPageResponse> {
     const binding = this.bindings.get(browserSessionId);
     if (!binding || !this.state.endpoint) {
       throw new Error("Optional companion is not connected for this taskpane session.");
@@ -441,7 +447,25 @@ export class CompanionClient {
     });
   }
 
-  async clearMcpResults(browserSessionId: string): Promise<{ ok: true; cleared: number }> {
+  async summarizeMcpResult(
+    browserSessionId: string,
+    request: McpResultSummarizeRequest,
+  ): Promise<McpResultSummarizeResponse> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      throw new Error("Optional companion is not connected for this taskpane session.");
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/mcp/results/summarize`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  async clearMcpResults(
+    browserSessionId: string,
+    request: McpResultClearRequest = {},
+  ): Promise<McpResultClearResponse> {
     const binding = this.bindings.get(browserSessionId);
     if (!binding || !this.state.endpoint) {
       throw new Error("Optional companion is not connected for this taskpane session.");
@@ -449,6 +473,7 @@ export class CompanionClient {
 
     return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/mcp/results`, {
       method: "DELETE",
+      body: JSON.stringify(request),
     });
   }
 

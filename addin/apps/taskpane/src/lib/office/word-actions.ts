@@ -180,6 +180,49 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       return field ? { field, fieldIndex: fieldIndex + 1 } : undefined;
     };
 
+    const resolveWordSearchResultTarget = async (target: OfficeAnchor) => {
+      const query = trimString(target.searchQuery) ?? trimString(target.text) ?? trimString(target.label);
+      if (!query) {
+        return undefined;
+      }
+      const matches = body.search(query, {
+        matchCase: false,
+        matchWholeWord: false,
+      });
+      matches.load("items/text");
+      await context.sync();
+      const index = typeof target.searchResultIndex === "number"
+        ? Math.max(0, Math.trunc(target.searchResultIndex) - 1)
+        : Math.max(0, Math.trunc(target.occurrenceIndex ?? 1) - 1);
+      return matches.items[index];
+    };
+
+    const resolveWordBookmarkTarget = async (target: OfficeAnchor) => {
+      if (!supportsRequirementSet("WordApiDesktop", "1.4")) {
+        return undefined;
+      }
+      const bookmarks = context.document.bookmarks;
+      bookmarks.load("items/name,items/start,items/end");
+      await context.sync();
+      return bookmarks.items.find((entry) =>
+        matchesTextQuery(entry.name, target.bookmarkName || target.label || target.id || target.text),
+      );
+    };
+
+    const resolveWordHyperlinkTarget = async (target: OfficeAnchor) => {
+      if (!supportsRequirementSet("WordApiDesktop", "1.3")) {
+        return undefined;
+      }
+      const hyperlinks = body.getRange("Content").hyperlinks;
+      hyperlinks.load("items/address,items/subAddress,items/screenTip,items/textToDisplay,items/name");
+      await context.sync();
+      return hyperlinks.items.find((entry) =>
+        matchesTextQuery(entry.address, target.hyperlinkAddress || target.text || target.label) ||
+        matchesTextQuery(entry.textToDisplay, target.text || target.label) ||
+        matchesTextQuery(entry.name, target.hyperlinkId || target.id),
+      );
+    };
+
     const resolveTargetRange = async () => {
       if (resolvedTarget) {
         return resolvedTarget;
@@ -236,6 +279,35 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         return resolvedTarget;
       }
 
+      if (action.target.kind === "searchResult" || action.target.kind === "range") {
+        const match = await resolveWordSearchResultTarget(action.target);
+        if (!match) {
+          throw new Error(`Could not find the requested Word search result: ${action.target.searchQuery || action.target.text || action.target.label || action.target.kind}.`);
+        }
+        resolvedTarget = { range: match };
+        return resolvedTarget;
+      }
+
+      if (action.target.kind === "bookmark") {
+        const bookmark = await resolveWordBookmarkTarget(action.target);
+        if (!bookmark) {
+          throw new Error(`Could not find the requested Word bookmark: ${action.target.bookmarkName || action.target.label || action.target.id || "bookmark"}.`);
+        }
+        bookmark.select();
+        await context.sync();
+        resolvedTarget = { range: context.document.getSelection() };
+        return resolvedTarget;
+      }
+
+      if (action.target.kind === "hyperlink") {
+        const hyperlink = await resolveWordHyperlinkTarget(action.target);
+        if (!hyperlink) {
+          throw new Error(`Could not find the requested Word hyperlink: ${action.target.hyperlinkAddress || action.target.text || action.target.label || "hyperlink"}.`);
+        }
+        resolvedTarget = { range: hyperlink.range };
+        return resolvedTarget;
+      }
+
       if (action.target.kind === "footnote" || action.target.kind === "endnote") {
         const note = await resolveWordNoteTarget(action.target);
         if (!note) {
@@ -246,8 +318,7 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         return resolvedTarget;
       }
 
-      resolvedTarget = { range: selection };
-      return resolvedTarget;
+      throw new Error(`Unsupported Word target anchor kind for this action: ${action.target.kind}.`);
     };
 
     const resolveCommentActionTarget = async () => {
@@ -525,6 +596,50 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       };
     }
 
+    if (type === "bookmarkAction") {
+      if (!supportsRequirementSet("WordApiDesktop", "1.4")) {
+        throw new Error("Word bookmark actions require WordApiDesktop 1.4 or newer.");
+      }
+      const operation = trimString(options.operation ?? action.operation) ?? "inventory";
+      const bookmarks = context.document.bookmarks;
+      bookmarks.load("items/name,items/start,items/end");
+      await context.sync();
+
+      if (operation === "inventory") {
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          bookmarks: bookmarks.items.slice(0, 50).map((bookmark, index) => ({
+            id: `bookmark:${index + 1}`,
+            bookmarkName: bookmark.name,
+            start: bookmark.start,
+            end: bookmark.end,
+          })),
+          count: bookmarks.items.length,
+          readOnly: true,
+        };
+      }
+
+      const name = trimString(options.name ?? action.name ?? action.target?.bookmarkName ?? action.target?.label);
+      if (!name) {
+        throw new Error(`Word bookmark ${operation} requires a bookmark name.`);
+      }
+      const bookmark = bookmarks.items.find((entry) => matchesTextQuery(entry.name, name));
+      if (operation === "exists") {
+        return { ok: true, host: "word", action: type, operation, bookmarkName: name, exists: Boolean(bookmark) };
+      }
+      if (operation === "select") {
+        if (!bookmark) throw new Error(`Could not find Word bookmark "${name}".`);
+        bookmark.select();
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, bookmarkName: bookmark.name };
+      }
+
+      throw new Error(`Unsupported read-only Word bookmark operation: ${operation}.`);
+    }
+
     if (type === "insertOoxml") {
       const { range } = await resolveTargetRange();
       range.insertOoxml(content, placement);
@@ -720,6 +835,9 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       }
 
       if (operation === "setHeader" || operation === "setFooter" || operation === "clearHeader" || operation === "clearFooter") {
+        if (operation.startsWith("clear") && toBoolean(options.confirmDestructive ?? action.confirmDestructive) !== true) {
+          throw new Error(`Word ${operation} requires confirmDestructive=true.`);
+        }
         const bodyPart = operation.endsWith("Footer") ? section.getFooter(headerFooterType) : targetHeaderFooter();
         const nextText = operation.startsWith("clear") ? "" : content;
         bodyPart.insertText(nextText, Word.InsertLocation.replace);
@@ -904,10 +1022,16 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       if (operation === "fill" || operation === "setText") {
         contentControl.insertText(trimString(options.text ?? action.text ?? action.content) ?? content, Word.InsertLocation.replace);
       } else if (operation === "clear") {
+        if (toBoolean(options.confirmDestructive ?? action.confirmDestructive) !== true) {
+          throw new Error("Word content-control clear requires confirmDestructive=true.");
+        }
         contentControl.clear();
       } else if (operation === "select") {
         contentControl.select();
       } else if (operation === "delete") {
+        if (toBoolean(options.keepContent ?? action.keepContent) !== true && toBoolean(options.confirmDestructive ?? action.confirmDestructive) !== true) {
+          throw new Error("Word content-control deleteContent requires confirmDestructive=true.");
+        }
         contentControl.delete(toBoolean(options.keepContent ?? action.keepContent) === true);
       } else if (operation === "setMetadata") {
         const title = trimString(options.title ?? action.title);
@@ -958,10 +1082,33 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
     }
 
     if (type === "buildingBlock") {
+      const operation = trimString(options.operation ?? action.operation) ?? "inventory";
+      if (operation === "insertApprovedText") {
+        const approvedText = trimString(options.text ?? action.text ?? action.content) ?? content;
+        const provenance = trimString(options.provenance ?? action.provenance ?? options.name ?? action.name);
+        if (!approvedText) {
+          throw new Error("Word approved reusable text insertion requires text.");
+        }
+        if (!provenance) {
+          throw new Error("Word approved reusable text insertion requires provenance.");
+        }
+        const { range } = await resolveTargetRange();
+        range.insertText(approvedText, placement);
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          inserted: true,
+          provenance,
+          source: "user-approved-text",
+        };
+      }
+
       if (!supportsRequirementSet("WordApiDesktop", "1.3")) {
         throw new Error("Word building block/template operations require WordApiDesktop 1.3 or newer.");
       }
-      const operation = trimString(options.operation ?? action.operation) ?? "inventory";
       const template = context.document.attachedTemplate;
       template.load("name,fullName");
       const entries = template.buildingBlockEntries;
@@ -1183,6 +1330,9 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         if (!supportsRequirementSet("WordApiDesktop", "1.4")) {
           throw new Error("Word field unlink requires WordApiDesktop 1.4 or newer.");
         }
+        if (toBoolean(options.confirmDestructive ?? action.confirmDestructive) !== true) {
+          throw new Error("Word field unlink requires confirmDestructive=true.");
+        }
         field.unlink();
       } else if (operation === "delete") {
         if (toBoolean(options.confirmDestructive ?? action.confirmDestructive) !== true) {
@@ -1293,6 +1443,9 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         if (!supportsRequirementSet("WordApiDesktop", "1.4")) {
           throw new Error("Word document compare/redline requires WordApiDesktop 1.4 or newer.");
         }
+        if (toBoolean(options.confirmReviewStateChange ?? action.confirmReviewStateChange) !== true) {
+          throw new Error("Word compare review exchange requires confirmReviewStateChange=true.");
+        }
         const filePath = trimString(options.filePath ?? action.filePath ?? action.content);
         if (!filePath) {
           throw new Error("Word compare requires an explicit baseline filePath.");
@@ -1384,16 +1537,7 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       await context.sync();
 
       if (operation === "protect" || operation === "unprotect") {
-        if (!supportsProtection) throw new Error("Word protect/unprotect diagnostics require WordApiDesktop 1.4 or newer.");
-        if (toBoolean(options.confirmProtectionChange ?? action.confirmProtectionChange) !== true) {
-          throw new Error(`Word ${operation} requires confirmProtectionChange=true.`);
-        }
-        if (operation === "unprotect") {
-          context.document.unprotect(trimString(options.password ?? action.password));
-        } else {
-          throw new Error("Word protect operations require a richer protection options contract; this slice is diagnostics-first.");
-        }
-        await context.sync();
+        throw new Error("word_collab_guard is diagnostics-only. Protection changes require a separate write-doc protection tool.");
       }
 
       const protectionType = supportsProtection ? String((context.document as unknown as { protectionType?: unknown }).protectionType ?? "Unknown") : "unsupported";
@@ -1409,7 +1553,7 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         host: "word",
         action: type,
         operation,
-        mutating: operation === "unprotect",
+        mutating: false,
         diagnostics: {
           protectionType,
           revisionCount,

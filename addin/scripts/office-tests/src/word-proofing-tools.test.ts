@@ -37,7 +37,7 @@ test("Word proofing bridge dispatches read-only proofing action", async () => {
   } as OfficeToolRequest);
 
   assert.equal(result.success, true);
-  assert.equal(calls[0]?.action.type, "qualityCheck");
+  assert.equal(calls[0]?.action.type, "proofingStats");
   assert.equal((calls[0]?.action.options as Record<string, unknown>).includeReadability, true);
 });
 

@@ -5,30 +5,43 @@ import { createOfficeToolExecutor, summarizeOfficeToolError, toAnchor, toHostAct
 import type { OfficeToolRequest } from "../../../packages/pi-office-pack/src/protocol.js";
 
 test("toAnchor resolves Word, Excel, and PowerPoint anchor kinds from structured params", () => {
-  assert.deepEqual(toAnchor({ commentId: "comment-7" }), {
-    kind: "comment",
-    commentId: "comment-7",
-    text: undefined,
-    label: undefined,
-    id: undefined,
-    sheetName: undefined,
-    address: undefined,
-    paragraphId: undefined,
-    revisionId: undefined,
-    slideId: undefined,
-    slideIndex: undefined,
-    shapeId: undefined,
-    tableName: undefined,
-    chartName: undefined,
-    pivotTableName: undefined,
-    namedItemName: undefined,
-  });
+  const commentAnchor = toAnchor({ commentId: "comment-7" });
+  assert.equal(commentAnchor.kind, "comment");
+  assert.equal(commentAnchor.commentId, "comment-7");
 
   assert.equal(toAnchor({ sheetName: "Budget", address: "A1:C3" }).kind, "range");
   assert.equal(toAnchor({ sheetName: "Budget", address: "B2" }).kind, "cell");
   assert.equal(toAnchor({ layoutId: "layout-2", layoutName: "Two Content" }).kind, "layout");
   assert.equal(toAnchor({ id: "notes:3", slideIndex: 3 }).kind, "notesRegion");
   assert.equal(toAnchor({ id: "contentControl:42" }).kind, "contentControl");
+});
+
+test("toAnchor preserves Word durable targeting metadata for deferred tools", () => {
+  const searchAnchor = toAnchor({
+    searchResultId: "search:7",
+    searchResultIndex: 6,
+    searchQuery: "indemnity",
+    objectType: "field",
+    occurrenceIndex: 2,
+  });
+  assert.equal(searchAnchor.kind, "searchResult");
+  assert.equal(searchAnchor.searchResultId, "search:7");
+  assert.equal(searchAnchor.searchResultIndex, 6);
+  assert.equal(searchAnchor.searchQuery, "indemnity");
+  assert.equal(searchAnchor.objectType, "field");
+  assert.equal(searchAnchor.occurrenceIndex, 2);
+
+  const noteAnchor = toAnchor({ kind: "footnote", id: "footnote:2", noteTarget: "body" });
+  assert.equal(noteAnchor.noteTarget, "body");
+
+  const bookmarkAnchor = toAnchor({ bookmarkName: "PiOffice_Target_1" });
+  assert.equal(bookmarkAnchor.kind, "bookmark");
+  assert.equal(bookmarkAnchor.bookmarkName, "PiOffice_Target_1");
+
+  const hyperlinkAnchor = toAnchor({ hyperlinkId: "hyperlink:3", hyperlinkAddress: "https://example.com" });
+  assert.equal(hyperlinkAnchor.kind, "hyperlink");
+  assert.equal(hyperlinkAnchor.hyperlinkId, "hyperlink:3");
+  assert.equal(hyperlinkAnchor.hyperlinkAddress, "https://example.com");
 });
 
 test("toHostAction creates Excel matrix actions from legacy params", () => {

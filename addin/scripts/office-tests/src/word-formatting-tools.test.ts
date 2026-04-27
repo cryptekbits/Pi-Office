@@ -46,8 +46,10 @@ test("Word format bridge dispatches structured format action and enforces Word-o
 
   assert.equal(result.success, true);
   assert.equal(calls[0]?.host, "word");
-  assert.equal(calls[0]?.action.type, "formatRange");
-  assert.deepEqual((calls[0]?.action.options as Record<string, unknown>).font, { bold: true, color: "#123456" });
+  assert.equal(calls[0]?.action.type, "applyTextFormat");
+  const options = calls[0]?.action.options as Record<string, unknown>;
+  assert.equal(options.bold, true);
+  assert.equal(options.color, "#123456");
 
   const unsupported = await executeOfficeTool({
     requestId: "word-format-excel",

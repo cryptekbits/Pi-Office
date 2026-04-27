@@ -38,8 +38,11 @@ test("Word table bridge dispatches structured table actions and enforces Word-on
 
   assert.equal(result.success, true);
   assert.equal(calls[0]?.host, "word");
-  assert.equal(calls[0]?.action.type, "tableEdit");
+  assert.equal(calls[0]?.action.type, "editTableCell");
   assert.equal((calls[0]?.action.options as Record<string, unknown>).operation, "setCellText");
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).tableIndex, 0);
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).rowIndex, 1);
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).columnIndex, 0);
 
   const unsupported = await executeOfficeTool({
     requestId: "word-table-excel",

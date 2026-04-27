@@ -34,6 +34,10 @@
       "types": "./dist/capabilities.d.ts",
       "import": "./dist/capabilities.js"
     },
+    "./mcp-result-store": {
+      "types": "./dist/mcp-result-store.d.ts",
+      "import": "./dist/mcp-result-store.js"
+    },
     "./provider-model-preferences": {
       "types": "./dist/provider-model-preferences.generated.d.ts",
       "import": "./dist/provider-model-preferences.generated.js"

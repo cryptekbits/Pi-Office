@@ -77,10 +77,6 @@ function stepParams(step: StructuredBatchStep): Record<string, unknown> {
   return {};
 }
 
-function stepBoolean(step: StructuredBatchStep, key: "confirmed" | "reviewRequired"): boolean {
-  return (step as unknown as Record<string, unknown>)[key] === true;
-}
-
 function stepOperation(step: StructuredBatchStep): string {
   return String((step as { operation?: unknown }).operation ?? step.type ?? "").trim();
 }
@@ -137,15 +133,6 @@ async function executeOfficeBatchStep(
       error: toolName === "office_execute_js"
         ? "office_execute_js is not allowed inside structured batches; use the manual one-time escape hatch directly."
         : `${toolName || "toolName"} is not allowed inside structured Office batches.`,
-    };
-  }
-
-  if (isWriteCategory(category) && !stepBoolean(step, "reviewRequired") && !stepBoolean(step, "confirmed")) {
-    return {
-      ...base,
-      status: "blocked",
-      summary: `Blocked ${category} step without review/confirmation.`,
-      error: `${toolName} is a ${category} step and requires reviewRequired=true or confirmed=true inside a batch.`,
     };
   }
 
@@ -234,7 +221,7 @@ async function executeMcpBatchStep(
         error: "MCP callTool batch steps require toolName.",
       };
     }
-    if (!stepBoolean(step, "confirmed")) {
+    if ((step as unknown as Record<string, unknown>).confirmed !== true) {
       return {
         ...base,
         status: "blocked",

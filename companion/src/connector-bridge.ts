@@ -17,10 +17,17 @@ import type {
   ConnectorToolInventoryItem,
   ConnectorVerificationSnapshot,
   ConnectorHealthState,
+  McpResultClearRequest,
+  McpResultClearResponse,
+  McpResultPageRequest,
+  McpResultPageResponse,
+  McpResultSummarizeRequest,
+  McpResultSummarizeResponse,
   McpToolSearchRequest,
   McpToolSearchResponse,
   ToolCapabilitySearchResult,
 } from "@pi-office/pi-office-pack/protocol";
+import { McpResultStore } from "@pi-office/pi-office-pack/mcp-result-store";
 
 type ProbeTransport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport;
 
@@ -821,6 +828,7 @@ export class CompanionConnectorBridge {
   constructor(private readonly oauthTokenProvider?: CompanionOAuthTokenProvider | undefined) {}
 
   private readonly preparedSessions = new Map<string, PreparedSession>();
+  private readonly resultStore = new McpResultStore();
 
   async probeConnector(definition: CompanionConnectorDefinition): Promise<{
     ok: boolean;
@@ -867,6 +875,18 @@ export class CompanionConnectorBridge {
     this.preparedSessions.delete(sessionId);
   }
 
+  getMcpResult(request: McpResultPageRequest): McpResultPageResponse {
+    return this.resultStore.getPage(request);
+  }
+
+  summarizeMcpResult(request: McpResultSummarizeRequest): McpResultSummarizeResponse {
+    return this.resultStore.summarize(request);
+  }
+
+  clearMcpResults(request: McpResultClearRequest = {}): McpResultClearResponse {
+    return this.resultStore.clear(request);
+  }
+
   async executePreparedTool(
     sessionId: string,
     toolName: string,
@@ -883,26 +903,35 @@ export class CompanionConnectorBridge {
     }
 
     return withClient(target.runtime, async (client) => {
+      let raw: unknown;
       if (target.kind === "resource") {
         const result = await client.readResource({ uri: target.resourceUri! });
-        return resourceContentToToolResult(result as { contents?: Array<{ text?: string; uri?: string; mimeType?: string }> });
+        raw = resourceContentToToolResult(result as { contents?: Array<{ text?: string; uri?: string; mimeType?: string }> });
+      } else {
+        const result = await client.callTool({
+          name: target.rawName!,
+          arguments: args,
+        });
+        raw = {
+          content: Array.isArray((result as { content?: unknown[] }).content)
+            ? (result as { content: unknown[] }).content
+            : [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+          details: result,
+        };
       }
 
-      const result = await client.callTool({
-        name: target.rawName!,
-        arguments: args,
-      });
-      return {
-        content: Array.isArray((result as { content?: unknown[] }).content)
-          ? (result as { content: unknown[] }).content
-          : [
-              {
-                type: "text",
-                text: JSON.stringify(result, null, 2),
-              },
-            ],
-        details: result,
-      };
+      return this.resultStore.store({
+        source: "companion",
+        connectorId: target.definition.connectorId,
+        connectorName: target.definition.name,
+        toolName,
+        value: raw,
+      }).content;
     });
   }
 

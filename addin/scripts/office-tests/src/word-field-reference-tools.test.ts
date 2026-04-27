@@ -33,13 +33,14 @@ test("Word field bridge dispatches structured field actions", async () => {
     requestId: "field-update",
     toolName: "word_field_reference" as OfficeToolRequest["toolName"],
     host: "word",
-    params: { operation: "update", target: { kind: "field", id: "field:1" } },
+    params: { operation: "updateField", fieldId: "field:1" },
   } as OfficeToolRequest);
 
   assert.equal(result.success, true);
   assert.equal(calls[0]?.host, "word");
-  assert.equal(calls[0]?.action.type, "fieldReference");
+  assert.equal(calls[0]?.action.type, "fieldAction");
   assert.equal((calls[0]?.action.options as Record<string, unknown>).operation, "update");
+  assert.deepEqual(calls[0]?.action.target, { kind: "field", id: "field:1" });
 });
 
 test("Word field guidance separates fields and generated references from text rewrites", () => {

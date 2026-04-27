@@ -14,6 +14,9 @@ import type {
   CompanionSessionOpenRequest,
   CompanionSessionOpenResponse,
   CompanionState,
+  McpResultClearRequest,
+  McpResultPageRequest,
+  McpResultSummarizeRequest,
 } from "@pi-office/pi-office-pack/protocol";
 import { loadConfig, type CompanionConfig } from "./config.js";
 import { CompanionConnectorBridge } from "./connector-bridge.js";
@@ -356,6 +359,54 @@ export class CompanionServer {
           query: body?.query,
           results: this.connectorBridge.searchPreparedTools(session.id, body),
         });
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.post("/v1/sessions/:sessionId/mcp/results/get", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      try {
+        response.json(this.connectorBridge.getMcpResult(request.body as McpResultPageRequest));
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.post("/v1/sessions/:sessionId/mcp/results/summarize", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      try {
+        response.json(this.connectorBridge.summarizeMcpResult(request.body as McpResultSummarizeRequest));
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.delete("/v1/sessions/:sessionId/mcp/results", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      try {
+        response.json(this.connectorBridge.clearMcpResults(request.body as McpResultClearRequest | undefined));
       } catch (error) {
         response.status(400).json({
           error: error instanceof Error ? error.message : String(error),

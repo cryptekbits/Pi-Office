@@ -40,6 +40,23 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     compactSummary: "Load full schemas for selected Office capabilities only when needed.",
   },
   {
+    name: "office_tool_call",
+    hosts: "all",
+    category: "write-doc",
+    label: "Call Discovered Office Tool",
+    description:
+      "Execute a structured Office tool after discovering it with office_tool_search and loading its schema with office_tool_get. This conservative dispatcher is classified as document-write capable and cannot run office_execute_js.",
+    parameters: Type.Object({
+      toolName: Type.String({ description: "Exact Office tool name returned by office_tool_search / office_tool_get." }),
+      arguments: Type.Optional(Type.Any({ description: "JSON arguments matching the discovered tool schema." })),
+    }),
+    executor: "runtime-registry",
+    deferred: false,
+    capabilityTags: ["registry", "execution", "office-tools", "deferred-tools"],
+    riskLevel: "high",
+    compactSummary: "Execute a discovered Office capability without publishing every specialized schema upfront.",
+  },
+  {
     name: "mcp_tool_search",
     hosts: "all",
     category: "read",
@@ -61,10 +78,10 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
   {
     name: "office_batch_execute",
     hosts: "all",
-    category: "read",
+    category: "write-doc",
     label: "Execute Office Batch Plan",
     description:
-      "Execute a constrained, typed batch plan over approved Office tools. This is not arbitrary code execution: escape-hatch Office.js is excluded and write steps still require explicit per-step confirmation.",
+      "Execute a constrained, typed batch plan over approved Office tools. This is not arbitrary code execution: escape-hatch Office.js is excluded and the whole batch is permissioned as document-write capable.",
     parameters: Type.Object({
       steps: Type.Array(Type.Any({ description: "Typed Office batch steps." })),
       stopOnError: Type.Optional(Type.Boolean({ description: "Stop after the first failed step. Defaults to true." })),

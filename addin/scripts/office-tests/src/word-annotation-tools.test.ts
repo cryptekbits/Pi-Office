@@ -33,12 +33,12 @@ test("Word annotation bridge dispatches structured annotation action", async () 
     requestId: "annotation",
     toolName: "word_annotation_review" as OfficeToolRequest["toolName"],
     host: "word",
-    params: { operation: "insertCritiques", critiques: [{ text: "Tighten wording", start: 0, length: 5 }] },
+    params: { operation: "insert", critiques: [{ text: "Tighten wording", start: 0, length: 5 }] },
   } as OfficeToolRequest);
 
   assert.equal(result.success, true);
-  assert.equal(calls[0]?.action.type, "annotationReview");
-  assert.equal((calls[0]?.action.options as { operation?: string }).operation, "insertCritiques");
+  assert.equal(calls[0]?.action.type, "critiqueAnnotation");
+  assert.equal((calls[0]?.action.options as { operation?: string }).operation, "propose");
 });
 
 test("Word annotation guidance preserves sidepane fallback", () => {

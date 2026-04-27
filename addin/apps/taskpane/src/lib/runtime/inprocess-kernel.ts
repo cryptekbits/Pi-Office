@@ -67,6 +67,9 @@ import {
   type ConnectorStatusResponse,
   type ConnectorTestResponse,
   type ConnectorToolPolicyUpdateRequest,
+  type McpResultClearRequest,
+  type McpResultPageRequest,
+  type McpResultSummarizeRequest,
   type McpToolSearchRequest,
   type OfficeDocumentState,
   type ContextBreakdownEntry,
@@ -120,6 +123,7 @@ import {
   getOfficeToolDefinition,
   getCoreOfficeToolDefinitionsForHost,
   getOfficeToolCapabilityDetail,
+  officeToolSupportsHost,
   searchOfficeToolDefinitions,
   type OfficeToolDefinition,
 } from "../office/tools/index.js";
@@ -1373,6 +1377,9 @@ class BrowserOfficeSession {
     private readonly getBrowserMcpResultPage: (request: { handleId: string; page?: number | undefined }) => unknown,
     private readonly summarizeBrowserMcpResult: (request: { handleId: string; query?: string | undefined; maxChars?: number | undefined }) => unknown,
     private readonly clearBrowserMcpResults: (request: { handleId?: string | undefined }) => unknown,
+    private readonly getCompanionMcpResultPage: (sessionId: string, request: McpResultPageRequest) => Promise<unknown>,
+    private readonly summarizeCompanionMcpResult: (sessionId: string, request: McpResultSummarizeRequest) => Promise<unknown>,
+    private readonly clearCompanionMcpResults: (sessionId: string, request: McpResultClearRequest) => Promise<unknown>,
     private readonly executeCompanionShellCommand: (sessionId: string, request: CompanionShellExecuteRequest) => Promise<unknown>,
     private readonly executeCompanionNativeCapture: (sessionId: string, request: CompanionNativeCaptureRequest) => Promise<CompanionNativeCaptureResponse>,
     request: OfficeSessionOpenRequest,
@@ -1847,6 +1854,48 @@ class BrowserOfficeSession {
     return getResolvedCapability(this.resolveCapabilities(), id).available;
   }
 
+  private isToolAvailableByName(toolName: string): boolean {
+    return getAvailableToolNames(this.resolveCapabilities()).has(toolName);
+  }
+
+  private isCompanionMcpResultHandle(handleId: string): boolean {
+    return handleId.startsWith("mcp-result-companion-");
+  }
+
+  private async getMcpResultPage(request: McpResultPageRequest): Promise<unknown> {
+    if (this.isCompanionMcpResultHandle(request.handleId)) {
+      return this.getCompanionMcpResultPage(this.sessionId, request);
+    }
+    return this.getBrowserMcpResultPage(request);
+  }
+
+  private async summarizeMcpResult(request: McpResultSummarizeRequest): Promise<unknown> {
+    if (this.isCompanionMcpResultHandle(request.handleId)) {
+      return this.summarizeCompanionMcpResult(this.sessionId, request);
+    }
+    return this.summarizeBrowserMcpResult(request);
+  }
+
+  private async clearMcpResultHandles(request: McpResultClearRequest = {}): Promise<unknown> {
+    if (request.handleId) {
+      if (this.isCompanionMcpResultHandle(request.handleId)) {
+        return this.clearCompanionMcpResults(this.sessionId, request);
+      }
+      return this.clearBrowserMcpResults(request);
+    }
+
+    const [browser, companion] = await Promise.all([
+      Promise.resolve(this.clearBrowserMcpResults(request)),
+      this.companionState.status === "connected"
+        ? this.clearCompanionMcpResults(this.sessionId, request).catch((error) => ({
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          }))
+        : Promise.resolve({ ok: true, cleared: 0 }),
+    ]);
+    return { browser, companion };
+  }
+
   private canUseCompanionFileTools(): boolean {
     return this.isCapabilityAvailable("local_files");
   }
@@ -2102,6 +2151,45 @@ class BrowserOfficeSession {
   private createRuntimeAgentTools(): AgentTool[] {
     return [
       {
+        name: "office_tool_call",
+        label: "Call Discovered Office Tool",
+        description:
+          "Execute a structured Office tool discovered through office_tool_search / office_tool_get. This dispatcher cannot run office_execute_js and is permissioned as document-write capable.",
+        parameters: Type.Object({
+          toolName: Type.String({
+            description: "Exact Office tool name returned by office_tool_search / office_tool_get.",
+          }),
+          arguments: Type.Optional(Type.Any({
+            description: "JSON arguments matching the discovered Office tool schema.",
+          })),
+        }),
+        execute: async (_toolCallId, params) => {
+          const typed = normalizeToolParams(params);
+          const toolName = String(typed.toolName ?? "").trim() as OfficeToolName;
+          if (!toolName) {
+            throw new Error("office_tool_call requires toolName.");
+          }
+          if (toolName === "office_tool_call") {
+            throw new Error("office_tool_call cannot call itself.");
+          }
+          if (toolName === "office_execute_js") {
+            throw new Error("office_execute_js must be called directly as a manual one-time escape hatch.");
+          }
+          const definition = getOfficeToolDefinition(toolName);
+          if (definition.executor === "runtime-registry" || definition.executor === "companion-native-capture") {
+            throw new Error(`${toolName} is not executable through office_tool_call.`);
+          }
+          if (!officeToolSupportsHost(definition, this.officeState.host)) {
+            throw new Error(`${toolName} is not available for ${this.officeState.host}.`);
+          }
+          if (!this.isToolAvailableByName(toolName)) {
+            throw new Error(`${toolName} is not available in the current Pi-Office capability state.`);
+          }
+          const tool = this.createOfficeAgentTool(definition);
+          return tool.execute(_toolCallId, normalizeToolParams(typed.arguments));
+        },
+      },
+      {
         name: "office_batch_execute",
         label: "Execute Office Batch Plan",
         description:
@@ -2140,11 +2228,11 @@ class BrowserOfficeSession {
       {
         name: "mcp_result_get",
         label: "Get MCP Result Page",
-        description: "Retrieve a page from a cached browser-direct MCP result handle.",
+        description: "Retrieve a page from a cached browser-direct or companion-routed MCP result handle.",
         parameters: Type.Any(),
         execute: async (_toolCallId, params) => {
           const typed = normalizeToolParams(params);
-          const result = this.getBrowserMcpResultPage({
+          const result = await this.getMcpResultPage({
             handleId: String(typed.handleId ?? ""),
             page: typeof typed.page === "number" ? typed.page : undefined,
           });
@@ -2158,7 +2246,7 @@ class BrowserOfficeSession {
         parameters: Type.Any(),
         execute: async (_toolCallId, params) => {
           const typed = normalizeToolParams(params);
-          const result = this.summarizeBrowserMcpResult({
+          const result = await this.summarizeMcpResult({
             handleId: String(typed.handleId ?? ""),
             query: typeof typed.query === "string" ? typed.query : undefined,
             maxChars: typeof typed.maxChars === "number" ? typed.maxChars : undefined,
@@ -2169,11 +2257,13 @@ class BrowserOfficeSession {
       {
         name: "mcp_result_clear",
         label: "Clear MCP Result Cache",
-        description: "Clear one cached MCP result handle or all browser-direct MCP result handles.",
+        description: "Clear one cached MCP result handle or all browser-direct and companion-routed MCP result handles.",
         parameters: Type.Any(),
         execute: async (_toolCallId, params) => {
           const typed = normalizeToolParams(params);
-          const result = this.clearBrowserMcpResults({ handleId: typeof typed.handleId === "string" ? typed.handleId : undefined });
+          const result = await this.clearMcpResultHandles({
+            handleId: typeof typed.handleId === "string" ? typed.handleId : undefined,
+          });
           return normalizeExternalToolResult(result);
         },
       },
@@ -3194,6 +3284,9 @@ class InProcessKernel {
           (request) => this.connectorRuntime.getMcpResult(request),
           (request) => this.connectorRuntime.summarizeMcpResult(request),
           (request) => this.connectorRuntime.clearMcpResults(request),
+          (sessionId, request) => this.companionClient.getMcpResult(sessionId, request),
+          (sessionId, request) => this.companionClient.summarizeMcpResult(sessionId, request),
+          (sessionId, request) => this.companionClient.clearMcpResults(sessionId, request),
           (sessionId, request) => this.companionClient.executeShellCommand(sessionId, request),
           (sessionId, request) => this.companionClient.captureNativeViewport(sessionId, request),
           request,
