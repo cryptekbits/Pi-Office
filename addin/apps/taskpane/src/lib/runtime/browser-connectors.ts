@@ -51,6 +51,8 @@ import type {
   ConnectorToolPolicyUpdateResponse,
   ConnectorTransport,
   ConnectorVerificationSnapshot,
+  McpToolSearchRequest,
+  ToolCapabilitySearchResult,
 } from "@pi-office/pi-office-pack/protocol";
 import { executeBrowserMcpTool, probeBrowserMcpConnector, type BrowserMcpConnectorConfig } from "./browser-mcp-client";
 import { getConnectorCatalogItem, listConnectorCatalog } from "./connector-catalog";
@@ -590,6 +592,59 @@ export class BrowserConnectorRuntime {
       }
     }
     return [...names].sort((left, right) => left.localeCompare(right));
+  }
+
+  searchBrowserMcpTools(request: McpToolSearchRequest = {}, scopeContext?: ConnectorScopeContext): ToolCapabilitySearchResult[] {
+    this.dropExpiredOAuthFlows();
+    const query = typeof request.query === "string" ? request.query.trim().toLowerCase() : "";
+    const connectorFilter = typeof request.connectorId === "string" ? request.connectorId.trim() : "";
+    const limit =
+      typeof request.limit === "number" && Number.isFinite(request.limit)
+        ? Math.max(1, Math.min(20, Math.trunc(request.limit)))
+        : 8;
+    const results: ToolCapabilitySearchResult[] = [];
+
+    for (const record of this.state.connectors) {
+      if (!this.computeScope(record, scopeContext).enabled) continue;
+      if (!this.toBrowserMcpConfig(record)) continue;
+      if (connectorFilter && record.connectorId !== connectorFilter && record.id !== connectorFilter) continue;
+
+      for (const item of record.capabilities?.toolInventory ?? []) {
+        if (!item.enabled || !record.capabilities?.allowedTools.includes(item.name)) continue;
+        const haystack = [
+          item.name,
+          item.rawName,
+          item.description,
+          item.classification,
+          record.name,
+          record.connectorId,
+          record.setupProfileId,
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (query && !haystack.includes(query)) continue;
+        results.push({
+          id: `mcp:${record.id}:${item.name}`,
+          toolName: item.name,
+          label: item.annotations?.title ?? item.rawName ?? item.name,
+          description: item.description ?? `${record.name} MCP ${item.source === "resource" ? "resource" : "tool"}.`,
+          category: "connector",
+          risk: item.classification === "read" ? "low" : item.classification === "costly_read" ? "medium" : "high",
+          runtime: this.toStatus(record, scopeContext).executionEnvironment ?? "browser",
+          support: "supported",
+          requirements: [],
+          keywords: [record.connectorId, record.name, item.classification, item.source],
+          score: query ? Math.max(1, 100 - haystack.indexOf(query)) : 1,
+          source: "mcp",
+          connectorId: record.connectorId,
+          connectorName: record.name,
+          schemaAvailable: Boolean(item.inputSchema),
+          fallback: item.reason,
+        });
+      }
+    }
+
+    return results
+      .sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || left.toolName.localeCompare(right.toolName))
+      .slice(0, limit);
   }
 
   async executeBrowserMcpTool(toolName: string, params: Record<string, unknown>, scopeContext?: ConnectorScopeContext): Promise<unknown> {

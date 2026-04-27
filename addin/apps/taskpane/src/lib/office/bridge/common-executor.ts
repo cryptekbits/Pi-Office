@@ -11,6 +11,16 @@ export async function executeCommonOfficeTool(
   request: OfficeToolRequest,
   dependencies: OfficeToolExecutorDependencies,
 ): Promise<OfficeToolResult | undefined> {
+  if (request.toolName === "office_tool_search") {
+    return undefined;
+  }
+  if (request.toolName === "office_tool_get") {
+    return undefined;
+  }
+  if (request.toolName === "mcp_tool_search") {
+    return undefined;
+  }
+
   if (request.toolName === "office_get_context") {
     const scope = trimString(request.params.scope);
     const state = await dependencies.collectOfficeContext(request.host, {

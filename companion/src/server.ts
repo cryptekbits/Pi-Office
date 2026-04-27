@@ -9,6 +9,7 @@ import type {
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
   CompanionShellCapability,
+  McpToolSearchRequest,
   CompanionShellExecuteRequest,
   CompanionSessionOpenRequest,
   CompanionSessionOpenResponse,
@@ -335,6 +336,26 @@ export class CompanionServer {
             : {},
         );
         response.json(result);
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.post("/v1/sessions/:sessionId/mcp/search", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      try {
+        const body = request.body as McpToolSearchRequest;
+        response.json({
+          query: body?.query,
+          results: this.connectorBridge.searchPreparedTools(session.id, body),
+        });
       } catch (error) {
         response.status(400).json({
           error: error instanceof Error ? error.message : String(error),

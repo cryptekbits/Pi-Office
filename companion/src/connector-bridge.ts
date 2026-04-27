@@ -15,6 +15,9 @@ import type {
   ConnectorToolInventoryItem,
   ConnectorVerificationSnapshot,
   ConnectorHealthState,
+  McpToolSearchRequest,
+  McpToolSearchResponse,
+  ToolCapabilitySearchResult,
 } from "@pi-office/pi-office-pack/protocol";
 
 type ProbeTransport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport;
@@ -253,7 +256,7 @@ function isConfigured(definition: CompanionConnectorDefinition): boolean {
 
 function buildDefaultLocalStdioEnvironment(env: EnvironmentSource): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const key of DEFAULT_INHERITED_ENV_VARS) {
+  for (const key of [...DEFAULT_INHERITED_ENV_VARS, "USERPROFILE"]) {
     const value = readEnvironmentValue(env, key);
     if (value === undefined || value.startsWith("()")) {
       continue;
@@ -899,5 +902,80 @@ export class CompanionConnectorBridge {
         details: result,
       };
     });
+  }
+
+  searchPreparedTools(
+    sessionId: string,
+    request: McpToolSearchRequest = {},
+  ): McpToolSearchResponse {
+    const prepared = this.preparedSessions.get(sessionId);
+    if (!prepared) return { query: request.query, results: [] };
+    const limit = typeof request.limit === "number" && Number.isFinite(request.limit)
+      ? Math.max(1, Math.min(25, Math.trunc(request.limit)))
+      : 8;
+    const connectorFilter = trimString(request.connectorId);
+    const terms = String(request.query ?? "")
+      .toLowerCase()
+      .split(/\s+/g)
+      .map((term) => term.trim())
+      .filter(Boolean);
+
+    const scored = Array.from(prepared.executionTargets.values()).filter((target) => {
+      return !connectorFilter || target.definition.connectorId === connectorFilter || target.definition.id === connectorFilter;
+    }).map((target) => {
+      const inventory = target.definition.toolPolicyOverrides?.find((entry) => entry.toolName === target.exposedToolName);
+      const haystack = [
+        target.exposedToolName,
+        target.rawName,
+        target.definition.name,
+        target.definition.connectorId,
+        target.definition.category,
+        target.definition.transport,
+      ].filter(Boolean).join(" ").toLowerCase();
+      const query = String(request.query ?? "");
+      const terms = query
+        .toLowerCase()
+        .split(/\s+/g)
+        .map((term) => term.trim())
+        .filter(Boolean);
+      const score = terms.length
+        ? terms.reduce((sum, term) => sum + (haystack.includes(term) ? 2 : 0), 0)
+        : 1;
+      return {
+        score,
+        result: {
+          id: `mcp:${target.definition.id}:${target.exposedToolName}`,
+          toolName: target.exposedToolName,
+          label: target.rawName ?? target.exposedToolName,
+          description: target.kind === "resource"
+            ? `Read MCP resource ${target.resourceUri} from ${target.definition.name}.`
+            : `Execute MCP tool ${target.rawName ?? target.exposedToolName} from ${target.definition.name}.`,
+          host: "all" as const,
+          category: "connector" as const,
+          runtime: "companion" as const,
+          risk: "low" as const,
+          support: "supported" as const,
+          keywords: [
+            target.definition.connectorId,
+            target.definition.name,
+            target.definition.transport,
+            target.kind,
+          ],
+          score,
+          source: "companion-mcp",
+          connectorId: target.definition.connectorId,
+          connectorName: target.definition.name,
+          schemaAvailable: target.kind === "tool",
+          fallback: inventory?.enabled === false ? "Connector policy currently disables this tool." : undefined,
+        } satisfies ToolCapabilitySearchResult,
+      };
+    });
+
+    const results = scored
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score || left.result.toolName.localeCompare(right.result.toolName))
+      .slice(0, limit)
+      .map((entry) => entry.result);
+    return { query: request.query, results };
   }
 }

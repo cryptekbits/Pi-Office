@@ -115,7 +115,13 @@ import {
   getProviderSettingsPreference,
 } from "@pi-office/pi-office-pack/provider-model-preferences";
 import { executeOfficeTool } from "../office-tools";
-import { getOfficeToolDefinition, getOfficeToolDefinitionsForHost, type OfficeToolDefinition } from "../office/tools/index.js";
+import {
+  getOfficeToolDefinition,
+  getCoreOfficeToolDefinitionsForHost,
+  getOfficeToolCapabilityDetail,
+  searchOfficeToolDefinitions,
+  type OfficeToolDefinition,
+} from "../office/tools/index.js";
 import { isBrowserDebugOfficeState } from "../office/shared";
 import { BrowserConnectorRuntime } from "./browser-connectors";
 import { getConnectorCatalogItem } from "./connector-catalog";
@@ -2261,7 +2267,7 @@ class BrowserOfficeSession {
     const availableToolNames = getAvailableToolNames(this.resolveCapabilities());
     const isToolAvailable = (toolName: string) => availableToolNames.has(toolName);
     const browserDebugMode = this.isBrowserDebugMode();
-    const tools: AgentTool[] = getOfficeToolDefinitionsForHost(this.officeState.host)
+    const tools: AgentTool[] = getCoreOfficeToolDefinitionsForHost(this.officeState.host)
       .filter((definition) => definition.executor !== "companion-native-capture")
       .filter((definition) => isToolAvailable(definition.name))
       .map((definition) => this.createOfficeAgentTool(definition))

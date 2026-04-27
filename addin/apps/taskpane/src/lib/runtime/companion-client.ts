@@ -16,6 +16,8 @@ import type {
   ConnectorDiagnostic,
   ConnectorOAuthStartResponse,
   ConnectorStatus,
+  McpToolSearchRequest,
+  McpToolSearchResponse,
   OfficeStateUpdate,
 } from "@pi-office/pi-office-pack/protocol";
 import { DEFAULT_COMPANION_HOST, DEFAULT_COMPANION_PORT } from "@pi-office/pi-office-pack/defaults";
@@ -421,6 +423,21 @@ export class CompanionClient {
         toolName,
         arguments: args,
       }),
+    });
+  }
+
+  async searchMcpTools(
+    browserSessionId: string,
+    request: McpToolSearchRequest,
+  ): Promise<McpToolSearchResponse> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      return { query: request.query, results: [] };
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/mcp/search`, {
+      method: "POST",
+      body: JSON.stringify(request),
     });
   }
 

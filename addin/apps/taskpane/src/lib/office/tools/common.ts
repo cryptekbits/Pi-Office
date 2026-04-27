@@ -3,6 +3,62 @@ import type { OfficeToolDefinition } from "./types";
 
 export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
   {
+    name: "office_tool_search",
+    hosts: "all",
+    category: "read",
+    label: "Search Office Tools",
+    description:
+      "Search Pi-Office's structured Office tool registry and return concise, host-gated capability matches. Use this before reaching for long-tail Office tools or raw Office.js.",
+    parameters: Type.Object({
+      query: Type.String({ description: "Natural-language task or capability to search for, such as Word tables, paragraph styles, or PowerPoint charts." }),
+      host: Type.Optional(Type.String({ description: "Optional host filter: word, excel, or powerpoint. Defaults to the active Office host." })),
+      category: Type.Optional(Type.String({ description: "Optional permission category filter such as read, write-doc, or escape-hatch." })),
+      maxResults: Type.Optional(Type.Number({ minimum: 1, maximum: 10, description: "Maximum matches to return. Defaults to 5." })),
+      includeSchemas: Type.Optional(Type.Boolean({ description: "Include parameter schemas for returned tools. Defaults to false to keep context compact." })),
+    }),
+    executor: "office-bridge",
+    deferred: false,
+    capabilityTags: ["registry", "discovery", "office-tools", "deferred-tools"],
+    riskLevel: "low",
+    compactSummary: "Find supported Office capabilities without loading every tool schema.",
+  },
+  {
+    name: "office_tool_get",
+    hosts: "all",
+    category: "read",
+    label: "Get Office Tool Definition",
+    description:
+      "Fetch full schema and capability metadata for one or more structured Office tools discovered through office_tool_search.",
+    parameters: Type.Object({
+      toolNames: Type.Optional(Type.Array(Type.String(), { description: "Office tool names to retrieve." })),
+      ids: Type.Optional(Type.Array(Type.String(), { description: "Capability or tool IDs returned by office_tool_search." })),
+    }),
+    executor: "office-bridge",
+    deferred: false,
+    capabilityTags: ["registry", "schema", "office-tools", "deferred-tools"],
+    riskLevel: "low",
+    compactSummary: "Load full schemas for selected Office capabilities only when needed.",
+  },
+  {
+    name: "mcp_tool_search",
+    hosts: "all",
+    category: "read",
+    label: "Search MCP Tools",
+    description:
+      "Search enabled browser-direct and companion MCP connector tools by connector, capability, source, and exact executable tool name.",
+    parameters: Type.Object({
+      query: Type.String({ description: "Natural-language connector task or tool name to search for." }),
+      connectorId: Type.Optional(Type.String({ description: "Optional stored or catalog connector ID filter." })),
+      maxResults: Type.Optional(Type.Number({ minimum: 1, maximum: 20, description: "Maximum connector tool matches to return. Defaults to 8." })),
+      includeSchemas: Type.Optional(Type.Boolean({ description: "Include MCP input schemas when available. Defaults to false." })),
+    }),
+    executor: "office-bridge",
+    deferred: false,
+    capabilityTags: ["registry", "discovery", "mcp", "connectors", "deferred-tools"],
+    riskLevel: "low",
+    compactSummary: "Find enabled connector tools without injecting all connector schemas into the prompt.",
+  },
+  {
     name: "office_get_context",
     hosts: "all",
     category: "read",
@@ -17,6 +73,10 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       ),
     }),
     executor: "office-bridge",
+    deferred: false,
+    capabilityTags: ["context", "read", "selection", "document"],
+    riskLevel: "low",
+    compactSummary: "Read active Office document or selection context.",
   },
   {
     name: "office_apply_edit",
@@ -41,6 +101,10 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       ),
     }),
     executor: "office-bridge",
+    deferred: false,
+    capabilityTags: ["edit", "structured-action", "office"],
+    riskLevel: "medium",
+    compactSummary: "Apply a structured Office action to the active host.",
   },
   {
     name: "office_navigate",
@@ -62,6 +126,10 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       ),
     }),
     executor: "office-bridge",
+    deferred: false,
+    capabilityTags: ["navigate", "anchor", "selection"],
+    riskLevel: "medium",
+    compactSummary: "Navigate to a structured Office anchor.",
   },
   {
     name: "office_capture_snapshot",
@@ -80,6 +148,10 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       maxImages: Type.Optional(Type.Number({ minimum: 0, maximum: 4, description: "Maximum number of visual snapshots to include." })),
     }),
     executor: "office-bridge",
+    deferred: false,
+    capabilityTags: ["snapshot", "visual", "metadata", "formatting"],
+    riskLevel: "low",
+    compactSummary: "Capture Office.js visual/context snapshots and formatting metadata.",
   },
   {
     name: "office_capture_viewport",
@@ -100,6 +172,11 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       ),
     }),
     executor: "companion-native-capture",
+    deferred: true,
+    requiresCompanion: true,
+    capabilityTags: ["viewport", "screenshot", "native-capture", "companion"],
+    riskLevel: "low",
+    compactSummary: "True viewport screenshot when companion native capture is available.",
   },
   {
     name: "office_execute_js",
@@ -118,5 +195,9 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       script: Type.Optional(Type.String({ description: "Alias for code." })),
     }),
     executor: "office-bridge",
+    deferred: false,
+    capabilityTags: ["escape-hatch", "office-js", "manual-approval"],
+    riskLevel: "critical",
+    compactSummary: "Manual one-time approved raw Office.js escape hatch.",
   },
 ];

@@ -52,6 +52,19 @@ class MemoryStorage {
 
 const RUNTIME_ONLY_AGENT_TOOLS = ["ask_user", "generate_image"] as const;
 const FINAL_AGENT_TOOL_INVENTORY = [...OFFICE_TOOL_NAMES, ...RUNTIME_ONLY_AGENT_TOOLS] as const;
+const DEFAULT_DEFERRED_WORD_BASELINE = [
+  "ask_user",
+  "generate_image",
+  "office_apply_edit",
+  "office_capture_snapshot",
+  "office_get_context",
+  "office_navigate",
+  "office_read_section",
+  "office_tool_get",
+  "office_tool_search",
+  "verify_doc",
+  "verify_doc_visual",
+] as const;
 const REQUIRED_VALIDATION_COMMANDS = ["typecheck", "build", "check:bundle", "validate:manifests", "test:office"] as const;
 const BRIDGE_DISPATCH_SOURCE_FILES = [
   "apps/taskpane/src/lib/office/bridge/common-executor.ts",
@@ -63,7 +76,11 @@ const VALID_EXECUTOR_KINDS = new Set<OfficeToolDefinition["executor"]>([
   "office-bridge",
   "reviewable-word-edit",
   "companion-native-capture",
+  "runtime-registry",
 ]);
+const EXTENSION_REGISTERED_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
+  (toolName) => toolName !== "office_tool_search" && toolName !== "office_tool_get" && toolName !== "mcp_tool_search",
+);
 
 function sorted(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
@@ -74,9 +91,15 @@ function readProjectFile(path: string): string {
 }
 
 function getDefaultTaskpaneAgentToolInventory(host: OfficeHost): readonly string[] {
-  return [
+  return host === "word" ? DEFAULT_DEFERRED_WORD_BASELINE : [
     ...getOfficeToolDefinitionsForHost(host)
       .filter((definition) => definition.executor !== "companion-native-capture")
+      .filter((definition) => {
+        if (definition.core === true) return true;
+        if (definition.deferred === true) return false;
+        const visibility = definition.discovery?.visibility ?? definition.discovery?.tier;
+        return visibility !== "deferred" && visibility !== "specialized";
+      })
       .map((definition) => definition.name),
     ...RUNTIME_ONLY_AGENT_TOOLS,
   ];
@@ -85,7 +108,7 @@ function getDefaultTaskpaneAgentToolInventory(host: OfficeHost): readonly string
 function getBridgeDispatchedToolNames(): string[] {
   return BRIDGE_DISPATCH_SOURCE_FILES.flatMap((path) => {
     const source = readProjectFile(path);
-    return Array.from(source.matchAll(/request\.toolName === "([^"]+)"/g), (match) => match[1]!);
+    return Array.from(source.matchAll(/if\s*\(\s*request\.toolName === "([^"]+)"/g), (match) => match[1]!);
   });
 }
 
@@ -243,7 +266,8 @@ test("office tool registry has one definition, category, host rule, and executab
   assert.deepEqual(sorted(bridgeDispatchNames), protocolToolNames);
 
   const kernelSource = readProjectFile("apps/taskpane/src/lib/runtime/inprocess-kernel.ts");
-  assert.match(kernelSource, /getOfficeToolDefinitionsForHost\(this\.officeState\.host\)/);
+  assert.match(kernelSource, /getCoreOfficeToolDefinitionsForHost\(this\.officeState\.host\)/);
+  assert.match(kernelSource, /searchOfficeToolDefinitions/);
   assert.match(kernelSource, /definition\.executor === "reviewable-word-edit"/);
   assert.match(kernelSource, /executeCompanionNativeCapture/);
 
@@ -255,6 +279,12 @@ test("office tool registry has one definition, category, host rule, and executab
     assert.equal(definition.category, TOOL_CATEGORY_MAP[toolName], `${toolName} category drifted from TOOL_CATEGORY_MAP.`);
     assert.ok(definition.label.trim(), `${toolName} is missing a registry label.`);
     assert.ok(definition.description.trim(), `${toolName} is missing a registry description.`);
+    assert.ok((definition.compactSummary ?? definition.discovery?.summary ?? definition.description).trim(), `${toolName} is missing deferred-discovery summary.`);
+    assert.ok(
+      (definition.keywords?.length ?? definition.searchKeywords?.length ?? definition.capabilityTags?.length ?? definition.discovery?.keywords?.length ?? 0) > 0 ||
+        definition.description.trim().split(/\s+/).length >= 3,
+      `${toolName} is missing deferred-discovery keywords.`,
+    );
     assert.ok(definition.parameters, `${toolName} is missing a JSON schema.`);
     assert.ok(VALID_EXECUTOR_KINDS.has(definition.executor), `${toolName} has an unknown executor kind.`);
 
@@ -336,7 +366,7 @@ test("extension registration and runtime-published tools stay synchronized with 
   const runtimeTools = session.agent.state.tools.map((tool) => tool.name);
   socket.close();
 
-  assert.deepEqual(sorted(registeredByExtension), sorted(FINAL_AGENT_TOOL_INVENTORY));
+  assert.deepEqual(sorted(registeredByExtension), sorted(EXTENSION_REGISTERED_TOOL_INVENTORY));
   assert.deepEqual(sorted(runtimeTools), sorted(getDefaultTaskpaneAgentToolInventory("word")));
 });
 

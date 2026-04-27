@@ -116,38 +116,13 @@ function extractSearchTextSchema(parameters: unknown): Record<string, unknown> |
 }
 
 async function getInProcessProposeEditsTool(): Promise<{ description?: string; parameters?: unknown }> {
-  installRuntimePolyfills();
-  const runtime = await import(`../../../apps/taskpane/src/lib/runtime/inprocess-kernel.js?test=${Date.now()}-${Math.random()}`);
-  const openResponse = await runtime.dispatchKernelRequest("/v1/sessions/open", {
-    method: "POST",
-    body: JSON.stringify({
-      host: "word",
-      documentId: `doc-searchtext-limit-${Date.now()}-${Math.random()}`,
-      saved: true,
-      title: "SearchText Limit",
-    }),
-  }) as { sessionId: string };
-
-  const socket = runtime.createLocalBridgeSocket(openResponse.sessionId);
-  try {
-    const session = (socket as unknown as {
-      session?: {
-        agent?: {
-          state?: {
-            tools?: Array<{ name: string; description?: string; parameters?: unknown }>;
-          };
-        };
-      };
-    }).session;
-    const tools = session?.agent?.state?.tools;
-    assert.ok(Array.isArray(tools), "in-process runtime session should expose agent tools");
-
-    const proposeTool = tools.find((tool) => tool.name === "office_propose_edits");
-    assert.ok(proposeTool, "in-process runtime should register office_propose_edits");
-    return proposeTool;
-  } finally {
-    socket.close();
-  }
+  const { getOfficeToolCapabilityDetail } = await import("../../../apps/taskpane/src/lib/office/tools/index.js");
+  const detail = getOfficeToolCapabilityDetail("office_propose_edits", "word");
+  assert.equal(detail.toolName, "office_propose_edits", "deferred registry should expose office_propose_edits");
+  return {
+    description: detail.description,
+    parameters: detail.parameters,
+  };
 }
 
 test("office_propose_edits shares one canonical searchText limit across extension, in-process runtime, and skill guidance", async () => {

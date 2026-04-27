@@ -1136,6 +1136,9 @@ export interface ToolPermissionRequest {
 
 export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   office_get_context: "read",
+  office_tool_search: "read",
+  office_tool_get: "read",
+  mcp_tool_search: "read",
   office_read_section: "read",
   office_capture_snapshot: "read",
   office_capture_viewport: "read",
@@ -1186,6 +1189,80 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   write: "write-external",
   bash: "write-external",
 };
+
+export type ToolCapabilityRuntime = "taskpane" | "companion" | "browser" | "office-js";
+export type ToolCapabilityRisk = "low" | "medium" | "high" | "escape_hatch";
+export type ToolCapabilitySupportStatus = "supported" | "desktop_only" | "preview" | "companion_required" | "fallback" | "unsupported";
+
+export interface ToolCapabilityRequirement {
+  name: string;
+  version?: string | undefined;
+  status?: ToolCapabilitySupportStatus | undefined;
+  note?: string | undefined;
+}
+
+export interface ToolCapabilitySearchResult {
+  id: string;
+  toolName: string;
+  label: string;
+  description: string;
+  host?: OfficeHost | "all" | undefined;
+  category: ToolCategory;
+  runtime: ToolCapabilityRuntime;
+  risk: ToolCapabilityRisk;
+  support: ToolCapabilitySupportStatus;
+  requirements?: ToolCapabilityRequirement[] | undefined;
+  keywords: string[];
+  score?: number | undefined;
+  source?: string | undefined;
+  connectorId?: string | undefined;
+  connectorName?: string | undefined;
+  schemaAvailable: boolean;
+  fallback?: string | undefined;
+}
+
+export interface ToolCapabilityDetail extends ToolCapabilitySearchResult {
+  parameters?: unknown;
+}
+
+export interface OfficeToolSearchRequest {
+  query?: string | undefined;
+  host?: OfficeHost | undefined;
+  category?: ToolCategory | undefined;
+  limit?: number | undefined;
+  includeUnsupported?: boolean | undefined;
+}
+
+export interface OfficeToolSearchResponse {
+  host: OfficeHost;
+  query?: string | undefined;
+  results: ToolCapabilitySearchResult[];
+}
+
+export interface OfficeToolGetRequest {
+  toolName?: string | undefined;
+  id?: string | undefined;
+}
+
+export interface OfficeToolGetResponse {
+  detail: ToolCapabilityDetail;
+}
+
+export interface OfficeToolCallRequest {
+  toolName: OfficeToolName;
+  arguments?: Record<string, unknown> | undefined;
+}
+
+export interface McpToolSearchRequest {
+  query?: string | undefined;
+  connectorId?: string | undefined;
+  limit?: number | undefined;
+}
+
+export interface McpToolSearchResponse {
+  query?: string | undefined;
+  results: ToolCapabilitySearchResult[];
+}
 
 export const AUTONOMY_LEVEL_AUTO_APPROVE: Record<AutonomyLevel, Set<ToolCategory>> = {
   off: new Set(["interaction"]),
@@ -1436,6 +1513,9 @@ export interface OfficeEditProposalDecision {
 
 export const OFFICE_TOOL_NAMES = [
   "office_get_context",
+  "office_tool_search",
+  "office_tool_get",
+  "mcp_tool_search",
   "office_apply_edit",
   "edit_doc_text",
   "edit_doc_list",

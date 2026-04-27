@@ -6,6 +6,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "get_presentation_structure",
     hosts: ["powerpoint"],
     category: "read",
+    capabilityId: "powerpoint.presentation.structure",
+    riskLevel: "low",
+    keywords: ["powerpoint", "presentation", "outline", "slides", "structure", "sections"],
     label: "Read Presentation Structure",
     description: "PowerPoint-only first-class presentation structure read. Returns slide order plus layout/master structure metadata and bounded slide previews.",
     parameters: Type.Object({
@@ -18,6 +21,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "get_slide",
     hosts: ["powerpoint"],
     category: "read",
+    capabilityId: "powerpoint.slide.read",
+    riskLevel: "low",
+    keywords: ["powerpoint", "slide", "read", "notes", "shapes", "content"],
     label: "Read Slide",
     description: "PowerPoint-only first-class per-slide read. Resolve a slide by slideId/slideIndex (or selection) and return structured slide details.",
     parameters: Type.Object({
@@ -32,6 +38,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "list_slide_shapes",
     hosts: ["powerpoint"],
     category: "read",
+    capabilityId: "powerpoint.shapes.inventory",
+    riskLevel: "low",
+    keywords: ["powerpoint", "shape", "inventory", "text box", "image", "chart"],
     label: "List Slide Shapes",
     description: "PowerPoint-only first-class shape inventory read. Returns structured shape summaries for the resolved slide.",
     parameters: Type.Object({
@@ -45,6 +54,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "modify_presentation_structure",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.presentation.structure.write",
+    riskLevel: "high",
+    keywords: ["powerpoint", "slides", "section", "move", "delete", "structure", "layout"],
     label: "Modify Presentation Structure",
     description: "PowerPoint-only first-class structure mutation tool for slide create/move/reorder/delete/layout operations through native host actions.",
     parameters: Type.Object({
@@ -64,6 +76,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "duplicate_slide",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.slide.duplicate",
+    riskLevel: "medium",
+    keywords: ["powerpoint", "duplicate", "copy", "slide"],
     label: "Duplicate Slide",
     description: "PowerPoint-only first-class slide duplication tool supporting one or multiple source slides and optional insertion target/formatting controls.",
     parameters: Type.Object({
@@ -80,6 +95,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "insert_slide_element",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.slide.element.insert",
+    riskLevel: "medium",
+    keywords: ["powerpoint", "insert", "shape", "text box", "image", "table", "element"],
     label: "Insert Slide Element",
     description: "PowerPoint-only first-class element insertion tool for explicit shape/table/diagram/picture authoring through native actions.",
     parameters: Type.Object({
@@ -98,6 +116,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "remove_slide_element",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.slide.element.remove",
+    riskLevel: "high",
+    keywords: ["powerpoint", "remove", "delete", "shape", "element"],
     label: "Remove Slide Element",
     description: "PowerPoint-only first-class element removal tool for explicit shape/text removal operations with destructive-action policy support.",
     parameters: Type.Object({
@@ -115,6 +136,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "edit_slide_text",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.text.edit",
+    riskLevel: "medium",
+    keywords: ["powerpoint", "text", "shape", "edit", "speaker notes"],
     label: "Edit Slide Text",
     description: "PowerPoint-only first-class text editing for slide shapes/selection. Use this instead of generic office_apply_edit when the intent is text-focused slide authoring.",
     parameters: Type.Object({
@@ -133,6 +157,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "edit_slide_xml",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.ooxml.edit",
+    riskLevel: "high",
+    keywords: ["powerpoint", "xml", "ooxml", "package", "advanced", "serialized"],
     label: "Edit Slide XML",
     description: "PowerPoint-only first-class serialized/XML editing tool for slide notes and package-level OOXML workflows, including base64 import/export paths.",
     parameters: Type.Object({
@@ -150,6 +177,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "edit_slide_master",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.layout.apply",
+    riskLevel: "medium",
+    keywords: ["powerpoint", "layout", "master", "apply", "slide"],
     label: "Apply Slide Layout",
     description: "PowerPoint-only legacy-named tool for applying an existing slide layout. It does not mutate slide masters or layout definitions.",
     parameters: Type.Object({
@@ -168,6 +198,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "edit_slide_chart",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.chart.edit",
+    riskLevel: "medium",
+    keywords: ["powerpoint", "chart", "data", "series", "ooxml", "edit"],
     label: "Edit Slide Chart",
     description: "PowerPoint-only first-class chart workflow tool for chart inspection and serialized chart create/update paths.",
     parameters: Type.Object({
@@ -190,6 +223,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "copy_image_between_slides",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.image.copy",
+    riskLevel: "medium",
+    keywords: ["powerpoint", "image", "copy", "between slides", "picture"],
     label: "Copy Image Between Slides",
     description: "PowerPoint-only first-class media workflow tool that copies an image from a source slide/shape to a destination slide or shape.",
     parameters: Type.Object({
@@ -212,6 +248,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "search_icons",
     hosts: ["powerpoint"],
     category: "read",
+    capabilityId: "powerpoint.icons.search",
+    riskLevel: "low",
+    keywords: ["powerpoint", "icons", "search", "catalog", "visual"],
     label: "Search Slide Icons",
     description: "PowerPoint-only first-class icon search. Returns icon matches from the supported runtime icon catalog without mutating slides.",
     parameters: Type.Object({
@@ -226,6 +265,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "insert_icon",
     hosts: ["powerpoint"],
     category: "write-doc",
+    capabilityId: "powerpoint.icons.insert",
+    riskLevel: "medium",
+    keywords: ["powerpoint", "icons", "insert", "visual", "symbol"],
     label: "Insert Slide Icon",
     description: "PowerPoint-only first-class icon insertion tool that inserts or updates an icon-like visual on the target slide.",
     parameters: Type.Object({
@@ -249,6 +291,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "verify_slides",
     hosts: ["powerpoint"],
     category: "read",
+    capabilityId: "powerpoint.presentation.verify",
+    riskLevel: "low",
+    keywords: ["powerpoint", "verify", "presentation", "slides", "quality", "structure"],
     label: "Verify Slides",
     description: "PowerPoint-only first-class structural verification. Returns a non-mutating summary/details payload for slide/layout/master checks.",
     parameters: Type.Object({
@@ -263,6 +308,9 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     name: "verify_slide_visual",
     hosts: ["powerpoint"],
     category: "read",
+    capabilityId: "powerpoint.slide.visual.verify",
+    riskLevel: "low",
+    keywords: ["powerpoint", "verify", "visual", "slide image", "snapshot"],
     label: "Verify Slide Visual",
     description: "PowerPoint-only first-class visual verification using supported Office.js slide/shape snapshot paths (not slideshow-frame capture).",
     parameters: Type.Object({

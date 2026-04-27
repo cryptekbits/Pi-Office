@@ -1073,26 +1073,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Tests protect against stale refresh and duplicate-event regressions.
   - Notes/Evidence: The Word API reference includes selection, content-control, comment, paragraph, and annotation event argument types. This task extends the existing latest-only Office state refresh hardening from `BUG-004`.
 
-- [ ] FEATURE-028: Add deferred Office and MCP tool discovery with a canonical capability registry
+- [x] FEATURE-028: Add deferred Office and MCP tool discovery with a canonical capability registry
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P0
   - Source: 2026-04-27 architecture discussion inspired by Claude tool-use, tool-search, and context-management docs.
   - Details: Pi-Office should not send the whole Office.js API, every Office tool schema, or every MCP connector tool definition to the model on every turn. Large tool catalogs increase token use and can degrade tool selection accuracy. Add a canonical tool/capability registry with deferred loading: the main agent sees a small stable core (`office_get_context`, `office_tool_search`, `mcp_tool_search`, `office_apply_edit`, verification, permission/ask-user, and escape-hatch metadata), then retrieves only the 3-5 relevant Office/MCP tool definitions for the current task. This must work in taskpane-only mode and companion advanced mode.
   - Dependencies: FEATURE-004, FEATURE-006, FEATURE-007, FEATURE-008, IMPROVEMENT-003.
   - Subtasks:
-    - [ ] Define a shared registry schema for Office tools, Word child capabilities, MCP connector tools, categories, host/runtime requirements, risk level, permission category, and concise search metadata.
-    - [ ] Implement taskpane-side Office tool search over the registry and expose only selected tool schemas/prompts to the model for a turn or session.
-    - [ ] Implement MCP connector tool search for browser-direct taskpane connectors and companion-routed connectors, including server/profile/source metadata.
-    - [ ] Add companion-side registry/search support so advanced mode can own MCP/provider/non-Office tool discovery while the taskpane still owns Office.js execution.
-    - [ ] Preserve prompt caching by keeping the stable core prompt/tool prefix small and moving large schemas to deferred discovery.
-    - [ ] Add tests for search ranking, host gating, deferred schema loading, permission category preservation, and stale/deleted connector tools.
+    - [x] Define a shared registry schema for Office tools, Word child capabilities, MCP connector tools, categories, host/runtime requirements, risk level, permission category, and concise search metadata.
+    - [x] Implement taskpane-side Office tool search over the registry and expose only selected tool schemas/prompts to the model for a turn or session.
+    - [x] Implement MCP connector tool search for browser-direct taskpane connectors and companion-routed connectors, including server/profile/source metadata.
+    - [x] Add companion-side registry/search support so advanced mode can own MCP/provider/non-Office tool discovery while the taskpane still owns Office.js execution.
+    - [x] Preserve prompt caching by keeping the stable core prompt/tool prefix small and moving large schemas to deferred discovery.
+    - [x] Add tests for search ranking, host gating, deferred schema loading, permission category preservation, and stale/deleted connector tools.
   - Acceptance Criteria:
-    - [ ] The model no longer receives every Office/MCP tool schema up front once the registry path is enabled.
-    - [ ] Tool search returns concise, relevant tool definitions and hides unsupported host/runtime tools.
-    - [ ] Taskpane and companion registries agree on connector availability, permission categories, and source provenance.
-    - [ ] Tests show reduced baseline tool context and no loss of capability for representative Word and MCP tasks.
-  - Notes/Evidence: Claude's tool-search guidance describes deferred loading to reduce tool-definition context and improve selection accuracy for large toolsets. Pi-Office has growing Word API tasks plus a provenance-driven connector catalog, so deferred tool discovery should become a foundation before adding many more schemas.
+    - [x] The model no longer receives every Office/MCP tool schema up front once the registry path is enabled.
+    - [x] Tool search returns concise, relevant tool definitions and hides unsupported host/runtime tools.
+    - [x] Taskpane and companion registries agree on connector availability, permission categories, and source provenance.
+    - [x] Tests show reduced baseline tool context and no loss of capability for representative Word and MCP tasks.
+  - Notes/Evidence: Claude's tool-search guidance describes deferred loading to reduce tool-definition context and improve selection accuracy for large toolsets. Pi-Office has growing Word API tasks plus a provenance-driven connector catalog, so deferred tool discovery should become a foundation before adding many more schemas. Closed 2026-04-27 by adding protocol-level capability search/detail types, Office registry metadata, `office_tool_search`, `office_tool_get`, compact baseline runtime publication through core Office tool definitions, browser-direct MCP search, companion MCP search route/client plumbing, and prompt guidance for deferred discovery. Regression coverage in `deferred-tool-discovery.test.ts` and `shared-tool-contracts-parity.test.ts` verifies search ranking/host gating, compact Word baseline publication, permission category preservation, runtime registry contracts, and MCP discovery wiring. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-029: Add structured batch execution for Office tools and MCP connectors
   - Category: Feature

@@ -6,6 +6,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "get_cell_ranges",
     hosts: ["excel"],
     category: "read",
+    discoverability: "core",
     label: "Get Cell Ranges",
     description: "Excel-only first-class range read tool for cell/range values, text, formulas, and number formats.",
     parameters: Type.Object({
@@ -22,6 +23,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "set_cell_range",
     hosts: ["excel"],
     category: "write-doc",
+    discoverability: "deferred",
     label: "Set Cell Range",
     description: "Excel-only first-class range write tool for setting values in a target cell/range.",
     parameters: Type.Object({
@@ -37,6 +39,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "clear_cell_range",
     hosts: ["excel"],
     category: "write-doc",
+    discoverability: "deferred",
     label: "Clear Cell Range",
     description: "Excel-only first-class range clear tool. Destructive clears should set confirmDestructive=true.",
     parameters: Type.Object({
@@ -52,6 +55,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "resize_range",
     hosts: ["excel"],
     category: "write-doc",
+    discoverability: "deferred",
     label: "Resize Range",
     description: "Excel-only first-class range layout tool for computing/activating resized ranges by count or delta.",
     parameters: Type.Object({
@@ -70,6 +74,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "copy_to",
     hosts: ["excel"],
     category: "write-doc",
+    discoverability: "deferred",
     label: "Copy To Range",
     description: "Excel-only first-class range copy tool that copies a source range into a destination range.",
     parameters: Type.Object({
@@ -88,6 +93,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "modify_sheet_structure",
     hosts: ["excel"],
     category: "write-doc",
+    discoverability: "deferred",
     label: "Modify Sheet Structure",
     description: "Excel-only first-class worksheet structure tool for create, rename, duplicate, and delete operations.",
     parameters: Type.Object({
@@ -105,6 +111,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "modify_object",
     hosts: ["excel"],
     category: "write-doc",
+    discoverability: "core",
     label: "Modify Excel Object",
     description: "Excel-only first-class object mutation tool for table/chart/pivot/worksheet object operations through native workbook actions.",
     parameters: Type.Object({
@@ -126,6 +133,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "get_all_objects",
     hosts: ["excel"],
     category: "read",
+    discoverability: "core",
     label: "Get Excel Objects",
     description: "Excel-only first-class object inventory read for workbook/worksheet tables, charts, PivotTables, and named items.",
     parameters: Type.Object({
@@ -139,6 +147,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "search_data",
     hosts: ["excel"],
     category: "read",
+    discoverability: "core",
     label: "Search Excel Data",
     description: "Excel-only first-class workbook/worksheet data search across tables, charts, PivotTables, named items, and cited cells.",
     parameters: Type.Object({
@@ -153,6 +162,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "get_range_as_csv",
     hosts: ["excel"],
     category: "read",
+    discoverability: "deferred",
     label: "Export Range as CSV",
     description: "Excel-only first-class CSV export for auditable range snapshots. Use includeFormulas=true when formula-first verification is required.",
     parameters: Type.Object({
@@ -169,6 +179,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "read_range_image",
     hosts: ["excel"],
     category: "read",
+    discoverability: "deferred",
     label: "Read Range Image",
     description: "Excel-only first-class range imagery read for visual verification workflows on the active worksheet selection/range.",
     parameters: Type.Object({
@@ -184,6 +195,7 @@ export const EXCEL_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     name: "extract_chart_xml",
     hosts: ["excel"],
     category: "read",
+    discoverability: "deferred",
     label: "Extract Chart XML",
     description: "Excel-only first-class chart XML extraction that returns a runtime-generated chart metadata XML snapshot (not full package OOXML).",
     parameters: Type.Object({

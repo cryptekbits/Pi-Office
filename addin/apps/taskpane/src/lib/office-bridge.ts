@@ -9,6 +9,11 @@ import {
 import { executeCommonOfficeTool } from "./office/bridge/common-executor";
 import { executeExcelOfficeTool } from "./office/bridge/excel";
 import { executePowerPointOfficeTool } from "./office/bridge/powerpoint";
+import {
+  getOfficeToolCapabilityDetail,
+  searchOfficeToolDefinitions,
+  toToolCapabilitySearchResult,
+} from "./office/tools/index";
 import { executeWordOfficeTool } from "./office/bridge/word";
 
 export {
@@ -19,10 +24,71 @@ export {
 };
 export type { OfficeToolExecutorDependencies };
 
+function searchOfficeToolsForBridge(request: OfficeToolRequest): OfficeToolResult | undefined {
+  if (request.toolName === "office_tool_search") {
+    const query = typeof request.params.query === "string" ? request.params.query : undefined;
+    const host = request.params.host === "word" || request.params.host === "excel" || request.params.host === "powerpoint"
+      ? request.params.host
+      : request.host;
+    const category = typeof request.params.category === "string" ? request.params.category : undefined;
+    const limit = typeof request.params.limit === "number" ? request.params.limit : undefined;
+    return {
+      requestId: request.requestId,
+      success: true,
+      content: {
+        host,
+        query,
+        results: searchOfficeToolDefinitions({
+          host,
+          query,
+          category: category as never,
+          limit,
+          includeSchemas: request.params.includeSchemas === true,
+        }),
+      },
+    };
+  }
+
+  if (request.toolName === "office_tool_get") {
+    const toolName = typeof request.params.toolName === "string" ? request.params.toolName : undefined;
+    const id = typeof request.params.id === "string" ? request.params.id : undefined;
+    const lookup = toolName ?? id;
+    if (!lookup) {
+      return {
+        requestId: request.requestId,
+        success: false,
+        error: "office_tool_get requires toolName or id.",
+      };
+    }
+    return {
+      requestId: request.requestId,
+      success: true,
+      content: {
+        detail: getOfficeToolCapabilityDetail(lookup, request.host),
+      },
+    };
+  }
+
+  if (request.toolName === "mcp_tool_search") {
+    return {
+      requestId: request.requestId,
+      success: true,
+      content: {
+        query: typeof request.params.query === "string" ? request.params.query : undefined,
+        results: [],
+        note: "Live MCP tool search is provided by the taskpane runtime when browser-direct or companion connectors are active.",
+      },
+    };
+  }
+
+  return undefined;
+}
+
 export function createOfficeToolExecutor(dependencies: OfficeToolExecutorDependencies) {
   return async function executeOfficeTool(request: OfficeToolRequest): Promise<OfficeToolResult> {
     try {
       const result =
+        searchOfficeToolsForBridge(request) ??
         await executeCommonOfficeTool(request, dependencies) ??
         await executeWordOfficeTool(request, dependencies) ??
         await executeExcelOfficeTool(request, dependencies) ??

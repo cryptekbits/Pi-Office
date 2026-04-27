@@ -254,8 +254,9 @@ test("in-process runtime publishes first-class Word text/list edit tools", async
   const session = (socket as unknown as { session: { agent: { state: { tools: Array<{ name: string }> } } } }).session;
   const toolNames = session.agent.state.tools.map((tool) => tool.name);
 
-  assert.ok(toolNames.includes("edit_doc_text"));
-  assert.ok(toolNames.includes("edit_doc_list"));
+  assert.ok(toolNames.includes("office_apply_edit"));
+  assert.ok(toolNames.includes("office_tool_search"));
+  assert.ok(!toolNames.includes("edit_doc_list"));
   socket.close();
 });
 
