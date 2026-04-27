@@ -953,25 +953,25 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests prove bookmark/go-to/hyperlink tools interoperate with search and navigation.
   - Notes/Evidence: The Word API reference includes `Bookmark`, `BookmarkCollection`, `Selection.goTo`, `Document.goTo`, `GoToOptions`, `Hyperlink`, `HyperlinkCollection`, and `HyperlinkAddOptions`. These close the remaining Tier A navigation and Tier B hyperlink gaps. Closed 2026-04-27 by adding `bookmark` and `hyperlink` anchor kinds/fields, `word_reference_inventory` for desktop-gated bookmark/hyperlink inventory and bookmark create/delete/select actions, `word_hyperlink` for desktop-gated hyperlink add/update/delete actions, navigation support for bookmark/hyperlink anchors, prompt guidance, and `word-bookmark-hyperlink-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-022: Add Word building block and template insertion tools
+- [x] FEATURE-022: Add Word building block and template insertion tools
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: 2026-04-27 Word API audit and Tier B reusable-content gap review.
   - Details: Professional Word workflows often reuse approved clause libraries, boilerplate, cover pages, letterheads, signature blocks, and branded snippets. Word exposes building blocks, building block categories/types, template collections, and building-block gallery content controls, but Pi-Office currently has no structured way to inventory or insert approved reusable content. This should be implemented as an original Pi-Office workflow with provenance-aware copy and no bundled competitor text.
   - Dependencies: FEATURE-004, SECURITY-005, FEATURE-015.
   - Subtasks:
-    - [ ] Inventory available templates, building block types, categories, and entries where supported.
-    - [ ] Define structured insertion operations for approved building blocks with placement, target anchor, and formatting behavior.
-    - [ ] Integrate building-block gallery content controls with template automation where requirement sets permit it.
-    - [ ] Add provenance and user-approval guidance for clause/boilerplate insertion so the model does not invent official library content.
-    - [ ] Add tests for inventory, insertion contract validation, unsupported-host fallback, and provenance/no-invention behavior.
+    - [x] Inventory available templates, building block types, categories, and entries where supported.
+    - [x] Define structured insertion operations for approved building blocks with placement, target anchor, and formatting behavior.
+    - [x] Integrate building-block gallery content controls with template automation where requirement sets permit it.
+    - [x] Add provenance and user-approval guidance for clause/boilerplate insertion so the model does not invent official library content.
+    - [x] Add tests for inventory, insertion contract validation, unsupported-host fallback, and provenance/no-invention behavior.
   - Acceptance Criteria:
-    - [ ] The assistant can insert approved reusable Word content through native template/building-block APIs where available.
-    - [ ] Boilerplate insertion reports the source template/category/entry and target location.
-    - [ ] Unsupported template/building-block surfaces fall back with clear guidance instead of fabricated content.
-    - [ ] Tests prevent unapproved or provenance-ambiguous boilerplate from being presented as official content.
-  - Notes/Evidence: The Word API reference includes `BuildingBlock`, `BuildingBlockCategory`, `BuildingBlockCollection`, `BuildingBlockEntryCollection`, `BuildingBlockGalleryContentControl`, `BuildingBlockTypeItem`, `Template`, and `TemplateCollection`.
+    - [x] The assistant can insert approved reusable Word content through native template/building-block APIs where available.
+    - [x] Boilerplate insertion reports the source template/category/entry and target location.
+    - [x] Unsupported template/building-block surfaces fall back with clear guidance instead of fabricated content.
+    - [x] Tests prevent unapproved or provenance-ambiguous boilerplate from being presented as official content.
+  - Notes/Evidence: The Word API reference includes `BuildingBlock`, `BuildingBlockCategory`, `BuildingBlockCollection`, `BuildingBlockEntryCollection`, `BuildingBlockGalleryContentControl`, `BuildingBlockTypeItem`, `Template`, and `TemplateCollection`. Closed 2026-04-27 by adding `word_building_block`, desktop-gated attached-template/building-block inventory and approved insertion operations, provenance-required insertion checks, integration with content-control/template guidance, prompt guardrails against fabricated boilerplate, and `word-building-block-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-023: Add Word proofing, readability, and document-statistics tools
   - Category: Feature

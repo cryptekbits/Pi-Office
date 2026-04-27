@@ -957,6 +957,64 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       return { ok: true, host: "word", action: type, operation, id: `contentControl:${contentControl.id}`, title: contentControl.title, tag: contentControl.tag, type: contentControl.type, subtype: supportsContentControlSubtypes ? contentControl.subtype : undefined, text: truncateLabel(contentControl.text, 180) };
     }
 
+    if (type === "buildingBlock") {
+      if (!supportsRequirementSet("WordApiDesktop", "1.3")) {
+        throw new Error("Word building block/template operations require WordApiDesktop 1.3 or newer.");
+      }
+      const operation = trimString(options.operation ?? action.operation) ?? "inventory";
+      const template = context.document.attachedTemplate;
+      template.load("name,fullName");
+      const entries = template.buildingBlockEntries;
+      entries.load("items/name,items/type/name,items/category/name,items/description");
+      await context.sync();
+
+      const entryItems = (entries as unknown as { items?: Array<{
+        name?: string;
+        description?: string;
+        category?: { name?: string };
+        type?: { name?: string };
+        insert?: (range: Word.Range, richText: boolean) => Word.Range;
+      }> }).items ?? [];
+
+      if (operation === "inventory") {
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          template: { name: template.name, fullName: template.fullName },
+          entries: entryItems.slice(0, Math.max(1, Math.trunc(toNumber(options.maxResults ?? action.maxResults) ?? 20))).map((entry, index) => ({
+            id: `buildingBlock:${index + 1}`,
+            name: entry.name,
+            category: entry.category?.name,
+            type: entry.type?.name,
+            description: entry.description,
+          })),
+          provenanceRequired: true,
+        };
+      }
+
+      if (operation === "insert") {
+        const name = trimString(options.name ?? action.name);
+        if (!name) {
+          throw new Error("Word building block insertion requires an approved entry name.");
+        }
+        const entry = entryItems.find((item) => item.name === name);
+        if (!entry) {
+          throw new Error(`Could not find approved Word building block "${name}" in the attached template.`);
+        }
+        const { range } = await resolveTargetRange();
+        const insertBuildingBlock = entry.insert;
+        if (typeof insertBuildingBlock !== "function") {
+          throw new Error("This host cannot insert the selected Word building block entry.");
+        }
+        insertBuildingBlock.call(entry, range, true);
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, name: entry.name, inserted: true };
+      }
+
+      throw new Error(`Unsupported Word building block operation: ${operation}.`);
+    }
+
     if (type === "insertField") {
       if (!supportsRequirementSet("WordApi", "1.5")) {
         throw new Error("Word field insertion requires WordApi 1.5 or newer.");

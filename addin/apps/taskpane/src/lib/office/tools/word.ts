@@ -285,6 +285,32 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     executor: "office-bridge",
   },
   {
+    name: "word_building_block",
+    hosts: ["word"],
+    category: "write-doc",
+    label: "Word Building Blocks",
+    description:
+      "Inventory templates/building blocks and insert approved reusable Word content only when native desktop APIs expose it.",
+    discovery: {
+      tier: "specialized",
+      capabilityIds: ["word.buildingBlocks", "word.templates"],
+      keywords: ["word", "template", "building block", "boilerplate", "clause", "quick parts"],
+      summary: "Use approved Word reusable content with provenance instead of inventing boilerplate.",
+      riskLevel: "medium",
+      requirementSets: [{ name: "WordApiDesktop", minVersion: "1.3", note: "Building block/template APIs are desktop-gated." }],
+      fallback: "Ask the user to provide approved boilerplate text when native building-block inventory is unavailable.",
+    },
+    parameters: Type.Object({
+      operation: Type.String({ description: "inventory or insertApprovedText." }),
+      name: Type.Optional(Type.String({ description: "Approved building-block/template entry name or user-provided source label." })),
+      text: Type.Optional(Type.String({ description: "User-provided approved reusable content for insertApprovedText fallback." })),
+      target: Type.Optional(Type.Any({ description: "Optional Word anchor where the reusable content should be inserted." })),
+      placement: Type.Optional(Type.String({ description: "Insertion placement. Defaults to replace/after according to host action semantics." })),
+      provenance: Type.Optional(Type.String({ description: "Required provenance/source note for user-provided boilerplate." })),
+    }),
+    executor: "office-bridge",
+  },
+  {
     name: "edit_doc_text",
     hosts: ["word"],
     category: "write-doc",

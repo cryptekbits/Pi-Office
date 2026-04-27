@@ -338,6 +338,34 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_building_block") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_building_block is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "buildingBlock",
+          target: request.params.target as never,
+          content: typeof request.params.content === "string" ? request.params.content : undefined,
+          placement: typeof request.params.placement === "string" ? request.params.placement : undefined,
+          options: {
+            operation: request.params.operation,
+            name: request.params.name,
+            category: request.params.category,
+            blockType: request.params.blockType,
+            description: request.params.description,
+            insertType: request.params.insertType,
+            approved: request.params.approved,
+            provenanceApproved: request.params.provenanceApproved,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {
