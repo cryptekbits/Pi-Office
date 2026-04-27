@@ -669,7 +669,42 @@ test("verify_doc flags corrupted numbered heading order from saved document cont
   assert.match(payload.summary, /7\. Conclusion/);
   assert.match(payload.summary, /before a section 1 heading|appears after/i);
   assert.ok(payload.warnings?.some((warning) => /Malformed heading order/.test(warning)));
-  assert.ok(payload.details.warnings?.some((warning) => /Heading1 but looks like body text/.test(warning)));
+  assert.ok(payload.details.warnings?.some((warning) => /Heading1 but looks like body text or glued content/.test(warning)));
+});
+
+test("verify_doc flags body text glued into a lower-level heading paragraph", async () => {
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({
+      summary: "Word context captured",
+      state: { host: "word" },
+      snippets: {
+        paragraphs: [
+          {
+            text: "Audio, Media & AI: Voice assistants and media platforms use FFT as a core processing step.How Fast Is Fast?",
+            styleBuiltIn: "Heading2",
+          },
+          { text: "A clean heading should be isolated from body prose.", styleBuiltIn: "Normal" },
+        ],
+      },
+    }),
+    applyHostAction: async () => ({ ok: true }),
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const result = await executeOfficeTool({
+    requestId: "verify-glued-heading",
+    toolName: "verify_doc" as OfficeToolRequest["toolName"],
+    host: "word",
+    params: { scope: "document" },
+  } as OfficeToolRequest);
+
+  assert.equal(result.success, true);
+  const payload = result.content as { warnings?: string[]; details: { warnings?: string[] } };
+  assert.ok(payload.warnings?.some((warning) => /Heading2 but looks like body text or glued content/.test(warning)));
+  assert.ok(payload.details.warnings?.some((warning) => /heading boundaries/i.test(warning)));
 });
 
 test("verify_doc flags literal LaTeX and empty heading paragraphs in Word context", async () => {

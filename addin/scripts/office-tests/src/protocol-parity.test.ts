@@ -420,6 +420,58 @@ test("protocol parity: session debug log captures bridge traffic and redacts sec
 test("protocol parity: in-process Office sessions use sequential tool execution", () => {
   const source = readFileSync("apps/taskpane/src/lib/runtime/inprocess-kernel.ts", "utf8");
   assert.match(source, /toolExecution:\s*"sequential"/);
+  assert.match(source, /transformContext:\s*async \([^)]*\) => compactAgentMessagesForContext/);
+  assert.match(source, /afterToolCall:\s*async/);
+});
+
+test("protocol parity: context usage estimates live context instead of cumulative provider usage", async () => {
+  const { runtime, socket, session } = await openSessionHarness("context-estimate");
+  const typedSession = session as unknown as {
+    sessionId: string;
+    agent: { appendMessage: (message: unknown) => void };
+  };
+  const hugeImage = "A".repeat(400_000);
+
+  typedSession.agent.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "I will verify the current document." }],
+    api: "responses",
+    provider: "anthropic",
+    model: "claude-opus-4-6-thinking",
+    usage: {
+      input: 900_000,
+      output: 300_000,
+      cacheRead: 350_000,
+      cacheWrite: 50_000,
+      totalTokens: 1_600_000,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "toolUse",
+    timestamp: Date.now(),
+  });
+  typedSession.agent.appendMessage({
+    role: "toolResult",
+    toolCallId: "capture-1",
+    toolName: "office_capture_viewport",
+    content: [
+      { type: "text", text: "Captured Word viewport screenshot." },
+      { type: "image", data: hugeImage, mimeType: "image/png" },
+    ],
+    details: { visual: { data: hugeImage, mimeType: "image/png" } },
+    isError: false,
+    timestamp: Date.now(),
+  });
+
+  const stats = await runtime.dispatchKernelRequest(`/v1/sessions/${typedSession.sessionId}/stats`) as {
+    tokens: { total: number };
+    contextUsage: { tokens: number | null; breakdown?: Array<{ label: string; tokens: number }> };
+  };
+
+  assert.equal(stats.tokens.total, 1_600_000);
+  assert.ok((stats.contextUsage.tokens ?? Number.POSITIVE_INFINITY) < 100_000);
+  assert.ok(stats.contextUsage.breakdown?.some((entry) => entry.label === "Tool Results" && entry.tokens < 500));
+  assert.equal(stats.contextUsage.breakdown?.some((entry) => entry.label === "Images"), false);
+  socket.close();
 });
 
 test("protocol parity: tool permission timeouts deny across gated categories", async () => {

@@ -59,6 +59,13 @@ function stripBinaryData(result: unknown): unknown {
   }
 
   const next = { ...(result as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(next)) {
+    const looksLikeImageData = key === "data" && typeof next.mimeType === "string" && String(next.mimeType).startsWith("image/");
+    const looksLikeBase64Field = /(^|[-_])(b64[-_]?json|base64|image[-_]?data|binary[-_]?data|screenshot[-_]?data)([-_]|$)/i.test(key);
+    if (typeof value === "string" && value.length > 512 && (looksLikeImageData || looksLikeBase64Field)) {
+      next[key] = `[base64 ${value.length} chars]`;
+    }
+  }
   if (Array.isArray(next.visuals)) {
     next.visuals = next.visuals.map((visual) => {
       if (!visual || typeof visual !== "object") {
@@ -130,12 +137,12 @@ function toToolText(result: unknown): string {
   return JSON.stringify(stripBinaryData(result), null, 2);
 }
 
-function toToolContent(result: unknown) {
+function toToolContent(result: unknown, options: { includeImages?: boolean } = {}) {
   const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
     { type: "text", text: toToolText(result) },
   ];
 
-  if (hasVisuals(result)) {
+  if (options.includeImages !== false && hasVisuals(result)) {
     for (const visual of result.visuals) {
       content.push({
         type: "image",
@@ -863,13 +870,13 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       name: "office_capture_viewport",
       label: "Office Viewport Screenshot",
       description:
-        "Compatibility tool for companion-native true viewport/window screenshots. Register it only when capability resolution says companion native capture is available for the active host; use office_capture_snapshot or host visual verification tools otherwise.",
+        "Compatibility tool for companion-native true viewport/window screenshots. Register it only when capability resolution says companion native capture is available for the active host; raw screenshot bytes are omitted from long-running model context, so use final verification metadata before making page/layout claims.",
       parameters: captureViewportParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("office_capture_viewport", params);
         return {
-          content: toToolContent(result),
-          details: result,
+          content: toToolContent(result, { includeImages: false }),
+          details: stripBinaryData(result),
         };
       },
     });

@@ -281,7 +281,7 @@ export const COMMON_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     category: "read",
     label: "Office Viewport Screenshot",
     description:
-      "Capture a true viewport/window screenshot through the optional companion native capture backend. Office.js document reads/writes still run through the taskpane.",
+      "Capture a true viewport/window screenshot through the optional companion native capture backend. The raw image is compacted out of long-running model context; use final verification metadata before making page/layout claims.",
     parameters: Type.Object({
       includeFormatting: Type.Optional(
         Type.Boolean({ description: "Include companion native capture metadata alongside the screenshot when available." }),

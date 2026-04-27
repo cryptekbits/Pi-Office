@@ -316,9 +316,10 @@ export async function executeWordOfficeTool(
           };
         }
 
+        const target = request.params.target ?? request.params.anchor;
         const result = await dependencies.applyHostAction(request.host, {
           type: "sectionLayout",
-          target: request.params.target as never,
+          target: target as never,
           content: typeof request.params.text === "string"
             ? request.params.text
             : typeof request.params.content === "string"

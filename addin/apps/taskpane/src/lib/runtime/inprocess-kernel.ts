@@ -134,6 +134,12 @@ import { getConnectorCatalogItem } from "./connector-catalog";
 import { CompanionClient, type CompanionSessionBinding } from "./companion-client";
 
 type JsonRecord = Record<string, unknown>;
+type ToolContentPart = { type: "text"; text: string } | ImageContent;
+
+const TOOL_RESULT_TEXT_MAX_CHARS = 24_000;
+const OLD_TOOL_RESULT_TEXT_MAX_CHARS = 4_000;
+const RECENT_TOOL_RESULTS_WITH_FULL_TEXT = 20;
+const BINARY_TEXT_FIELD_PATTERN = /(^|[-_])(b64[-_]?json|base64|image[-_]?data|binary[-_]?data|screenshot[-_]?data)([-_]|$)/i;
 
 const OFFICE_TOOL_NAME_SET = new Set<string>(OFFICE_TOOL_NAMES);
 
@@ -762,6 +768,18 @@ function isOfficeContextPayload(value: unknown): value is OfficeContextPayload {
   return Boolean(value && typeof value === "object" && "summary" in value && "state" in value);
 }
 
+function binaryPlaceholder(value: string): string {
+  return `[base64 ${value.length} chars]`;
+}
+
+function shouldStripBinaryField(key: string, value: string, container: Record<string, unknown>): boolean {
+  if (!value) return false;
+  if (key === "data" && typeof container.mimeType === "string" && container.mimeType.startsWith("image/")) {
+    return true;
+  }
+  return value.length > 512 && BINARY_TEXT_FIELD_PATTERN.test(key);
+}
+
 function stripBinaryData(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   if (Array.isArray(value)) {
@@ -769,12 +787,17 @@ function stripBinaryData(value: unknown): unknown {
   }
 
   const next: Record<string, unknown> = { ...(value as JsonRecord) };
+  for (const [key, entry] of Object.entries(next)) {
+    if (typeof entry === "string" && shouldStripBinaryField(key, entry, next)) {
+      next[key] = binaryPlaceholder(entry);
+    }
+  }
   if (Array.isArray(next.visuals)) {
     next.visuals = next.visuals.map((visual) => {
       if (!visual || typeof visual !== "object") return visual;
       const copy: JsonRecord = { ...(visual as JsonRecord) };
       if (typeof copy.data === "string") {
-        copy.data = `[base64 ${copy.data.length} chars]`;
+        copy.data = binaryPlaceholder(copy.data);
       }
       return copy;
     });
@@ -840,8 +863,8 @@ function toToolText(value: unknown): string {
   return JSON.stringify(stripBinaryData(value), null, 2);
 }
 
-function toToolContent(value: unknown): Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> {
-  const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
+function toToolContent(value: unknown): ToolContentPart[] {
+  const content: ToolContentPart[] = [
     { type: "text", text: toToolText(value) },
   ];
   if (hasVisuals(value)) {
@@ -855,13 +878,13 @@ function toToolContent(value: unknown): Array<{ type: "text"; text: string } | {
 function normalizeExternalToolResult(
   value: unknown,
 ): {
-  content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+  content: ToolContentPart[];
   details: unknown;
 } {
   if (value && typeof value === "object" && Array.isArray((value as { content?: unknown }).content)) {
     return {
       content: (value as {
-        content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+        content: ToolContentPart[];
       }).content,
       details: (value as { details?: unknown }).details ?? value,
     };
@@ -871,6 +894,66 @@ function normalizeExternalToolResult(
     content: toToolContent(value),
     details: value,
   };
+}
+
+function truncateToolText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n[truncated ${text.length - maxChars} chars from tool result for context safety]`;
+}
+
+function compactToolContentForContext(
+  toolName: string,
+  content: ToolContentPart[],
+  options: { maxTextChars?: number; keepImages?: boolean } = {},
+): ToolContentPart[] {
+  const maxTextChars = options.maxTextChars ?? TOOL_RESULT_TEXT_MAX_CHARS;
+  const keepImages = options.keepImages ?? toolName === "generate_image";
+  const next: ToolContentPart[] = [];
+  const omittedImages: string[] = [];
+
+  for (const part of content) {
+    if (part.type === "text") {
+      next.push({ ...part, text: truncateToolText(part.text, maxTextChars) });
+      continue;
+    }
+
+    if (keepImages) {
+      next.push(part);
+    } else {
+      omittedImages.push(`${part.mimeType || "image"} ${part.data.length} base64 chars`);
+    }
+  }
+
+  if (omittedImages.length) {
+    next.push({
+      type: "text",
+      text:
+        `[${omittedImages.length} image payload${omittedImages.length === 1 ? "" : "s"} omitted from model context: ` +
+        `${omittedImages.join(", ")}. Use verify_doc_visual, native page metadata, or a fresh viewport capture when visual evidence is needed.]`,
+    });
+  }
+
+  return next.length ? next : [{ type: "text", text: "[Tool result omitted from model context.]" }];
+}
+
+function compactAgentMessagesForContext(messages: AgentMessage[]): AgentMessage[] {
+  const toolResultIndexes = messages
+    .map((message, index) => (message.role === "toolResult" ? index : -1))
+    .filter((index) => index >= 0);
+  const fullTextStart = toolResultIndexes[Math.max(0, toolResultIndexes.length - RECENT_TOOL_RESULTS_WITH_FULL_TEXT)] ?? 0;
+
+  return messages.map((message, index) => {
+    if (message.role !== "toolResult") {
+      return message;
+    }
+
+    const maxTextChars = index >= fullTextStart ? TOOL_RESULT_TEXT_MAX_CHARS : OLD_TOOL_RESULT_TEXT_MAX_CHARS;
+    return {
+      ...message,
+      content: compactToolContentForContext(message.toolName, message.content as ToolContentPart[], { maxTextChars }),
+      details: stripBinaryData(message.details),
+    };
+  });
 }
 
 function toSize(size: string | undefined, aspectRatio: string | undefined): string | undefined {
@@ -1486,6 +1569,7 @@ class BrowserOfficeSession {
     this.agent = new Agent({
       getApiKey: (provider) => this.modelRegistry.getApiKey(provider),
       toolExecution: "sequential",
+      transformContext: async (messages) => compactAgentMessagesForContext(messages),
       beforeToolCall: async (ctx) => {
         const toolName = ctx.toolCall.name;
         if (this.shouldAutoApproveTool(toolName)) return undefined;
@@ -1496,6 +1580,10 @@ class BrowserOfficeSession {
         }
         return undefined;
       },
+      afterToolCall: async (ctx) => ({
+        content: compactToolContentForContext(ctx.toolCall.name, ctx.result.content as ToolContentPart[]),
+        details: stripBinaryData(ctx.result.details),
+      }),
     });
 
     const tools = this.buildTools();
@@ -1755,129 +1843,133 @@ class BrowserOfficeSession {
     }
 
     const contextWindow = this.agent.state.model.contextWindow || 0;
-    const contextTokens = totals.total || null;
-    const percent = contextTokens && contextWindow ? (contextTokens / contextWindow) * 100 : null;
-    let breakdown: ContextBreakdownEntry[] | undefined;
+    const CORE_TOOL_NAMES = new Set([
+      "read",
+      "bash",
+      "edit",
+      "write",
+      "grep",
+      "find",
+      "ls",
+      "mcp",
+      "office_get_context",
+      "office_apply_edit",
+      "edit_doc_text",
+      "edit_doc_list",
+      "get_cell_ranges",
+      "set_cell_range",
+      "clear_cell_range",
+      "resize_range",
+      "copy_to",
+      "modify_sheet_structure",
+      "modify_object",
+      "get_all_objects",
+      "search_data",
+      "get_range_as_csv",
+      "read_range_image",
+      "extract_chart_xml",
+      "office_navigate",
+      "office_capture_snapshot",
+      "office_capture_viewport",
+      "office_read_section",
+      "verify_doc",
+      "verify_doc_visual",
+      "get_presentation_structure",
+      "get_slide",
+      "list_slide_shapes",
+      "modify_presentation_structure",
+      "duplicate_slide",
+      "insert_slide_element",
+      "remove_slide_element",
+      "edit_slide_text",
+      "edit_slide_xml",
+      "edit_slide_master",
+      "edit_slide_chart",
+      "copy_image_between_slides",
+      "search_icons",
+      "insert_icon",
+      "verify_slides",
+      "verify_slide_visual",
+      "office_execute_js",
+      "office_propose_edits",
+      "ask_user",
+      "generate_image",
+    ]);
 
-    if (contextTokens != null) {
-      const CORE_TOOL_NAMES = new Set([
-        "read",
-        "bash",
-        "edit",
-        "write",
-        "grep",
-        "find",
-        "ls",
-        "mcp",
-        "office_get_context",
-        "office_apply_edit",
-        "edit_doc_text",
-        "edit_doc_list",
-        "get_cell_ranges",
-        "set_cell_range",
-        "clear_cell_range",
-        "resize_range",
-        "copy_to",
-        "modify_sheet_structure",
-        "modify_object",
-        "get_all_objects",
-        "search_data",
-        "get_range_as_csv",
-        "read_range_image",
-        "extract_chart_xml",
-        "office_navigate",
-        "office_capture_snapshot",
-        "office_capture_viewport",
-        "office_read_section",
-        "verify_doc",
-        "verify_doc_visual",
-        "get_presentation_structure",
-        "get_slide",
-        "list_slide_shapes",
-        "modify_presentation_structure",
-        "duplicate_slide",
-        "insert_slide_element",
-        "remove_slide_element",
-        "edit_slide_text",
-        "edit_slide_xml",
-        "edit_slide_master",
-        "edit_slide_chart",
-        "copy_image_between_slides",
-        "search_icons",
-        "insert_icon",
-        "verify_slides",
-        "verify_slide_visual",
-        "office_execute_js",
-        "office_propose_edits",
-        "ask_user",
-        "generate_image",
-      ]);
-
-      const systemPromptChars = this.agent.state.systemPrompt.length;
-      let coreToolDefChars = 0;
-      let integrationToolDefChars = 0;
-      for (const tool of this.agent.state.tools) {
-        const chars = tool.name.length
-          + (tool.description ?? "").length
-          + JSON.stringify(tool.parameters ?? {}).length;
-        if (CORE_TOOL_NAMES.has(tool.name)) {
-          coreToolDefChars += chars;
-        } else {
-          integrationToolDefChars += chars;
-        }
+    const toTokenEstimate = (chars: number) => Math.ceil(chars / 4);
+    const systemPromptTokens = toTokenEstimate(this.agent.state.systemPrompt.length);
+    let coreToolDefTokens = 0;
+    let integrationToolDefTokens = 0;
+    for (const tool of this.agent.state.tools) {
+      const chars = tool.name.length
+        + (tool.description ?? "").length
+        + JSON.stringify(tool.parameters ?? {}).length;
+      if (CORE_TOOL_NAMES.has(tool.name)) {
+        coreToolDefTokens += toTokenEstimate(chars);
+      } else {
+        integrationToolDefTokens += toTokenEstimate(chars);
       }
-
-      let messageChars = 0;
-      let toolCallChars = 0;
-      for (const message of messages) {
-        if (message.role === "user") {
-          if (typeof message.content === "string") {
-            messageChars += message.content.length;
-          } else if (Array.isArray(message.content)) {
-            for (const part of message.content) {
-              if (part.type === "text") {
-                messageChars += part.text.length;
-              }
-            }
-          }
-        } else if (message.role === "assistant") {
-          for (const part of message.content) {
-            if (part.type === "text") {
-              messageChars += part.text.length;
-            } else if (part.type === "toolCall") {
-              toolCallChars += (part.name?.length ?? 0) + JSON.stringify(part.arguments ?? {}).length;
-            }
-          }
-        } else if (message.role === "toolResult") {
-          for (const part of message.content) {
-            if (part.type === "text") {
-              toolCallChars += part.text.length;
-            }
-          }
-        }
-      }
-
-      const totalRaw = Math.ceil((systemPromptChars + coreToolDefChars + integrationToolDefChars + messageChars + toolCallChars) / 4);
-      const ratio = totalRaw > 0 ? contextTokens / totalRaw : 1;
-      const sysTokens = Math.round(Math.ceil(systemPromptChars / 4) * ratio);
-      const coreToolTokens = Math.round(Math.ceil(coreToolDefChars / 4) * ratio);
-      const integrationTokens = Math.round(Math.ceil(integrationToolDefChars / 4) * ratio);
-      const msgTokens = Math.round(Math.ceil(messageChars / 4) * ratio);
-      const tcTokens = Math.round(Math.ceil(toolCallChars / 4) * ratio);
-      const calibratedSum = sysTokens + coreToolTokens + integrationTokens + msgTokens + tcTokens;
-      const other = Math.max(0, contextTokens - calibratedSum);
-      const available = Math.max(0, contextWindow - contextTokens);
-
-      breakdown = [
-        { label: "System Prompt", tokens: sysTokens, color: "#3b82f6" },
-        { label: "Tool Definitions", tokens: coreToolTokens, color: "#a855f7" },
-        ...(integrationTokens > 10 ? [{ label: "Integrations", tokens: integrationTokens, color: "#ec4899" }] : []),
-        { label: "Messages", tokens: msgTokens, color: "#10b981" },
-        { label: "Tool Results", tokens: tcTokens, color: "#f59e0b" },
-        ...(other > 10 ? [{ label: "Other", tokens: other, color: "#6b7280" }] : []),
-        { label: "Available", tokens: available, color: "#e5e7eb" },
-      ];
     }
+
+    let messageTokens = 0;
+    let toolCallTokens = 0;
+    let toolResultTokens = 0;
+    let imageTokens = 0;
+    const contextMessages = compactAgentMessagesForContext(messages);
+    for (const message of contextMessages) {
+      if (message.role === "user") {
+        if (typeof message.content === "string") {
+          messageTokens += toTokenEstimate(message.content.length);
+        } else if (Array.isArray(message.content)) {
+          for (const part of message.content) {
+            if (part.type === "text") {
+              messageTokens += toTokenEstimate(part.text.length);
+            } else if (part.type === "image") {
+              imageTokens += toTokenEstimate(part.data.length);
+            }
+          }
+        }
+      } else if (message.role === "assistant") {
+        for (const part of message.content) {
+          if (part.type === "text") {
+            messageTokens += toTokenEstimate(part.text.length);
+          } else if (part.type === "thinking") {
+            messageTokens += toTokenEstimate(part.thinking.length + (part.thinkingSignature?.length ?? 0));
+          } else if (part.type === "toolCall") {
+            toolCallTokens += toTokenEstimate((part.name?.length ?? 0) + JSON.stringify(part.arguments ?? {}).length);
+          }
+        }
+      } else if (message.role === "toolResult") {
+        for (const part of message.content) {
+          if (part.type === "text") {
+            toolResultTokens += toTokenEstimate(part.text.length);
+          } else if (part.type === "image") {
+            imageTokens += toTokenEstimate(part.data.length);
+          }
+        }
+      }
+    }
+
+    const contextTokens =
+      systemPromptTokens +
+      coreToolDefTokens +
+      integrationToolDefTokens +
+      messageTokens +
+      toolCallTokens +
+      toolResultTokens +
+      imageTokens;
+    const percent = contextTokens && contextWindow ? (contextTokens / contextWindow) * 100 : null;
+    const available = Math.max(0, contextWindow - contextTokens);
+    const breakdown: ContextBreakdownEntry[] = [
+      { label: "System Prompt", tokens: systemPromptTokens, color: "#3b82f6" },
+      { label: "Tool Definitions", tokens: coreToolDefTokens, color: "#a855f7" },
+      ...(integrationToolDefTokens > 10 ? [{ label: "Integrations", tokens: integrationToolDefTokens, color: "#ec4899" }] : []),
+      { label: "Messages", tokens: messageTokens, color: "#10b981" },
+      { label: "Tool Calls", tokens: toolCallTokens, color: "#6366f1" },
+      { label: "Tool Results", tokens: toolResultTokens, color: "#f59e0b" },
+      ...(imageTokens > 0 ? [{ label: "Images", tokens: imageTokens, color: "#06b6d4" }] : []),
+      { label: "Available", tokens: available, color: "#e5e7eb" },
+    ];
 
     return {
       sessionId: this.sessionId,

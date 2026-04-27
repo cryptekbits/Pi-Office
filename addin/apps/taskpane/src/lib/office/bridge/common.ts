@@ -265,15 +265,17 @@ function toWordStructuralWarnings(payload: Record<string, unknown>): string[] {
   for (const [index, entry] of [...headings, ...paragraphs].entries()) {
     const style = entry.style ?? "";
     const wordCount = entry.text.split(/\s+/).filter(Boolean).length;
-    if (/heading\s*[1-6]?|heading[1-6]?/i.test(style) && !entry.text.trim()) {
+    const headingStyle = /heading\s*[1-6]?|heading[1-6]?/i.test(style);
+    if (headingStyle && !entry.text.trim()) {
       warnings.push(
         `Document structure warning: paragraph ${index + 1} is styled as a heading but has no visible text. Verify duplicate page breaks or empty heading paragraphs before claiming formatted output.`,
       );
       break;
     }
-    if (/heading\s*1|heading1/i.test(style) && (entry.text.length > 180 || wordCount > 24)) {
+    const gluedHeadingContent = /[.!?]["”')\]]?\s*[A-Z0-9“"]/.test(entry.text) && wordCount > 18;
+    if (headingStyle && (entry.text.length > 180 || wordCount > 24 || gluedHeadingContent)) {
       warnings.push(
-        `Document structure warning: paragraph ${index + 1} is styled as Heading1 but looks like body text. Verify heading levels before claiming formatted output.`,
+        `Document structure warning: paragraph ${index + 1} is styled as ${style || "a heading"} but looks like body text or glued content. Verify heading boundaries before claiming formatted output.`,
       );
       break;
     }

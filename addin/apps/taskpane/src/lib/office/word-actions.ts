@@ -142,6 +142,17 @@ export function wordOoxmlHasAdjacentPageBreak(
   return false;
 }
 
+function ensureDocumentAppendBoundaryHtml(content: string): string {
+  const trimmedStart = content.trimStart();
+  if (!trimmedStart) {
+    return content;
+  }
+  if (/^<(?:p|h[1-6]|ul|ol|table|blockquote|div|section|article)\b/i.test(trimmedStart)) {
+    return `<p></p>${content}`;
+  }
+  return `<p></p><p>${content}</p>`;
+}
+
 export async function applyWordAction(action: OfficeHostAction): Promise<unknown> {
   return Word.run(async (context) => {
     const body = context.document.body;
@@ -493,7 +504,8 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
             : documentPlacement === "end"
               ? Word.InsertLocation.end
               : Word.InsertLocation.replace;
-        body.insertHtml(content, documentInsertLocation);
+        const documentContent = documentPlacement === "end" ? ensureDocumentAppendBoundaryHtml(content) : content;
+        body.insertHtml(documentContent, documentInsertLocation);
         await context.sync();
         return { ok: true, host: "word", action: type, target: { kind: "document" }, placement: documentPlacement };
       }

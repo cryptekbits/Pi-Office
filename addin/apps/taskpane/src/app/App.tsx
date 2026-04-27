@@ -259,6 +259,14 @@ function getRecordArray(value: unknown, key: string): unknown[] {
 function formatDebugLogJsonl(bundle: unknown): string {
   const kernel = getRecordValue(bundle, "kernel");
   const visibleConversation = getRecordValue(bundle, "visibleConversation");
+  const kernelEvents = getRecordArray(kernel, "events");
+  const kernelSnapshot =
+    kernel && typeof kernel === "object" && !Array.isArray(kernel)
+      ? {
+          ...(kernel as Record<string, unknown>),
+          events: `[emitted as ${kernelEvents.length} kernel_event JSONL records]`,
+        }
+      : kernel;
   const records: unknown[] = [
     {
       type: "pi_office_debug_export",
@@ -269,13 +277,13 @@ function formatDebugLogJsonl(bundle: unknown): string {
     },
     { type: "app_state", data: getRecordValue(bundle, "appState") },
     { type: "visible_conversation", data: visibleConversation },
-    { type: "kernel_snapshot", data: kernel },
+    { type: "kernel_snapshot", data: kernelSnapshot },
   ];
 
   getRecordArray(visibleConversation, "messages").forEach((message, index) => {
     records.push({ type: "visible_message", index, data: message });
   });
-  getRecordArray(kernel, "events").forEach((event, index) => {
+  kernelEvents.forEach((event, index) => {
     records.push({ type: "kernel_event", index, data: event });
   });
   records.push({ type: "redaction", data: getRecordValue(bundle, "redaction") });

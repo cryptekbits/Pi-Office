@@ -214,6 +214,7 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       operation: Type.String({ description: "inventory, setHeader, setFooter, clearHeader, clearFooter, pageSetup, or insertBreak." }),
       sectionIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based section index. Defaults to 1." })),
       target: Type.Optional(Type.Any({ description: "Optional Word anchor for insertBreak, such as { kind: \"heading\", text: \"7. Conclusion\" } or another explicit range target." })),
+      anchor: Type.Optional(Type.Any({ description: "Alias for target. Prefer target, but anchor is accepted for deferred office_tool_call compatibility." })),
       headerFooterType: Type.Optional(Type.String({ description: "primary, firstPage, or evenPages. Defaults to primary." })),
       text: Type.Optional(Type.String({ description: "Header/footer text for setHeader or setFooter." })),
       margins: Type.Optional(Type.Any({ description: "Margin/page setup values in points: top, bottom, left, right, pageWidth, pageHeight." })),

@@ -18,6 +18,7 @@ test("Word section layout protocol and registry expose headers, footers, page se
   assert.ok(definition);
   assert.match(definition.description, /header\/footer/i);
   assert.ok(definition.discovery?.capabilityIds?.includes("word.sections"));
+  assert.match(JSON.stringify(definition.parameters), /anchor/);
 });
 
 test("Word section layout bridge dispatches structured actions and enforces Word-only scope", async () => {
@@ -65,6 +66,23 @@ test("Word section layout bridge dispatches structured actions and enforces Word
   assert.equal((calls[1]?.action.options as Record<string, unknown>).breakType, "page");
   assert.equal((calls[1]?.action.options as Record<string, unknown>).allowDuplicatePageBreak, undefined);
   assert.equal(calls[1]?.action.placement, "before");
+
+  const anchorAliasResult = await executeOfficeTool({
+    requestId: "word-page-break-anchor",
+    toolName: "word_section_layout" as OfficeToolRequest["toolName"],
+    host: "word",
+    params: {
+      operation: "insertBreak",
+      breakType: "page",
+      placement: "after",
+      anchor: { kind: "heading", text: "Audio, Media & AI" },
+    },
+  } as OfficeToolRequest);
+
+  assert.equal(anchorAliasResult.success, true);
+  assert.equal((calls[2]?.action.target as { kind?: string; text?: string }).kind, "heading");
+  assert.equal((calls[2]?.action.target as { kind?: string; text?: string }).text, "Audio, Media & AI");
+  assert.equal(calls[2]?.action.placement, "after");
 
   const unsupported = await executeOfficeTool({
     requestId: "word-section-excel",

@@ -663,6 +663,62 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Regression tests cover both literal-LaTeX warning behavior and the future native equation success path.
   - Notes/Evidence: Closed by adding a first-class `word_equation` Office tool, rejecting `office_apply_edit.insertHtml` payloads that contain LaTeX/Markdown math delimiters or common LaTeX math commands, and making `verify_doc` warn when literal LaTeX remains in Word text. Native equation success now requires persisted OfficeMath evidence from `m:oMath` counts returned by `word_equation` or subsequent verification. Regression coverage lives in `addin/scripts/office-tests/src/word-equation-tools.test.ts`, `addin/scripts/office-tests/src/office-bridge.test.ts`, and `addin/scripts/office-tests/src/deferred-tool-discovery.test.ts`.
 
+- [x] BUG-028: Context usage meter reports cumulative provider usage as live context and misses compaction pressure
+  - Category: Bug
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 Opus 4.6 / Gemini 3 failure run in `debugging-logs/4.Complete-Mess.json`; user observed a 1M-token Gemini context showing 1.6M used while system prompt and tool results appeared to keep growing.
+  - Details: The session stats path summed every assistant response's provider usage (`input`, `output`, `cacheRead`, `cacheWrite`, `totalTokens`) and displayed that cumulative total as `contextUsage.tokens`. It then scaled the prompt/tool/message breakdown up to that cumulative number, making a roughly 25k-character system prompt appear as 255k tokens and making cached provider usage look like current context. The same run's agent snapshot had about 90 messages and large tool-result payloads, but the live rough current-context estimate was far below the displayed 1.2M/1.6M cumulative usage. This misled users and masked the real pressure points.
+  - Dependencies: FEATURE-031, FEATURE-028, FEATURE-029, BUG-029.
+  - Subtasks:
+    - [x] Separate cumulative provider usage totals from live context-window estimation in `SessionStatsResponse`.
+    - [x] Estimate live context from the current system prompt, published tool definitions, messages, tool calls, compacted tool results, and any retained image payloads.
+    - [x] Use the agent `transformContext` hook to compact image-heavy and older bulky tool results before provider calls.
+    - [x] Add regression coverage proving `contextUsage.tokens` remains a live estimate even when cumulative provider usage is above the model window.
+  - Acceptance Criteria:
+    - [x] The UI no longer shows cumulative cache/output accounting as current context consumed.
+    - [x] A long failing run cannot make the context meter exceed the model window solely from prior provider usage totals.
+    - [x] Tool-result compaction is applied before LLM calls so visual/debug payloads do not snowball.
+  - Notes/Evidence: Closed 2026-04-27 by changing `getStats()` to compute live context estimates from current prompt/tools/messages, keeping cumulative usage only in `tokens`, adding `transformContext` compaction for old/bulky tool results, and covering the Opus/Gemini-shaped 1.6M cumulative-usage case in `addin/scripts/office-tests/src/protocol-parity.test.ts`.
+
+- [x] BUG-029: Viewport screenshots and debug export retain raw image/tool-result payloads and bloat long runs
+  - Category: Bug
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 `debugging-logs/4.Complete-Mess.json`; the exported JSONL was about 64 MB, with large `office_capture_viewport` results and a duplicated `kernel_snapshot.events` history.
+  - Details: Companion-native viewport capture returned base64 screenshots both as image content and inside structured details. Because tool results were persisted directly into agent state and debug events, two viewport captures contributed hundreds of thousands of base64 characters to the model-visible tool-result history. The JSONL export also included the full event list inside `kernel_snapshot` and then emitted every event again as `kernel_event`, doubling the event-history portion of already-large logs.
+  - Dependencies: FEATURE-031, BUG-028, BUG-007.
+  - Subtasks:
+    - [x] Strip or summarize raw image payloads from long-running model context for `office_capture_viewport` and other non-generation visual tool results.
+    - [x] Redact image-like `data`, `b64_json`, and base64 fields in structured tool-result details.
+    - [x] Keep debug JSONL complete while avoiding duplicate embedded event history in the kernel snapshot record.
+    - [x] Update viewport-capture guidance so models do not treat a retained screenshot payload as durable page/layout evidence.
+  - Acceptance Criteria:
+    - [x] Viewport captures keep useful text/metadata while raw screenshot bytes are omitted from model context.
+    - [x] Debug exports no longer carry the same full event history twice.
+    - [x] Regression coverage guards against image payloads dominating the live context estimate.
+  - Notes/Evidence: Closed 2026-04-27 by adding `afterToolCall` result compaction in the in-process kernel, redacting binary fields in both taskpane and pack extension result formatting, omitting raw viewport image content from the packaged `office_capture_viewport` wrapper, and changing `formatDebugLogJsonl()` to emit `kernel_snapshot.events` as a placeholder while preserving individual `kernel_event` records.
+
+- [x] BUG-030: Word repair loops can degrade anchored page breaks to stale selection and glue appended sections into body text
+  - Category: Bug
+  - Status: done
+  - Priority: P0
+  - Source: 2026-04-27 Opus 4.6 / Gemini 3 failure run in `debugging-logs/4.Complete-Mess.json` plus saved DOCX inspection of `debugging-logs/debugging-doc.docx`.
+  - Details: The run used `office_tool_call` with `word_section_layout` arguments that supplied `anchor` instead of `target`. The dispatcher only forwarded `target`, so the intended heading anchor could be dropped and the tool fell back to the stale active selection. That created a page-break/form-feed artifact near the title. Later, a full-document `replaceDocumentHtml` wiped earlier break evidence; a document-end `insertHtml` then appended a new section without a paragraph boundary, producing a glued `Heading2` paragraph (`...core processing step.How Fast Is "Fast"?`). Repair attempts then looped through unsupported empty inserts, review-proposal timeout, invalid formatting, and blocked manual Office.js until Word became slow/unstable.
+  - Dependencies: BUG-024, BUG-025, BUG-026, BUG-028, BUG-029.
+  - Subtasks:
+    - [x] Accept `anchor` as an alias for `target` in `word_section_layout` dispatcher/schema so deferred tool calls preserve explicit placement.
+    - [x] Add a safer document-end HTML append boundary so top-level sections do not glue onto the previous paragraph.
+    - [x] Extend `verify_doc` structural warnings to flag body-like or glued content in any heading level, not only `Heading1`.
+    - [x] Tighten prompt guidance to stop after repeated repair failures or proposal timeouts instead of looping through empty inserts/manual escape hatches.
+    - [x] Add regression coverage for the anchor alias and glued-heading verification pattern.
+  - Acceptance Criteria:
+    - [x] A model-supplied `anchor` for `word_section_layout.insertBreak` resolves to the intended target instead of silently using selection.
+    - [x] Document-end top-level section appends have a paragraph boundary.
+    - [x] Final verification flags glued heading/body corruption before the assistant claims professional output.
+    - [x] Models receive explicit steering to ask the user or use a simpler supported tool after repeated repair failures.
+  - Notes/Evidence: Closed 2026-04-27 by forwarding `request.params.anchor` as a `word_section_layout` target alias, adding document-append HTML boundary handling in `applyWordAction`, expanding structural warnings for body-like heading paragraphs, and adding regression coverage in `word-section-layout-tools.test.ts`, `office-bridge.test.ts`, and `protocol-parity.test.ts`.
+
 - [x] BUG-017: Companion-brokered OAuth callback does not update taskpane connector state
   - Category: Bug
   - Status: done
