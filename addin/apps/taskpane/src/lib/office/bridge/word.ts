@@ -9,6 +9,14 @@ import {
   trimString,
 } from "./common";
 
+function toNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((entry) => String(entry)).filter(Boolean) : [];
+}
+
 export async function executeWordOfficeTool(
   request: OfficeToolRequest,
   dependencies: OfficeToolExecutorDependencies,
@@ -41,6 +49,45 @@ export async function executeWordOfficeTool(
 
         const result = await dependencies.proposeEdits(request.host, request.params);
         return toPayloadAwareResult(request.requestId, result);
+      }
+
+      if (request.toolName === "word_search") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_search is only available for Word.",
+          };
+        }
+
+        if (!dependencies.searchWordDocument) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_search is not available in this taskpane build.",
+          };
+        }
+
+        const query = trimString(request.params.query);
+        if (!query) {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_search requires query.",
+          };
+        }
+
+        const result = await dependencies.searchWordDocument({
+          query,
+          objectTypes: toStringArray(request.params.objectTypes),
+          maxResults: toNumber(request.params.maxResults ?? request.params.limit, 20),
+          includeContext: request.params.includeContext !== false,
+        });
+        return {
+          requestId: request.requestId,
+          success: true,
+          content: result,
+        };
       }
 
 

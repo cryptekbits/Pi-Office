@@ -52,7 +52,7 @@ export const PI_OFFICE_CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     id: "office_context",
     label: "Office document context",
     owner: "addin-only",
-    tools: ["office_get_context", "office_tool_search", "office_tool_get", "office_batch_execute", "office_read_section", "verify_doc", "get_cell_ranges", "get_all_objects", "search_data", "get_presentation_structure", "get_slide", "list_slide_shapes", "verify_slides"],
+    tools: ["office_get_context", "office_tool_search", "office_tool_get", "office_batch_execute", "word_search", "office_read_section", "verify_doc", "get_cell_ranges", "get_all_objects", "search_data", "get_presentation_structure", "get_slide", "list_slide_shapes", "verify_slides"],
     requiresCompanion: false,
     requiresSavedDocument: false,
     honestyLabel: "Runs in the Office taskpane through Office.js.",

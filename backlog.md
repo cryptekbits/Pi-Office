@@ -869,26 +869,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Regression tests prove note references are not mistaken for note bodies.
   - Notes/Evidence: Current Word context uses `body.footnotes` and `body.endnotes` and loads `items/body/text` plus `items/reference/text`; current navigation/action code primarily selects `note.reference`. This feature closes the known `FEATURE-004` footnote/endnote body-targeting gap.
 
-- [ ] FEATURE-017: Add first-class Word document search and anchor index
+- [x] FEATURE-017: Add first-class Word document search and anchor index
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: Current Word tools expose context snippets, headings, paragraph pages, and some internal search behavior, but there is no first-class search/index tool that returns stable anchors across paragraphs, headings, comments, revisions, fields, tables, content controls, and notes. Large-document workflows need a reliable discovery step before edits so the model can cite and navigate targets instead of relying on fuzzy text guesses or repeated-text replacement.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Define a Word search tool schema with query, scope, object types, match options, max results, and include-context flags.
-    - [ ] Implement document-wide text search using supported Word search APIs and return anchors with paragraph IDs where available.
-    - [ ] Add indexed search over already-readable structures such as headings, comments, revisions, fields, content controls, tables, footnotes, and endnotes.
-    - [ ] Add result ranking and deduping so repeated strings return enough surrounding context for deterministic follow-up edits.
-    - [ ] Add navigation/apply-edit integration so returned anchors can be used directly by `office_navigate`, `edit_doc_text`, and reviewable edit proposals.
-    - [ ] Add tests for repeated text, heading matches, comment/revision/field/control/note matches, max-result limits, and unsupported paragraph IDs.
+    - [x] Define a Word search tool schema with query, scope, object types, match options, max results, and include-context flags.
+    - [x] Implement document-wide text search using supported Word search APIs and return anchors with paragraph IDs where available.
+    - [x] Add indexed search over already-readable structures such as headings, comments, revisions, fields, content controls, tables, footnotes, and endnotes.
+    - [x] Add result ranking and deduping so repeated strings return enough surrounding context for deterministic follow-up edits.
+    - [x] Add navigation/apply-edit integration so returned anchors can be used directly by `office_navigate`, `edit_doc_text`, and reviewable edit proposals.
+    - [x] Add tests for repeated text, heading matches, comment/revision/field/control/note matches, max-result limits, and unsupported paragraph IDs.
   - Acceptance Criteria:
-    - [ ] Large-document workflows can search, cite, navigate, and edit by returned anchors instead of fuzzy text guesses.
-    - [ ] Search results include enough context to distinguish repeated or similar passages.
-    - [ ] Returned anchors are accepted by existing navigation/edit paths where possible.
-    - [ ] Tests cover repeated-text determinism and anchor compatibility.
-  - Notes/Evidence: WordApi 1.1 exposes `Body.search`, `Range.search`, `Paragraph.search`, and search options; WordApi 1.7 adds `Document.search`. Pi-Office already uses paragraph search internally for proposal application, but a public search/index tool would make that targeting auditable before mutation.
+    - [x] Large-document workflows can search, cite, navigate, and edit by returned anchors instead of fuzzy text guesses.
+    - [x] Search results include enough context to distinguish repeated or similar passages.
+    - [x] Returned anchors are accepted by existing navigation/edit paths where possible.
+    - [x] Tests cover repeated-text determinism and anchor compatibility.
+  - Notes/Evidence: WordApi 1.1 exposes `Body.search`, `Range.search`, `Paragraph.search`, and search options; WordApi 1.7 adds `Document.search`. Pi-Office already uses paragraph search internally for proposal application, but a public search/index tool would make that targeting auditable before mutation. Closed 2026-04-27 with the first-class `word_search` tool, `searchResult` anchor metadata, native body search plus structural indexing over paragraphs/headings/comments/revisions/fields/content controls/footnotes/endnotes, search-result navigation support, and regression coverage in `word-search-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-018: Add Word floating shape, text box, and layout object tools
   - Category: Feature

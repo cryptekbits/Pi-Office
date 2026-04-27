@@ -7,6 +7,7 @@ import {
   navigateOfficeAnchor,
   proposeDocumentEdits,
   readDocumentSection,
+  searchWordDocument,
 } from "./office";
 
 export const executeOfficeTool = createOfficeToolExecutor({
@@ -16,5 +17,6 @@ export const executeOfficeTool = createOfficeToolExecutor({
   readDocumentSection,
   executeOfficeJs,
   proposeEdits: proposeDocumentEdits,
+  searchWordDocument,
   logger: console,
 });

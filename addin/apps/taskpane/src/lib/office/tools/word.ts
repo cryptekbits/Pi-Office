@@ -23,6 +23,32 @@ const proposeEditsParams = Type.Object({
 
 export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
   {
+    name: "word_search",
+    hosts: ["word"],
+    category: "read",
+    label: "Search Word Anchors",
+    description:
+      "Search the active Word document and return deterministic anchors across paragraphs, headings, comments, revisions, fields, content controls, footnotes, and endnotes.",
+    discovery: {
+      tier: "core",
+      capabilityIds: ["word.search", "word.anchors", "word.index"],
+      keywords: ["word", "search", "anchor", "index", "paragraph", "heading", "comment", "field", "note"],
+      summary: "Find Word passages and structural objects before navigating or editing.",
+      riskLevel: "low",
+      requirementSets: [{ name: "WordApi", minVersion: "1.1" }],
+      fallback: "Use office_get_context or office_read_section if a host cannot run search APIs.",
+    },
+    parameters: Type.Object({
+      query: Type.String({ description: "Text or structural term to search for." }),
+      objectTypes: Type.Optional(Type.Array(Type.String(), { description: "Optional object types: text, heading, paragraph, comment, revision, field, contentControl, footnote, endnote." })),
+      maxResults: Type.Optional(Type.Number({ minimum: 1, maximum: 50, description: "Maximum results to return. Defaults to 12." })),
+      includeContext: Type.Optional(Type.Boolean({ description: "Include surrounding context previews. Defaults to true." })),
+      matchCase: Type.Optional(Type.Boolean({ description: "Use case-sensitive text search for native text matches. Defaults to false." })),
+      matchWholeWord: Type.Optional(Type.Boolean({ description: "Use whole-word native text search where supported. Defaults to false." })),
+    }),
+    executor: "office-bridge",
+  },
+  {
     name: "edit_doc_text",
     hosts: ["word"],
     category: "write-doc",

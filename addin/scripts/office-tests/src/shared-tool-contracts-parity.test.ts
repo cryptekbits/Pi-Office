@@ -65,6 +65,7 @@ const DEFAULT_DEFERRED_WORD_BASELINE = [
   "office_tool_search",
   "verify_doc",
   "verify_doc_visual",
+  "word_search",
 ] as const;
 const REQUIRED_VALIDATION_COMMANDS = ["typecheck", "build", "check:bundle", "validate:manifests", "test:office"] as const;
 const BRIDGE_DISPATCH_SOURCE_FILES = [
@@ -91,6 +92,7 @@ const EXTENSION_REGISTERED_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
     toolName !== "office_tool_search" &&
     toolName !== "office_tool_get" &&
     toolName !== "mcp_tool_search" &&
+    toolName !== "word_search" &&
     !RUNTIME_ONLY_OFFICE_TOOLS.has(toolName),
 );
 

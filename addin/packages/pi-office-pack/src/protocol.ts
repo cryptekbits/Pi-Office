@@ -112,6 +112,7 @@ export const OFFICE_ANCHOR_KINDS = [
   "endnote",
   "field",
   "contentControl",
+  "searchResult",
   "cell",
   "range",
   "sheet",
@@ -134,9 +135,14 @@ export interface OfficeAnchor {
   label?: string | undefined;
   id?: string | undefined;
   text?: string | undefined;
+  searchQuery?: string | undefined;
   sheetName?: string | undefined;
   address?: string | undefined;
   paragraphId?: string | undefined;
+  searchResultId?: string | undefined;
+  searchResultIndex?: number | undefined;
+  objectType?: string | undefined;
+  occurrenceIndex?: number | undefined;
   commentId?: string | undefined;
   revisionId?: string | undefined;
   slideId?: string | undefined;
@@ -1145,6 +1151,7 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   mcp_result_summarize: "read",
   mcp_result_clear: "connector",
   office_read_section: "read",
+  word_search: "read",
   office_capture_snapshot: "read",
   office_capture_viewport: "read",
   verify_doc: "read",
@@ -1639,6 +1646,7 @@ export const OFFICE_TOOL_NAMES = [
   "office_capture_snapshot",
   "office_capture_viewport",
   "office_read_section",
+  "word_search",
   "verify_doc",
   "verify_doc_visual",
   "get_presentation_structure",

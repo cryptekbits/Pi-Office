@@ -62,6 +62,33 @@ export async function navigateWordAnchor(anchor: OfficeAnchor): Promise<unknown>
     const supportsFieldMetadata = supportsRequirementSet("WordApi", "1.5");
     const supportsContentControlSubtypes = supportsRequirementSet("WordApi", "1.3");
 
+    if (anchor.kind === "searchResult") {
+      const query = trimString(anchor.searchQuery) ?? trimString(anchor.text) ?? trimString(anchor.label);
+      if (!query) {
+        throw new Error("Word search result anchors require searchQuery or text.");
+      }
+      const matches = body.search(query, {
+        matchCase: false,
+        matchWholeWord: false,
+      });
+      matches.load("items/text");
+      await context.sync();
+      const index = typeof anchor.searchResultIndex === "number" ? Math.max(0, Math.trunc(anchor.searchResultIndex) - 1) : 0;
+      const match = matches.items[index];
+      if (match) {
+        match.select();
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          anchorKind: "searchResult",
+          searchQuery: query,
+          searchResultIndex: index + 1,
+          text: truncateLabel(match.text, 180),
+        };
+      }
+    }
+
     if ((anchor.kind === "footnote" || anchor.kind === "endnote") && supportsRequirementSet("WordApi", "1.5")) {
       const notes = anchor.kind === "footnote" ? body.footnotes : body.endnotes;
       notes.load("items/type,items/body/text,items/reference/text");

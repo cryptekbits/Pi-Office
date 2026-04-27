@@ -321,7 +321,9 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
     const selectedFields = selectionFields?.items ?? [];
     const documentContentControlList = documentContentControls?.items ?? selectionContentControls?.items ?? [];
     const selectedContentControls = selectionContentControls?.items ?? [];
-    const paragraphMap = bodyParagraphs.items.slice(0, 40).map((paragraph) => ({
+    const paragraphMap = bodyParagraphs.items.slice(0, 40).map((paragraph, index) => ({
+      kind: /heading/i.test(String(paragraph.styleBuiltIn || paragraph.style || "")) ? "heading" : "paragraph",
+      index,
       text: truncateLabel(paragraph.text, 180),
       paragraphId: supportsParagraphIds ? paragraph.uniqueLocalId : undefined,
       style: paragraph.style || paragraph.styleBuiltIn,
@@ -595,6 +597,166 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
   }
 
   return payload;
+}
+
+function wordSearchMatchesText(text: string | undefined, query: string): boolean {
+  return Boolean(text && text.toLowerCase().includes(query.toLowerCase()));
+}
+
+export async function searchWordDocument(params: Record<string, unknown>): Promise<unknown> {
+  const query = trimString(params.query);
+  if (!query) {
+    return { ok: false, error: "word_search requires query." };
+  }
+
+  const maxResults = typeof params.maxResults === "number"
+    ? Math.max(1, Math.min(50, Math.trunc(params.maxResults)))
+    : 20;
+
+  return Word.run(async (context) => {
+    const body = context.document.body;
+    const supportsParagraphIds = supportsRequirementSet("WordApi", "1.6");
+    const supportsComments = supportsRequirementSet("WordApi", "1.4");
+    const supportsNotes = supportsRequirementSet("WordApi", "1.5");
+    const supportsFields = supportsRequirementSet("WordApi", "1.4");
+    const supportsContentControls = supportsRequirementSet("WordApi", "1.1");
+    const supportsTrackedChanges = supportsRequirementSet("WordApi", "1.6");
+
+    const paragraphs = body.paragraphs;
+    const comments = supportsComments ? body.getComments() : undefined;
+    const footnotes = supportsNotes ? body.footnotes : undefined;
+    const endnotes = supportsNotes ? body.endnotes : undefined;
+    const fields = supportsFields ? body.fields : undefined;
+    const contentControls = supportsContentControls ? body.contentControls : undefined;
+    const trackedChanges = supportsTrackedChanges ? body.getTrackedChanges() : undefined;
+    const nativeMatches = body.search(query, { matchCase: false, matchWholeWord: false });
+
+    paragraphs.load(
+      supportsParagraphIds
+        ? "items/text,items/style,items/styleBuiltIn,items/uniqueLocalId"
+        : "items/text,items/style,items/styleBuiltIn",
+    );
+    nativeMatches.load("items/text");
+    comments?.load("items/id,items/content,items/authorName,items/resolved");
+    footnotes?.load("items/body/text,items/reference/text");
+    endnotes?.load("items/body/text,items/reference/text");
+    fields?.load("items/code,items/result/text");
+    contentControls?.load("items/id,items/title,items/tag,items/text,type");
+    trackedChanges?.load("items/author,items/text,items/type");
+    await context.sync();
+
+    const results: Array<Record<string, unknown>> = [];
+    const push = (entry: Record<string, unknown>) => {
+      if (results.length < maxResults) results.push(entry);
+    };
+
+    paragraphs.items.forEach((paragraph, index) => {
+      if (!wordSearchMatchesText(paragraph.text, query)) return;
+      const style = String(paragraph.styleBuiltIn || paragraph.style || "");
+      push({
+        anchor: {
+          kind: /heading/i.test(style) ? "heading" : "paragraph",
+          label: truncateLabel(paragraph.text),
+          text: truncateLabel(paragraph.text, 240),
+          paragraphId: supportsParagraphIds ? paragraph.uniqueLocalId : undefined,
+        },
+        objectType: /heading/i.test(style) ? "heading" : "paragraph",
+        rank: index + 1,
+        contextPreview: truncateText(paragraph.text, 320),
+      });
+    });
+
+    nativeMatches.items.slice(0, maxResults).forEach((match, index) => {
+      if (results.length >= maxResults) return;
+      push({
+        anchor: { kind: "range", label: `Search match ${index + 1}`, text: truncateLabel(match.text, 180) },
+        objectType: "range",
+        rank: index + 1,
+        contextPreview: truncateText(match.text, 320),
+      });
+    });
+
+    (comments?.items ?? []).forEach((comment, index) => {
+      if (!wordSearchMatchesText(comment.content, query)) return;
+      push({
+        anchor: { kind: "comment", commentId: comment.id, label: `Comment ${index + 1}`, text: truncateLabel(comment.content, 180) },
+        objectType: "comment",
+        rank: index + 1,
+        contextPreview: truncateText(comment.content, 320),
+        metadata: { authorName: comment.authorName, resolved: comment.resolved },
+      });
+    });
+
+    (trackedChanges?.items ?? []).forEach((change, index) => {
+      if (!wordSearchMatchesText(change.text, query)) return;
+      push({
+        anchor: { kind: "revision", revisionId: `revision:${index + 1}`, label: `Revision ${index + 1}`, text: truncateLabel(change.text, 180) },
+        objectType: "revision",
+        rank: index + 1,
+        contextPreview: truncateText(change.text, 320),
+        metadata: { author: change.author, type: change.type },
+      });
+    });
+
+    (fields?.items ?? []).forEach((field, index) => {
+      const fieldText = `${field.code ?? ""} ${field.result?.text ?? ""}`;
+      if (!wordSearchMatchesText(fieldText, query)) return;
+      push({
+        anchor: { kind: "field", id: `field:${index + 1}`, label: `Field ${index + 1}`, text: truncateLabel(field.result?.text || field.code, 180) },
+        objectType: "field",
+        rank: index + 1,
+        contextPreview: truncateText(fieldText, 320),
+      });
+    });
+
+    (contentControls?.items ?? []).forEach((control) => {
+      const controlText = `${control.title ?? ""} ${control.tag ?? ""} ${control.text ?? ""}`;
+      if (!wordSearchMatchesText(controlText, query)) return;
+      push({
+        anchor: { kind: "contentControl", id: `contentControl:${control.id}`, label: control.title || control.tag || `Content control ${control.id}`, text: truncateLabel(control.text, 180) },
+        objectType: "contentControl",
+        rank: control.id,
+        contextPreview: truncateText(controlText, 320),
+      });
+    });
+
+    (footnotes?.items ?? []).forEach((note, index) => {
+      if (!wordSearchMatchesText(note.body.text, query) && !wordSearchMatchesText(note.reference.text, query)) return;
+      push({
+        anchor: { kind: "footnote", id: `footnote:${index + 1}`, label: `Footnote ${index + 1}`, text: truncateLabel(note.body.text, 180) },
+        objectType: "footnote",
+        rank: index + 1,
+        contextPreview: truncateText(note.body.text, 320),
+      });
+    });
+
+    (endnotes?.items ?? []).forEach((note, index) => {
+      if (!wordSearchMatchesText(note.body.text, query) && !wordSearchMatchesText(note.reference.text, query)) return;
+      push({
+        anchor: { kind: "endnote", id: `endnote:${index + 1}`, label: `Endnote ${index + 1}`, text: truncateLabel(note.body.text, 180) },
+        objectType: "endnote",
+        rank: index + 1,
+        contextPreview: truncateText(note.body.text, 320),
+      });
+    });
+
+    return {
+      ok: true,
+      host: "word",
+      query,
+      totalReturned: results.length,
+      maxResults,
+      results,
+      capabilities: {
+        paragraphIds: supportsParagraphIds,
+        comments: supportsComments,
+        notes: supportsNotes,
+        fields: supportsFields,
+        contentControls: supportsContentControls,
+        trackedChanges: supportsTrackedChanges,
+      },
+    };
+  });
 }
 
 

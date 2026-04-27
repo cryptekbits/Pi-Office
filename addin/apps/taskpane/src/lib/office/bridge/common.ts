@@ -1179,6 +1179,7 @@ export interface OfficeToolExecutorDependencies {
     host: OfficeHost,
     options: { includeFormatting?: boolean; maxImages?: number; scope?: string },
   ) => Promise<unknown>;
+  searchWordDocument?: (params: Record<string, unknown>) => Promise<unknown>;
   applyHostAction: (host: OfficeHost, action: OfficeHostAction) => Promise<unknown>;
   navigateOfficeAnchor: (host: OfficeHost, anchor: OfficeAnchor) => Promise<unknown>;
   readDocumentSection: (host: OfficeHost, startIndex: number, endIndex: number, includeStyles: boolean) => Promise<unknown>;

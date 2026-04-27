@@ -22,6 +22,7 @@ import {
   collectWordContext,
   collectWordState,
   navigateWordAnchor,
+  searchWordDocument,
 } from "./office/word";
 import {
   applyExcelAction,
@@ -130,4 +131,5 @@ export {
   applyAcceptedEdits,
   proposeDocumentEdits,
 } from "./office/document-tools";
+export { searchWordDocument } from "./office/word";
 export type { DocumentSnapshotData } from "./office/document-tools";
