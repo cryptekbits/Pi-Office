@@ -1267,6 +1267,70 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       };
     }
 
+    if (type === "reviewExchange") {
+      const operation = trimString(options.operation ?? action.operation) ?? "inventory";
+      if (operation === "inventory") {
+        const trackedChanges = body.getTrackedChanges();
+        trackedChanges.load("items/author,items/date,items/text,items/type");
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          revisions: trackedChanges.items.slice(0, 50).map((change, index) => ({
+            id: `revision:${index + 1}`,
+            author: change.author,
+            date: change.date?.toISOString?.(),
+            type: change.type,
+            text: truncateLabel(change.text, 220),
+          })),
+          count: trackedChanges.items.length,
+        };
+      }
+
+      if (operation === "compare") {
+        if (!supportsRequirementSet("WordApiDesktop", "1.4")) {
+          throw new Error("Word document compare/redline requires WordApiDesktop 1.4 or newer.");
+        }
+        const filePath = trimString(options.filePath ?? action.filePath ?? action.content);
+        if (!filePath) {
+          throw new Error("Word compare requires an explicit baseline filePath.");
+        }
+        context.document.compare(filePath, {
+          compareTarget: (options.compareTarget ?? action.compareTarget ?? "Current") as Word.CompareTarget,
+          detectFormatChanges: toBoolean(options.detectFormatChanges ?? action.detectFormatChanges) ?? true,
+        });
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          filePath,
+          summary: "Requested Word-native compare/redline against the supplied baseline path.",
+        };
+      }
+
+      if (operation === "acceptAll" || operation === "rejectAll") {
+        if (toBoolean(options.confirmReviewStateChange ?? action.confirmReviewStateChange) !== true) {
+          throw new Error(`Word ${operation} review exchange requires confirmReviewStateChange=true.`);
+        }
+        const targetChanges = body.getTrackedChanges();
+        targetChanges.load("items/text");
+        await context.sync();
+        if (operation === "acceptAll") {
+          targetChanges.acceptAll();
+        } else {
+          targetChanges.rejectAll();
+        }
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, count: targetChanges.items.length };
+      }
+
+      throw new Error(`Unsupported Word review exchange operation: ${operation}.`);
+    }
+
     if (type === "acceptAllRevisions" || type === "rejectAllRevisions") {
       if (!supportsRequirementSet("WordApi", "1.6")) {
         throw new Error("Word revision actions require WordApi 1.6 or newer.");

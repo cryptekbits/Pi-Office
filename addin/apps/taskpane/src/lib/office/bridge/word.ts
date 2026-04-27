@@ -391,6 +391,29 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_redline_review") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_redline_review is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "reviewExchange",
+          target: request.params.target as never,
+          content: typeof request.params.baselinePath === "string" ? request.params.baselinePath : undefined,
+          options: {
+            operation: request.params.operation,
+            baselinePath: request.params.baselinePath,
+            compareTarget: request.params.compareTarget,
+            confirmReviewStateChange: request.params.confirmReviewStateChange,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

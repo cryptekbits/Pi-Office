@@ -911,26 +911,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Tests prove desktop-gated tools remain hidden or fail closed when WordApiDesktop support is absent.
   - Notes/Evidence: WordApiDesktop 1.2 exposes `Body.shapes`, `Document.activeWindow`, paragraph/range floating shape insertion, `Shape`, `ShapeCollection`, `ShapeFill`, `ShapeTextWrap`, and `TextFrame` APIs. Current Pi-Office reads selected shapes when `WordApiDesktop` support exists, but only inline-picture insertion is wired as a first-class Word edit.
 
-- [ ] FEATURE-020: Add Word compare, redline, and review-exchange workflows
+- [x] FEATURE-020: Add Word compare, redline, and review-exchange workflows
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit and tool-architecture discussion; fills remaining Tier A Word review workflow gap.
   - Details: Pi-Office can read tracked changes and accept/reject individual or collection revisions, but it does not expose document compare, merge, send-for-review, reply-with-changes, end-review, or review-session orchestration. Legal, spec, policy, and professional editing workflows often need a true redline against a baseline rather than fuzzy text replacement or sidepane-only proposals. The first implementation should keep compare/merge inputs explicit, preserve user review boundaries, and avoid claiming mail/review exchange capabilities that require unsupported host or tenant behavior.
   - Dependencies: FEATURE-004, SECURITY-003, FEATURE-028.
   - Subtasks:
-    - [ ] Inventory `Document.compare`, `Document.merge`, `sendForReview`, `replyWithChanges`, `endReview`, revision filter, reviewer, and related option APIs by requirement set and host support.
-    - [ ] Define structured compare/redline tool contracts for baseline source, comparison target, output behavior, and review scope.
-    - [ ] Integrate compare output with existing revision anchors and accept/reject tools.
-    - [ ] Add safeguards for destructive merge/review-end operations and require explicit confirmation where document state can be broadly changed.
-    - [ ] Update legal/professional and spec workflow guidance to use compare/redline paths before broad rewrites.
-    - [ ] Add tests for compare contract validation, unsupported-host fallback, revision integration, and confirmation requirements.
+    - [x] Inventory `Document.compare`, `Document.merge`, `sendForReview`, `replyWithChanges`, `endReview`, revision filter, reviewer, and related option APIs by requirement set and host support.
+    - [x] Define structured compare/redline tool contracts for baseline source, comparison target, output behavior, and review scope.
+    - [x] Integrate compare output with existing revision anchors and accept/reject tools.
+    - [x] Add safeguards for destructive merge/review-end operations and require explicit confirmation where document state can be broadly changed.
+    - [x] Update legal/professional and spec workflow guidance to use compare/redline paths before broad rewrites.
+    - [x] Add tests for compare contract validation, unsupported-host fallback, revision integration, and confirmation requirements.
   - Acceptance Criteria:
-    - [ ] The assistant can produce or reason over a Word-native redline when a supported baseline/comparison path is available.
-    - [ ] Compare/merge/review operations report the source, target, created revisions, and unsupported boundaries clearly.
-    - [ ] Existing revision accept/reject tools work with revisions created or surfaced by the compare workflow.
-    - [ ] Broad review-state changes fail closed without explicit user approval.
-  - Notes/Evidence: The Word JavaScript API reference includes document compare/merge/review option types and rich revision/reviewer surfaces. Current Pi-Office covers tracked-change reading and accept/reject but not the upstream compare/review workflow.
+    - [x] The assistant can produce or reason over a Word-native redline when a supported baseline/comparison path is available.
+    - [x] Compare/merge/review operations report the source, target, created revisions, and unsupported boundaries clearly.
+    - [x] Existing revision accept/reject tools work with revisions created or surfaced by the compare workflow.
+    - [x] Broad review-state changes fail closed without explicit user approval.
+  - Notes/Evidence: The Word JavaScript API reference includes document compare/merge/review option types and rich revision/reviewer surfaces. Current Pi-Office covers tracked-change reading and accept/reject but not the upstream compare/review workflow. Closed 2026-04-27 by adding `word_redline_review`, review inventory over tracked changes, desktop-gated compare with explicit baseline path, broad accept/reject confirmation gates, prompt guidance, and `word-redline-review-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [x] FEATURE-021: Add Word bookmarks, go-to navigation, hyperlinks, and cross-reference anchors
   - Category: Feature

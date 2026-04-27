@@ -336,6 +336,29 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     executor: "office-bridge",
   },
   {
+    name: "word_redline_review",
+    hosts: ["word"],
+    category: "write-doc",
+    label: "Word Redline and Review Exchange",
+    description:
+      "Inspect tracked-review state and run desktop-gated Word compare/review exchange operations with explicit confirmation for broad review-state changes.",
+    discovery: {
+      tier: "specialized",
+      capabilityIds: ["word.compare", "word.redline", "word.reviewExchange"],
+      keywords: ["word", "compare", "redline", "review", "tracked changes", "baseline"],
+      summary: "Use Word-native comparison/review exchange workflows where supported; otherwise preserve review boundaries.",
+      riskLevel: "high",
+      requirementSets: [{ name: "WordApiDesktop", minVersion: "1.4", note: "Document compare and reviewer filters are desktop-gated." }],
+      fallback: "Use verify_doc and existing revision accept/reject tools when compare/review exchange APIs are unavailable.",
+    },
+    parameters: Type.Object({
+      operation: Type.String({ description: "diagnostics, compare, acceptAll, rejectAll, or endReview." }),
+      baselinePath: Type.Optional(Type.String({ description: "Explicit local file path to compare against for desktop Word compare." })),
+      confirmReviewStateChange: Type.Optional(Type.Boolean({ description: "Required for broad accept/reject/end-review operations." })),
+    }),
+    executor: "office-bridge",
+  },
+  {
     name: "edit_doc_text",
     hosts: ["word"],
     category: "write-doc",
