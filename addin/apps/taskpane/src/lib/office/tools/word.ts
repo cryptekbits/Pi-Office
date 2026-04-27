@@ -229,6 +229,32 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     executor: "office-bridge",
   },
   {
+    name: "word_field_reference",
+    hosts: ["word"],
+    category: "write-doc",
+    label: "Word Fields and References",
+    description:
+      "Word-only structural field and table-of-contents operations for inventory, insert, update, lock/unlock, unlink, and page-number refresh workflows.",
+    discovery: {
+      tier: "specialized",
+      capabilityIds: ["word.fields", "word.toc", "word.references"],
+      keywords: ["word", "field", "toc", "table of contents", "citation", "bibliography", "reference"],
+      summary: "Manage Word fields and generated reference structures without corrupting field codes.",
+      riskLevel: "medium",
+      requirementSets: [{ name: "WordApi", minVersion: "1.4" }],
+      fallback: "Use reviewable proposals for plain text only; never fabricate bibliography sources.",
+    },
+    parameters: Type.Object({
+      operation: Type.String({ description: "inventory, insertField, updateField, lockField, unlockField, unlinkField, selectField, tocInventory, or updateTocPageNumbers." }),
+      fieldId: Type.Optional(Type.String({ description: "Field anchor ID such as field:2." })),
+      fieldType: Type.Optional(Type.String({ description: "Field type for insertField, for example TOC, REF, PAGE, or CITATION." })),
+      fieldText: Type.Optional(Type.String({ description: "Field code/instruction text for insertion." })),
+      target: Type.Optional(Type.Any({ description: "Optional insertion or field target anchor." })),
+      confirmDestructive: Type.Optional(Type.Boolean({ description: "Required for unlinkField because it converts the field to static result text." })),
+    }),
+    executor: "office-bridge",
+  },
+  {
     name: "edit_doc_text",
     hosts: ["word"],
     category: "write-doc",

@@ -62,7 +62,7 @@ export const PI_OFFICE_CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     id: "office_write",
     label: "Office document edits",
     owner: "addin-only",
-    tools: ["office_apply_edit", "edit_doc_text", "word_format_text", "word_list_format", "word_reference_inventory", "word_hyperlink", "word_table", "word_section_layout", "set_cell_range", "clear_cell_range", "resize_range", "copy_to", "modify_sheet_structure", "modify_object", "office_navigate", "modify_presentation_structure", "duplicate_slide", "insert_slide_element", "remove_slide_element", "edit_slide_text", "edit_slide_xml", "edit_slide_master", "edit_slide_chart", "copy_image_between_slides", "insert_icon", "office_execute_js"],
+    tools: ["office_apply_edit", "edit_doc_text", "word_format_text", "word_list_format", "word_reference_inventory", "word_hyperlink", "word_table", "word_section_layout", "word_field_reference", "set_cell_range", "clear_cell_range", "resize_range", "copy_to", "modify_sheet_structure", "modify_object", "office_navigate", "modify_presentation_structure", "duplicate_slide", "insert_slide_element", "remove_slide_element", "edit_slide_text", "edit_slide_xml", "edit_slide_master", "edit_slide_chart", "copy_image_between_slides", "insert_icon", "office_execute_js"],
     requiresCompanion: false,
     requiresSavedDocument: false,
     honestyLabel: "Mutates the active Office document only from the taskpane host.",

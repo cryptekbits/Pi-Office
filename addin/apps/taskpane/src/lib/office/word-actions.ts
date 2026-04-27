@@ -906,6 +906,121 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       };
     }
 
+    if (type === "fieldAction") {
+      if (!supportsRequirementSet("WordApi", "1.5")) {
+        throw new Error("Word field actions require WordApi 1.5 or newer.");
+      }
+      const operation = trimString(options.operation ?? action.operation);
+      if (operation === "inventory") {
+        const fields = body.fields;
+        fields.load("items/code,items/type,items/locked,items/result/text");
+        await context.sync();
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          fields: fields.items.slice(0, 50).map((field, index) => ({
+            id: `field:${index + 1}`,
+            type: field.type,
+            locked: field.locked,
+            code: truncateLabel(field.code, 240),
+            resultText: truncateLabel(field.result.text, 240),
+          })),
+        };
+      }
+
+      if (operation === "insert") {
+        const { range } = await resolveTargetRange();
+        const fieldType = trimString(options.fieldType ?? action.fieldType) ?? "Empty";
+        const fieldText = trimString(options.text ?? action.fieldText ?? action.content) ?? "";
+        const field = range.insertField(placement, fieldType as Word.FieldType, fieldText, false);
+        field.load("code,type,locked,result/text");
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, typeName: field.type, code: field.code, resultText: field.result.text };
+      }
+
+      const target = await resolveTargetRange();
+      if (!target.field) {
+        throw new Error("Word field action requires a field target unless operation=inventory or insert.");
+      }
+      const field = target.field.field;
+      if (operation === "update") {
+        field.updateResult();
+      } else if (operation === "lock") {
+        field.locked = true;
+      } else if (operation === "unlock") {
+        field.locked = false;
+      } else if (operation === "unlink") {
+        if (!supportsRequirementSet("WordApiDesktop", "1.4")) {
+          throw new Error("Word field unlink requires WordApiDesktop 1.4 or newer.");
+        }
+        field.unlink();
+      } else if (operation === "delete") {
+        if (toBoolean(options.confirmDestructive ?? action.confirmDestructive) !== true) {
+          throw new Error("Word field delete requires confirmDestructive=true.");
+        }
+        field.delete();
+      } else if (operation === "select") {
+        field.select();
+      } else {
+        throw new Error(`Unsupported Word field operation: ${operation || "(missing)"}.`);
+      }
+      await context.sync();
+      return { ok: true, host: "word", action: type, operation, fieldId: target.field.fieldIndex };
+    }
+
+    if (type === "tocAction") {
+      if (!supportsRequirementSet("WordApiDesktop", "1.4")) {
+        throw new Error("Word table-of-contents actions require WordApiDesktop 1.4 or newer.");
+      }
+      const operation = trimString(options.operation ?? action.operation);
+      const tocs = context.document.tablesOfContents;
+      tocs.load("items");
+      await context.sync();
+      if (operation === "inventory") {
+        return { ok: true, host: "word", action: type, operation, count: tocs.items.length };
+      }
+      const index = Math.max(0, Math.trunc(toNumber(options.tocIndex ?? action.tocIndex) ?? 1) - 1);
+      if (operation === "add") {
+        const { range } = await resolveTargetRange();
+        const toc = tocs.add(range, {
+          useBuiltInHeadingStyles: true,
+          upperHeadingLevel: Math.max(1, Math.trunc(toNumber(options.upperHeadingLevel ?? action.upperHeadingLevel) ?? 1)),
+          lowerHeadingLevel: Math.max(1, Math.trunc(toNumber(options.lowerHeadingLevel ?? action.lowerHeadingLevel) ?? 3)),
+        });
+        toc.load("upperHeadingLevel,lowerHeadingLevel");
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, upperHeadingLevel: toc.upperHeadingLevel, lowerHeadingLevel: toc.lowerHeadingLevel };
+      }
+      if (operation === "markEntry") {
+        const { range } = await resolveTargetRange();
+        const entry = trimString(options.entry ?? action.entry ?? action.content);
+        const field = entry ? tocs.markTocEntry(range, { entry }) : tocs.markTocEntry(range);
+        field.load("code,type,result/text");
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, code: field.code, resultText: field.result.text };
+      }
+      const toc = tocs.items[index];
+      if (!toc) {
+        throw new Error(`Could not find Word table of contents at index ${index + 1}.`);
+      }
+      if (operation === "update") {
+        toc.updatePageNumbers();
+      } else if (operation === "updatePageNumbers") {
+        toc.updatePageNumbers();
+      } else if (operation === "delete") {
+        if (toBoolean(options.confirmDestructive ?? action.confirmDestructive) !== true) {
+          throw new Error("Word TOC delete requires confirmDestructive=true.");
+        }
+        toc.delete();
+      } else {
+        throw new Error(`Unsupported Word TOC operation: ${operation || "(missing)"}.`);
+      }
+      await context.sync();
+      return { ok: true, host: "word", action: type, operation, tocIndex: index + 1 };
+    }
+
     if (type === "acceptRevision" || type === "rejectRevision") {
       const revision = await resolveRevisionActionTarget();
       if (type === "acceptRevision") {

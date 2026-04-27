@@ -265,6 +265,33 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_field_reference") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_field_reference is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "fieldReference",
+          target: request.params.target as never,
+          content: typeof request.params.text === "string" ? request.params.text : undefined,
+          options: {
+            operation: request.params.operation,
+            fieldType: request.params.fieldType,
+            fieldText: request.params.fieldText ?? request.params.text,
+            lock: request.params.lock,
+            confirmDestructive: request.params.confirmDestructive,
+            tocIndex: request.params.tocIndex,
+            lowerHeadingLevel: request.params.lowerHeadingLevel,
+            upperHeadingLevel: request.params.upperHeadingLevel,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {

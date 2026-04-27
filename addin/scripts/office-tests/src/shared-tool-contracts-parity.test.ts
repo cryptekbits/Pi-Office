@@ -99,6 +99,7 @@ const EXTENSION_REGISTERED_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
     toolName !== "word_hyperlink" &&
     toolName !== "word_table" &&
     toolName !== "word_section_layout" &&
+    toolName !== "word_field_reference" &&
     !RUNTIME_ONLY_OFFICE_TOOLS.has(toolName),
 );
 

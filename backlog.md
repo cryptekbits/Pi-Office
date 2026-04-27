@@ -806,26 +806,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Tests cover section-specific targeting and fallback behavior.
   - Notes/Evidence: WordApi 1.1 includes `Document.sections`, `Section.body`, `Section.getHeader`, and `Section.getFooter`; current Pi-Office context reads `Document.pageSetup` but does not provide structured write tools. Some richer header/footer import options appear in later requirement sets, so tool copy must be requirement-aware. Closed 2026-04-27 by adding `word_section_layout`, section/page setup/header/footer inventory, section-scoped header/footer set/clear operations, page setup edits, break insertion, prompt guidance, and `word-section-layout-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
-- [ ] FEATURE-014: Add Word fields, TOC, bibliography, and citation tooling
+- [x] FEATURE-014: Add Word fields, TOC, bibliography, and citation tooling
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: Pi-Office currently reads Word fields and can insert a field, but it does not expose structured field update/lock/unlink workflows, table-of-contents/table-of-figures/table-of-authorities operations, bibliography source management, citation placeholders, or cross-reference-safe guidance. Long-form research papers, policy docs, and legal reports depend on these structural features. The assistant should distinguish field results from field codes and avoid text-only edits that corrupt generated Word structures.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Expand field inventory to include field codes, result text, type, lock state, range anchors, and safe update options.
-    - [ ] Define field actions for update, lock/unlock, select, insert, and safe replacement of field results where supported.
-    - [ ] Add table of contents, table of figures, and table of authorities inventory and operations for add/update page numbers/delete/mark entries when APIs are available.
-    - [ ] Add bibliography/source inventory and citation-placeholder workflows that do not invent sources.
-    - [ ] Add prompt guidance for research-paper and legal workflows to use field/TOC/bibliography tools before text rewrites.
-    - [ ] Add tests for field update/lock behavior, TOC inventory/update contracts, source/citation no-invention rules, and unsupported-host fallback.
+    - [x] Expand field inventory to include field codes, result text, type, lock state, range anchors, and safe update options.
+    - [x] Define field actions for update, lock/unlock, select, insert, and safe replacement of field results where supported.
+    - [x] Add table of contents, table of figures, and table of authorities inventory and operations for add/update page numbers/delete/mark entries when APIs are available.
+    - [x] Add bibliography/source inventory and citation-placeholder workflows that do not invent sources.
+    - [x] Add prompt guidance for research-paper and legal workflows to use field/TOC/bibliography tools before text rewrites.
+    - [x] Add tests for field update/lock behavior, TOC inventory/update contracts, source/citation no-invention rules, and unsupported-host fallback.
   - Acceptance Criteria:
-    - [ ] Long-form reports, research papers, and legal documents can be structurally updated without manual field work for supported operations.
-    - [ ] The assistant can explain whether it edited field codes, field results, or generated table structures.
-    - [ ] Citation and bibliography workflows never fabricate sources and preserve user-provided source provenance.
-    - [ ] Tests protect against corrupting fields or generated tables through plain text replacement.
-  - Notes/Evidence: The Word API reference includes `Field`, `FieldCollection`, `TableOfContents`, `TableOfFigures`, `TableOfAuthorities`, `Bibliography`, `Source`, and related collection/options objects. Current Pi-Office has field anchors and `insertField`, but no complete structural field/document-reference workflow.
+    - [x] Long-form reports, research papers, and legal documents can be structurally updated without manual field work for supported operations.
+    - [x] The assistant can explain whether it edited field codes, field results, or generated table structures.
+    - [x] Citation and bibliography workflows never fabricate sources and preserve user-provided source provenance.
+    - [x] Tests protect against corrupting fields or generated tables through plain text replacement.
+  - Notes/Evidence: The Word API reference includes `Field`, `FieldCollection`, `TableOfContents`, `TableOfFigures`, `TableOfAuthorities`, `Bibliography`, `Source`, and related collection/options objects. Current Pi-Office has field anchors and `insertField`, but no complete structural field/document-reference workflow. Closed 2026-04-27 by adding `word_field_reference`, field inventory/update/lock/unlock/select/unlink/delete/insert behavior, desktop-gated TOC inventory/add/update-page-numbers/delete/mark-entry operations, no-invention citation/bibliography guardrails, prompt guidance, and `word-field-reference-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [ ] FEATURE-015: Add Word content-control template automation
   - Category: Feature
