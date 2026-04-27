@@ -1,0 +1,67 @@
+Pi-Office Personal Non-Commercial License v1.0
+
+Copyright (c) 2026 Pi-Office contributors.
+
+Original repository: https://github.com/cryptekbits/Pi-Office
+
+1. Grant of rights
+
+Subject to the conditions below, you may use, copy, fork, modify, study,
+and distribute the source code and your modified versions for personal,
+educational, research, evaluation, or other non-commercial purposes.
+
+2. Attribution
+
+Any copy, fork, modified version, or public distribution must give clear
+credit to the original Pi-Office project and include a working link to the
+original repository above. Keep this license, copyright notice, and
+attribution notice in the repository and in any source distribution.
+
+If you publicly distribute a fork or derivative work, your README,
+documentation, or equivalent project landing page must state that it is
+based on Pi-Office and link to the original repository.
+
+3. Non-commercial restriction
+
+You may not use, copy, modify, distribute, host, sell, sublicense, or make
+available the software or a derivative work for commercial purposes without
+prior written permission from the copyright holder.
+
+Commercial purposes include, without limitation:
+
+- selling or licensing the software or a derivative work;
+- offering the software as part of a paid product, hosted service,
+  consulting deliverable, enterprise deployment, or commercial workflow;
+- using the software to provide paid support, paid automation, or paid
+  document-generation/editing services;
+- integrating the software into a product, service, or internal tool used
+  primarily to generate revenue or commercial advantage.
+
+4. No relicensing
+
+You may not remove these restrictions, relicense the software under a
+permissive or commercial license, or present a fork or derivative work as
+the original Pi-Office project.
+
+5. Contributions
+
+Unless separately agreed in writing, contributions submitted to the project
+are provided under this license and may be incorporated into Pi-Office under
+the same non-commercial terms.
+
+6. Trademarks and branding
+
+This license does not grant rights to use Pi-Office names, logos, branding,
+or trademarks except as necessary to provide the attribution required above.
+Forks and derivative works must not imply endorsement by the original
+project.
+
+7. No warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF OR OTHER
+DEALINGS IN THE SOFTWARE.

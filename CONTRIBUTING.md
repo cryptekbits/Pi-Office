@@ -1,5 +1,9 @@
 # Contributing To Pi-Office
 
+## License
+
+By contributing to Pi-Office, you agree that your contribution may be used and distributed under the [`Pi-Office Personal Non-Commercial License v1.0`](LICENSE) unless a separate written agreement says otherwise.
+
 ## Originality
 
 Pi-Office can study other Office assistants for user expectations and capability gaps, but contributions must be original Pi-Office work.

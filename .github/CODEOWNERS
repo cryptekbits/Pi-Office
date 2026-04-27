@@ -1,0 +1,5 @@
+# Repository-wide code ownership for merge-qualifying reviews.
+#
+# Update this file when adding maintainers who are allowed to approve
+# protected-branch pull requests.
+* @cryptekbits

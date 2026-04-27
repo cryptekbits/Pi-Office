@@ -29,6 +29,12 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 - Multiple Office windows can reuse one machine-local companion while keeping logical taskpane sessions isolated
 - Privacy and storage behavior, including local credential limits and clear-data controls, is documented in [`docs/privacy-and-storage.md`](docs/privacy-and-storage.md)
 
+## License And Governance
+
+Pi-Office is public source-available software under the [`Pi-Office Personal Non-Commercial License v1.0`](LICENSE). Personal, educational, research, and evaluation forks are allowed with attribution to the original repository, but commercial use requires prior written permission.
+
+Repository protection and maintainer approval rules are documented in [`docs/repository-governance.md`](docs/repository-governance.md).
+
 ## Local Setup
 
 1. Install add-in dependencies:
