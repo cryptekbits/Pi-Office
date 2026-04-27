@@ -241,7 +241,8 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         if (!note) {
           throw new Error(`Could not find the requested Word ${action.target.kind}: ${action.target.label || action.target.text || action.target.id || action.target.kind}.`);
         }
-        resolvedTarget = { range: note.note.reference };
+        const noteTarget = action.target.noteTarget === "reference" ? "reference" : "body";
+        resolvedTarget = { range: noteTarget === "reference" ? note.note.reference : note.note.body.getRange("Content") };
         return resolvedTarget;
       }
 

@@ -145,6 +145,7 @@ export interface OfficeAnchor {
   occurrenceIndex?: number | undefined;
   commentId?: string | undefined;
   revisionId?: string | undefined;
+  noteTarget?: "reference" | "body" | undefined;
   slideId?: string | undefined;
   slideIndex?: number | undefined;
   shapeId?: string | undefined;

@@ -106,13 +106,19 @@ export async function navigateWordAnchor(anchor: OfficeAnchor): Promise<unknown>
             );
       const note = noteIndex >= 0 ? notes.items[noteIndex] : undefined;
       if (note) {
-        note.reference.select();
+        const noteTarget = anchor.noteTarget === "reference" ? "reference" : "body";
+        if (noteTarget === "reference") {
+          note.reference.select();
+        } else {
+          note.body.getRange("Content").select();
+        }
         await context.sync();
         return {
           ok: true,
           host: "word",
           anchorKind: anchor.kind,
           noteId: `${anchor.kind}:${noteIndex + 1}`,
+          noteTarget,
           referenceText: truncateLabel(note.reference.text, 80),
           text: truncateLabel(note.body.text, 180),
         };

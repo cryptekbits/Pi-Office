@@ -848,26 +848,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Tests cover key control types and preserve existing content-control insertion behavior.
   - Notes/Evidence: WordApi 1.1 introduced content controls and collections; WordApi 1.7/1.9 added richer content-control subtype/list-item surfaces, including checkbox, dropdown list, and combo box support. Current context capture already lists content controls, so the missing piece is structured template automation.
 
-- [ ] FEATURE-016: Add deterministic footnote and endnote body targeting
+- [x] FEATURE-016: Add deterministic footnote and endnote body targeting
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: Pi-Office currently reads footnotes/endnotes and can navigate to their reference markers, but the native edit path resolves note targets to the reference range rather than the note body. For research, legal, and policy documents, note text is often the exact content that needs review. This task should make note-body targeting deterministic, tested, and clearly distinct from reference-marker selection.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Add explicit note anchors that include note kind, stable ordinal, reference text, note body preview, and whether the action targets the reference or body.
-    - [ ] Update Word navigation so a note-body target can select or otherwise focus the note body when Office.js supports it, while preserving reference navigation as a separate action.
-    - [ ] Update `applyWordAction` target resolution so edit operations can insert/replace text in footnote/endnote bodies instead of only selecting reference markers.
-    - [ ] Add fallback guidance for hosts that expose note text but cannot select or edit the body through the supported API.
-    - [ ] Update workflow guidance for research paper and legal/professional review to use note-body anchors for footnote/endnote edits.
-    - [ ] Add regression tests proving note-body edits do not accidentally mutate reference markers.
+    - [x] Add explicit note anchors that include note kind, stable ordinal, reference text, note body preview, and whether the action targets the reference or body.
+    - [x] Update Word navigation so a note-body target can select or otherwise focus the note body when Office.js supports it, while preserving reference navigation as a separate action.
+    - [x] Update `applyWordAction` target resolution so edit operations can insert/replace text in footnote/endnote bodies instead of only selecting reference markers.
+    - [x] Add fallback guidance for hosts that expose note text but cannot select or edit the body through the supported API.
+    - [x] Update workflow guidance for research paper and legal/professional review to use note-body anchors for footnote/endnote edits.
+    - [x] Add regression tests proving note-body edits do not accidentally mutate reference markers.
   - Acceptance Criteria:
-    - [ ] AI can edit footnote/endnote body text precisely when the host exposes a supported body range.
-    - [ ] Reference-marker navigation remains available and is not confused with body editing.
-    - [ ] Unsupported hosts return clear limitation messages with the note text preserved for manual review.
-    - [ ] Regression tests prove note references are not mistaken for note bodies.
-  - Notes/Evidence: Current Word context uses `body.footnotes` and `body.endnotes` and loads `items/body/text` plus `items/reference/text`; current navigation/action code primarily selects `note.reference`. This feature closes the known `FEATURE-004` footnote/endnote body-targeting gap.
+    - [x] AI can edit footnote/endnote body text precisely when the host exposes a supported body range.
+    - [x] Reference-marker navigation remains available and is not confused with body editing.
+    - [x] Unsupported hosts return clear limitation messages with the note text preserved for manual review.
+    - [x] Regression tests prove note references are not mistaken for note bodies.
+  - Notes/Evidence: Current Word context uses `body.footnotes` and `body.endnotes` and loads `items/body/text` plus `items/reference/text`; current navigation/action code primarily selects `note.reference`. This feature closes the known `FEATURE-004` footnote/endnote body-targeting gap. Closed 2026-04-27 by adding `noteTarget: "body" | "reference"` to anchors, defaulting footnote/endnote anchors and search results to body targeting, routing `applyWordAction` note targets to `note.body.getRange("Content")` unless reference targeting is explicit, preserving reference-marker navigation with `noteTarget="reference"`, adding guidance for note-body edits, and adding `word-note-targeting.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [x] FEATURE-017: Add first-class Word document search and anchor index
   - Category: Feature

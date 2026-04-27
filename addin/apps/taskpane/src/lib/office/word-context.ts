@@ -481,12 +481,14 @@ export async function collectWordContext(base: OfficeStateUpdate, options: Offic
           id: `footnote:${index + 1}`,
           label: `Footnote ${index + 1}`,
           text: truncateLabel(note.body.text || note.reference.text, 240),
+          noteTarget: "body",
         }) as OfficeAnchor),
         ...documentEndnotes.slice(0, 12).map((note, index) => ({
           kind: "endnote",
           id: `endnote:${index + 1}`,
           label: `Endnote ${index + 1}`,
           text: truncateLabel(note.body.text || note.reference.text, 240),
+          noteTarget: "body",
         }) as OfficeAnchor),
         ...documentContentControlList.slice(0, 12).map((control) => ({
           kind: "contentControl",
@@ -723,7 +725,7 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
     (footnotes?.items ?? []).forEach((note, index) => {
       if (!wordSearchMatchesText(note.body.text, query) && !wordSearchMatchesText(note.reference.text, query)) return;
       push({
-        anchor: { kind: "footnote", id: `footnote:${index + 1}`, label: `Footnote ${index + 1}`, text: truncateLabel(note.body.text, 180) },
+        anchor: { kind: "footnote", id: `footnote:${index + 1}`, label: `Footnote ${index + 1}`, text: truncateLabel(note.body.text, 180), noteTarget: "body" },
         objectType: "footnote",
         rank: index + 1,
         contextPreview: truncateText(note.body.text, 320),
@@ -733,7 +735,7 @@ export async function searchWordDocument(params: Record<string, unknown>): Promi
     (endnotes?.items ?? []).forEach((note, index) => {
       if (!wordSearchMatchesText(note.body.text, query) && !wordSearchMatchesText(note.reference.text, query)) return;
       push({
-        anchor: { kind: "endnote", id: `endnote:${index + 1}`, label: `Endnote ${index + 1}`, text: truncateLabel(note.body.text, 180) },
+        anchor: { kind: "endnote", id: `endnote:${index + 1}`, label: `Endnote ${index + 1}`, text: truncateLabel(note.body.text, 180), noteTarget: "body" },
         objectType: "endnote",
         rank: index + 1,
         contextPreview: truncateText(note.body.text, 320),
