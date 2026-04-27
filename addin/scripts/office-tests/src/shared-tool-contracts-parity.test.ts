@@ -393,6 +393,7 @@ test("extension registration and runtime-published tools stay synchronized with 
   socket.close();
 
   assert.deepEqual(sorted(registeredByExtension), sorted(EXTENSION_REGISTERED_TOOL_INVENTORY));
+  assert.equal(runtimeTools.length, sorted(runtimeTools).length, "Runtime agent tool inventory has duplicate names.");
   assert.deepEqual(sorted(runtimeTools), sorted(getDefaultTaskpaneAgentToolInventory("word")));
 });
 

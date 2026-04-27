@@ -2442,6 +2442,7 @@ class BrowserOfficeSession {
     const browserDebugMode = this.isBrowserDebugMode();
     const tools: AgentTool[] = getCoreOfficeToolDefinitionsForHost(this.officeState.host)
       .filter((definition) => definition.executor !== "companion-native-capture")
+      .filter((definition) => definition.executor !== "runtime-registry")
       .filter((definition) => isToolAvailable(definition.name))
       .map((definition) => this.createOfficeAgentTool(definition))
       .filter((tool) => !browserDebugMode || !OFFICE_TOOL_NAME_SET.has(tool.name));
