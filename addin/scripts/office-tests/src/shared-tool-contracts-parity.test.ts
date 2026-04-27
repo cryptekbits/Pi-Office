@@ -102,6 +102,7 @@ const EXTENSION_REGISTERED_TOOL_INVENTORY = FINAL_AGENT_TOOL_INVENTORY.filter(
     toolName !== "word_field_reference" &&
     toolName !== "word_content_control" &&
     toolName !== "word_building_block" &&
+    toolName !== "word_annotation_review" &&
     !RUNTIME_ONLY_OFFICE_TOOLS.has(toolName),
 );
 

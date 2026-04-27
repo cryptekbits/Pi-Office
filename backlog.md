@@ -702,26 +702,26 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Catalog generation, runtime, UI, and browser tests cover the new behavior and standard validation passes.
   - Notes/Evidence: Initial research evidence includes Granola docs for Streamable HTTP OAuth/DCR at `https://mcp.granola.ai/mcp`, Perplexity docs for local `@perplexity-ai/mcp-server` with `PERPLEXITY_API_KEY`, Airtable/Notion/Slack/Figma/LaunchDarkly/Stripe/PayPal/Tavily/Exa/GitHub/GitLab/Qdrant official MCP docs, and the absence of sufficient first-party evidence for the exact Google Drive endpoint in the current catalog. Closed 2026-04-27 by moving connector setup data to `addin/packages/pi-office-pack/src/connector-catalog.yaml`, adding generated typed catalog validation, implementing browser-direct Streamable HTTP MCP probing/execution plus MCP OAuth discovery/DCR/PKCE/callback handling, gating execution by read-safe tool classification, and updating Integrations UI for provenance badges, planned/community gating, Granola OAuth-only setup, and companion-only env controls. Browser QA verified Library badges/disabled states, Granola browser-direct OAuth wizard, community warning with suppression, and connected details/tool inventory at `https://localhost:3443/`; live Granola account sign-in was not completed. Validation: `npm --prefix addin run check:connector-catalog`, `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office` (148 tests), `npm run build`, `npm run check:bundle`, and `npm run validate:manifests`.
 
-- [ ] FEATURE-009: Add Word-native critique annotation review surface
+- [x] FEATURE-009: Add Word-native critique annotation review surface
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 Word API audit against Microsoft Word JavaScript API preview docs.
   - Details: WordApi 1.7 and 1.8 expose writing-assistance annotation and critique APIs that can show suggestions inside the Word document itself. Pi-Office currently routes reviewable edits through sidepane proposal cards and targeted text replacement. A Word-native review surface would let the assistant place inline critique annotations, temporary highlights, and suggestion actions where the user is already reading, while falling back to the existing sidepane proposal workflow when the host does not support the requirement sets or subscription-backed annotation service.
   - Dependencies: FEATURE-004 and SECURITY-003.
   - Subtasks:
-    - [ ] Add runtime capability detection for WordApi 1.7 annotation/critique APIs and WordApi 1.8 highlight/popup-action APIs.
-    - [ ] Define a structured review-suggestion payload that can map current `office_propose_edits` proposals to Word critique annotations without copying competitor UX text or prompts.
-    - [ ] Implement insertion, listing, accept, reject, delete, and popup-action handling for Word-native critique annotations where supported.
-    - [ ] Preserve the current sidepane proposal-card path as the fallback for unsupported hosts, unsupported subscriptions, or failed annotation insertion.
-    - [ ] Add prompt/tool guidance that chooses native annotations only when requirement checks report them available.
-    - [ ] Add regression coverage for supported, unsupported, fallback, accept, reject, and cleanup paths.
+    - [x] Add runtime capability detection for WordApi 1.7 annotation/critique APIs and WordApi 1.8 highlight/popup-action APIs.
+    - [x] Define a structured review-suggestion payload that can map current `office_propose_edits` proposals to Word critique annotations without copying competitor UX text or prompts.
+    - [x] Implement insertion, listing, accept, reject, delete, and popup-action handling for Word-native critique annotations where supported.
+    - [x] Preserve the current sidepane proposal-card path as the fallback for unsupported hosts, unsupported subscriptions, or failed annotation insertion.
+    - [x] Add prompt/tool guidance that chooses native annotations only when requirement checks report them available.
+    - [x] Add regression coverage for supported, unsupported, fallback, accept, reject, and cleanup paths.
   - Acceptance Criteria:
-    - [ ] AI suggestions can appear as Word-native review annotations when the active Word host supports the required APIs.
-    - [ ] Unsupported hosts fall back to `office_propose_edits` or `edit_doc_list` without losing the proposal details.
-    - [ ] Accepting or rejecting a native suggestion updates the document or annotation state deterministically and reports the outcome to the model.
-    - [ ] Tests prove native annotation tools cannot be advertised when requirement-set checks fail.
-  - Notes/Evidence: Microsoft documents WordApi 1.7 as adding writing-assistance support with `Annotation`, `CritiqueAnnotation`, `Paragraph.insertAnnotations`, and annotation events; WordApi 1.8 adds popup-action events and temporary `Range.highlight()` / `removeHighlight()` APIs. Microsoft notes annotation APIs require a Microsoft 365 subscription because of an underlying service requirement, so UI/tool copy must be capability-honest.
+    - [x] AI suggestions can appear as Word-native review annotations when the active Word host supports the required APIs.
+    - [x] Unsupported hosts fall back to `office_propose_edits` or `edit_doc_list` without losing the proposal details.
+    - [x] Accepting or rejecting a native suggestion updates the document or annotation state deterministically and reports the outcome to the model.
+    - [x] Tests prove native annotation tools cannot be advertised when requirement-set checks fail.
+  - Notes/Evidence: Microsoft documents WordApi 1.7 as adding writing-assistance support with `Annotation`, `CritiqueAnnotation`, `Paragraph.insertAnnotations`, and annotation events; WordApi 1.8 adds popup-action events and temporary `Range.highlight()` / `removeHighlight()` APIs. Microsoft notes annotation APIs require a Microsoft 365 subscription because of an underlying service requirement, so UI/tool copy must be capability-honest. Closed 2026-04-27 by adding `word_annotation_review`, capability-honest native critique insertion/list/accept/reject/delete paths, fallback proposal payloads when WordApi 1.7 support is unavailable, prompt guidance, and `word-annotation-tools.test.ts`. Validation: `npm run typecheck:addin`, `npm run typecheck:companion`, `npm run test:office`, and `git diff --check`.
 
 - [x] FEATURE-010: Add structured Word style and paragraph formatting tools
   - Category: Feature

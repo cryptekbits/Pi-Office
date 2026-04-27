@@ -311,6 +311,31 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
     executor: "office-bridge",
   },
   {
+    name: "word_annotation_review",
+    hosts: ["word"],
+    category: "write-doc",
+    label: "Word Native Review Annotations",
+    description:
+      "Insert, inspect, accept, reject, or clear Word critique annotations when WordApi 1.7/1.8 support is available, with fallback to reviewable proposals.",
+    discovery: {
+      tier: "specialized",
+      capabilityIds: ["word.annotations", "word.review", "word.critiques"],
+      keywords: ["word", "annotation", "critique", "review", "highlight", "suggestion"],
+      summary: "Use Word-native critique annotations for supported hosts and fall back to proposal cards elsewhere.",
+      riskLevel: "medium",
+      requirementSets: [{ name: "WordApi", minVersion: "1.7", note: "Native critique annotations may require Microsoft 365 service support." }],
+      fallback: "Use office_propose_edits when native annotation insertion is unavailable.",
+    },
+    parameters: Type.Object({
+      operation: Type.String({ description: "insert, list, accept, reject, delete, or fallbackProposal." }),
+      target: Type.Optional(Type.Any({ description: "Word anchor for the paragraph/range to annotate." })),
+      critiques: Type.Optional(Type.Array(Type.Any(), { description: "Critique payloads with start, length, colorScheme, title, message, and suggestions." })),
+      annotationId: Type.Optional(Type.String({ description: "Annotation ID for accept/reject/delete." })),
+      fallbackEdits: Type.Optional(Type.Any({ description: "Reviewable edit proposal payload for unsupported native annotations." })),
+    }),
+    executor: "office-bridge",
+  },
+  {
     name: "edit_doc_text",
     hosts: ["word"],
     category: "write-doc",

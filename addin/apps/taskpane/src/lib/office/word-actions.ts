@@ -1015,6 +1015,79 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
       throw new Error(`Unsupported Word building block operation: ${operation}.`);
     }
 
+    if (type === "critiqueAnnotation") {
+      const operation = trimString(options.operation ?? action.operation) ?? "propose";
+      if (!supportsRequirementSet("WordApi", "1.7")) {
+        return {
+          ok: true,
+          host: "word",
+          action: type,
+          operation,
+          completion: "fallback",
+          fallbackTool: "office_propose_edits",
+          warning: "Word-native critique annotations require WordApi 1.7 and Microsoft 365 annotation service support.",
+          proposal: {
+            summary: trimString(options.summary ?? action.summary) ?? "Review suggestion prepared for taskpane approval.",
+            edits: Array.isArray(options.edits ?? action.edits) ? options.edits ?? action.edits : [],
+          },
+        };
+      }
+
+      if (operation === "propose") {
+        const { paragraph } = await resolveTargetRange();
+        if (!paragraph) {
+          return {
+            ok: true,
+            host: "word",
+            action: type,
+            operation,
+            completion: "fallback",
+            fallbackTool: "office_propose_edits",
+            warning: "Native critique annotations currently require a paragraph/search anchor; falling back to reviewable proposals.",
+          };
+        }
+        const start = Math.max(0, Math.trunc(toNumber(options.start ?? action.start) ?? 0));
+        const length = Math.max(1, Math.trunc(toNumber(options.length ?? action.length) ?? 1));
+        const colorScheme = trimString(options.colorScheme ?? action.colorScheme) ?? "Blue";
+        const ids = paragraph.insertAnnotations({
+          critiques: [
+            {
+              colorScheme: colorScheme as Word.CritiqueColorScheme,
+              start,
+              length,
+              popupOptions: {
+                brandingTextResourceId: "Pi-Office",
+                titleResourceId: "pi-office-review",
+                subtitleResourceId: "Pi-Office suggestion",
+                suggestions: [
+                  trimString(options.suggestion ?? action.suggestion ?? action.content) ?? "Review suggested change",
+                ],
+              },
+            },
+          ],
+        });
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, annotationIds: ids.value };
+      }
+
+      if (operation === "accept" || operation === "reject" || operation === "delete") {
+        const annotationId = trimString(options.annotationId ?? action.annotationId);
+        if (!annotationId) {
+          throw new Error(`Word annotation ${operation} requires annotationId.`);
+        }
+        const annotation = context.document.getAnnotationById(annotationId);
+        annotation.load("id,state,critiqueAnnotation/critique");
+        await context.sync();
+        if (operation === "accept") annotation.critiqueAnnotation.accept();
+        if (operation === "reject") annotation.critiqueAnnotation.reject();
+        if (operation === "delete") annotation.delete();
+        await context.sync();
+        return { ok: true, host: "word", action: type, operation, annotationId };
+      }
+
+      throw new Error(`Unsupported Word critique annotation operation: ${operation}.`);
+    }
+
     if (type === "insertField") {
       if (!supportsRequirementSet("WordApi", "1.5")) {
         throw new Error("Word field insertion requires WordApi 1.5 or newer.");

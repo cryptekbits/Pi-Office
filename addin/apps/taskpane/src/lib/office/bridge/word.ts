@@ -366,6 +366,31 @@ export async function executeWordOfficeTool(
         return { requestId: request.requestId, success: true, content: result };
       }
 
+      if (request.toolName === "word_annotation_review") {
+        if (request.host !== "word") {
+          return {
+            requestId: request.requestId,
+            success: false,
+            error: "word_annotation_review is only available for Word.",
+          };
+        }
+
+        const result = await dependencies.applyHostAction(request.host, {
+          type: "annotationReview",
+          target: request.params.target as never,
+          content: typeof request.params.message === "string" ? request.params.message : undefined,
+          options: {
+            operation: request.params.operation,
+            colorScheme: request.params.colorScheme,
+            start: request.params.start,
+            length: request.params.length,
+            replacement: request.params.replacement,
+            annotationId: request.params.annotationId,
+          },
+        });
+        return { requestId: request.requestId, success: true, content: result };
+      }
+
 
       if (request.toolName === "verify_doc") {
         if (request.host !== "word") {
