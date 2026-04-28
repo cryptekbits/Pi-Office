@@ -107,11 +107,18 @@ export const TASKPANE_COMPANION_PROTOCOL: CompanionProtocolDescriptor = {
     {
       id: "settings_sync",
       label: "Settings sync",
-      state: "planned",
+      state: "available",
       owner: "shared",
       version: "companion-settings-sync-v1",
-      summary: "Non-secret preferences and connector configuration should sync explicitly; taskpane provider secrets are not silently moved.",
-      routes: [],
+      summary: "Non-secret taskpane preferences, provider/model selections, and connector summary counts sync explicitly; taskpane provider secrets are not silently moved.",
+      routes: [
+        {
+          method: "POST",
+          path: "/v1/sessions/:sessionId/settings/sync",
+          state: "available",
+          description: "Syncs non-secret taskpane preferences and provider/model selection metadata into the companion session.",
+        },
+      ],
     },
     {
       id: "chat_streaming",
@@ -206,6 +213,7 @@ export interface CompanionCapabilities {
   version?: string | undefined;
   agent?: CompanionAgentCapability | undefined;
   providerAuth?: CompanionProviderAuthCapability | undefined;
+  settingsSync?: CompanionSettingsSyncCapability | undefined;
   nativeCapture?: CompanionNativeCaptureCapability | undefined;
   mcp?: CompanionMcpCapability | undefined;
   memory?: CompanionSimpleCapability | undefined;
@@ -440,6 +448,7 @@ export interface CompanionSessionOpenRequest {
   saved: boolean;
   title: string;
   connectors: CompanionConnectorDefinition[];
+  settings?: CompanionSettingsSyncRequest | undefined;
 }
 
 export interface CompanionSessionOpenResponse {
@@ -468,6 +477,39 @@ export interface CompanionAgentCapability extends CompanionSimpleCapability {
 export interface CompanionProviderAuthCapability extends CompanionSimpleCapability {
   explicitMigrationRequired: boolean;
   supportedAuthMethods?: ProviderAuthMethod[] | undefined;
+}
+
+export interface CompanionProviderModelSelection {
+  enabledProviders: string[];
+  enabledModels: string[];
+  defaultModelByProvider?: Record<string, string> | undefined;
+}
+
+export interface CompanionSettingsSyncRequest {
+  browserSessionId: string;
+  preferences: UserPreferences;
+  providerSelection: CompanionProviderModelSelection;
+  connectorCount: number;
+  secretsIncluded: false;
+}
+
+export interface CompanionSettingsSyncResponse {
+  ok: true;
+  syncedAt: string;
+  companionRuntimeMode: CompanionRuntimeMode;
+  enabledProviderCount: number;
+  enabledModelCount: number;
+  connectorCount: number;
+  secretsIncluded: false;
+}
+
+export interface CompanionSettingsSyncCapability extends CompanionSimpleCapability {
+  lastSyncedAt?: string | undefined;
+  companionRuntimeMode?: CompanionRuntimeMode | undefined;
+  enabledProviderCount?: number | undefined;
+  enabledModelCount?: number | undefined;
+  connectorCount?: number | undefined;
+  secretsIncluded: false;
 }
 
 export interface CompanionMcpCapability extends CompanionSimpleCapability {

@@ -13,7 +13,7 @@ The runtime preference lives in `UserPreferences.companionRuntimeMode` (`basic`,
 | Area | State | Owner | Current route contract |
 | --- | --- | --- | --- |
 | Capability discovery | Available | Shared | `GET /v1/health`, `POST /v1/sessions/open` |
-| Settings sync | Planned | Shared | No route yet; non-secret preferences and connector config should sync explicitly. |
+| Settings sync | Available | Shared | `POST /v1/sessions/:sessionId/settings/sync` syncs non-secret preferences, enabled provider/model choices, and connector summary counts. Provider secrets are excluded. |
 | Chat streaming | Reserved | Companion | `POST /v1/sessions/:sessionId/agent/prompt` exists as an unavailable stub until companion provider auth/session storage lands. |
 | Tool requests | Available | Companion | File, MCP, MCP result, shell, and native-capture session routes execute non-Office work under capability gates. |
 | Office tool execution | Reserved | Taskpane | `POST /v1/sessions/:sessionId/agent/office-tool-result` is reserved for future companion-agent Office tool result handoff. Office.js execution stays in the taskpane. |
@@ -23,6 +23,7 @@ The runtime preference lives in `UserPreferences.companionRuntimeMode` (`basic`,
 
 - Office document reads/writes, selection-sensitive actions, and Office permission prompts remain taskpane-owned because only the Office host can safely run Office.js against the active document.
 - Taskpane provider secrets must never silently migrate into the companion. Any move to companion provider auth needs explicit user action, clear storage disclosure, and a secure backend.
+- Settings sync is for non-secret state only: preferences, runtime mode, enabled providers/models, defaults, and connector counts. API keys, OAuth tokens, and manual connector secrets are excluded from this route.
 - Basic mode must stay usable when the companion is absent, stopped, unhealthy, or disconnected.
 - Basic mode must not publish companion-only tools to model turns.
 - Companion-owned inference must not be advertised as available until `CompanionCapabilities.agent` and `CompanionCapabilities.providerAuth` both report available.
@@ -30,4 +31,4 @@ The runtime preference lives in `UserPreferences.companionRuntimeMode` (`basic`,
 
 ## Validation
 
-`addin/scripts/office-tests/src/companion-protocol.test.ts` protects the descriptor shape, the Basic/Advanced ownership rules, the no-silent-secret-migration rule, and the reserved companion-agent route stubs. `addin/scripts/office-tests/src/capability-routing.test.ts` covers Basic mode hiding companion-only tools and Advanced mode falling back to taskpane inference while companion auth is unavailable.
+`addin/scripts/office-tests/src/companion-protocol.test.ts` protects the descriptor shape, the Basic/Advanced ownership rules, the no-silent-secret-migration rule, settings-sync routing, and the reserved companion-agent route stubs. `addin/scripts/office-tests/src/capability-routing.test.ts` covers Basic mode hiding companion-only tools and Advanced mode falling back to taskpane inference while companion auth is unavailable.

@@ -134,6 +134,7 @@ test("settings and model selector expose Simple/Advanced filtering and warning c
   assert.match(settingsSource, /artifactClarificationMode/);
   assert.match(settingsSource, /Runtime mode/);
   assert.match(settingsSource, /companionRuntimeMode/);
+  assert.match(readFileSync(join(process.cwd(), "apps", "taskpane", "src", "hooks", "usePreferences.ts"), "utf8"), /syncKernelProviderSelection/);
   assert.match(appSource, /pendingUnrecommendedModel/);
   assert.match(appSource, /suppressUnrecommendedModelWarning/);
   assert.match(appSource, /requiresUnrecommendedWarning/);

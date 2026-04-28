@@ -10,6 +10,9 @@ import type {
   CompanionConnectorOAuthStatusRequest,
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
+  CompanionSettingsSyncCapability,
+  CompanionSettingsSyncRequest,
+  CompanionSettingsSyncResponse,
   CompanionShellCapability,
   McpToolSearchRequest,
   CompanionShellExecuteRequest,
@@ -41,6 +44,7 @@ interface SessionRecord {
   title: string;
   workspaceDir?: string | undefined;
   connectorToolNames: string[];
+  settingsSync?: CompanionSettingsSyncCapability | undefined;
 }
 
 function createShellSandbox(config: CompanionConfig, session?: SessionRecord | undefined): CompanionShellSandbox {
@@ -56,6 +60,7 @@ function createCompanionState(
   sessionId?: string | undefined,
   connectorToolNames?: string[] | undefined,
   shell?: CompanionShellCapability | undefined,
+  settingsSync?: CompanionSettingsSyncCapability | undefined,
 ): CompanionState {
   const connectorToolCount = connectorToolNames?.length ?? 0;
   return {
@@ -88,6 +93,13 @@ function createCompanionState(
         supportedAuthMethods: ["oauth", "manual_token", "api_key", "cloud_identity", "aws_credentials"],
         reason: "Taskpane provider secrets are not silently migrated; use an explicit companion auth move/setup flow when implemented.",
       },
+      settingsSync: settingsSync ?? {
+        state: "available",
+        available: true,
+        version: "companion-settings-sync-v1",
+        secretsIncluded: false,
+        reason: "Non-secret taskpane settings sync on session open or preference changes.",
+      },
       nativeCapture: createNativeCaptureCapability(),
       mcp: {
         state: "available",
@@ -103,6 +115,54 @@ function createCompanionState(
         reason: "Durable companion memory is reserved for advanced mode.",
       },
     },
+  };
+}
+
+function uniqueStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)))
+    .map((entry) => entry.trim())
+    .sort();
+}
+
+function normalizeSettingsSync(request: CompanionSettingsSyncRequest | undefined): CompanionSettingsSyncResponse {
+  if (!request || typeof request !== "object") {
+    throw new Error("settings sync request is required.");
+  }
+  if (request.secretsIncluded !== false) {
+    throw new Error("settings sync must not include taskpane provider secrets.");
+  }
+  const mode = request.preferences?.companionRuntimeMode;
+  if (mode !== "basic" && mode !== "smart_auto" && mode !== "advanced") {
+    throw new Error("preferences.companionRuntimeMode must be basic, smart_auto, or advanced.");
+  }
+  const enabledProviders = uniqueStrings(request.providerSelection?.enabledProviders);
+  const enabledModels = uniqueStrings(request.providerSelection?.enabledModels);
+  const connectorCount = Number.isFinite(request.connectorCount) && request.connectorCount >= 0
+    ? Math.floor(request.connectorCount)
+    : 0;
+  return {
+    ok: true,
+    syncedAt: new Date().toISOString(),
+    companionRuntimeMode: mode,
+    enabledProviderCount: enabledProviders.length,
+    enabledModelCount: enabledModels.length,
+    connectorCount,
+    secretsIncluded: false,
+  };
+}
+
+function settingsCapabilityFromSync(sync: CompanionSettingsSyncResponse): CompanionSettingsSyncCapability {
+  return {
+    state: "available",
+    available: true,
+    version: "companion-settings-sync-v1",
+    lastSyncedAt: sync.syncedAt,
+    companionRuntimeMode: sync.companionRuntimeMode,
+    enabledProviderCount: sync.enabledProviderCount,
+    enabledModelCount: sync.enabledModelCount,
+    connectorCount: sync.connectorCount,
+    secretsIncluded: false,
   };
 }
 
@@ -233,6 +293,9 @@ export class CompanionServer {
 
       const prepared = await this.connectorBridge.prepareSession(session.id, body.connectors ?? []);
       session.connectorToolNames = prepared.connectorToolNames;
+      if (body.settings) {
+        session.settingsSync = settingsCapabilityFromSync(normalizeSettingsSync(body.settings));
+      }
 
       const reply: CompanionSessionOpenResponse = {
         ok: true,
@@ -242,10 +305,29 @@ export class CompanionServer {
           session.id,
           prepared.connectorToolNames,
           createShellSandbox(this.config, session).getCapability(),
+          session.settingsSync,
         ),
         connectors: prepared.connectors,
       };
       response.json(reply);
+    });
+
+    app.post("/v1/sessions/:sessionId/settings/sync", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      try {
+        const result = normalizeSettingsSync(request.body as CompanionSettingsSyncRequest);
+        session.settingsSync = settingsCapabilityFromSync(result);
+        response.json(result);
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     app.get("/v1/sessions/:sessionId/shell/capability", (request, response) => {

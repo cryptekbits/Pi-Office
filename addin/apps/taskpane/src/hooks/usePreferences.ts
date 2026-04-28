@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "@pi-office/pi-office-pack/protocol";
 import { DEFAULT_ENABLED_MODELS_BY_PROVIDER } from "@pi-office/pi-office-pack/provider-model-preferences";
-import { syncKernelPreferences } from "../lib/runtime/inprocess-kernel";
+import { syncKernelPreferences, syncKernelProviderSelection } from "../lib/runtime/inprocess-kernel";
 
 const STORAGE_KEY = "pi-office-preferences";
 const ENABLED_MODELS_KEY = "pi-office-enabled-models";
@@ -58,6 +58,13 @@ function saveEnabledProviders(set: Set<string>): void {
 export function useEnabledModels() {
   const [enabledModels, setEnabledModels] = useState<Set<string>>(loadEnabledModels);
   const [enabledProviders, setEnabledProviders] = useState<Set<string>>(loadEnabledProviders);
+
+  useEffect(() => {
+    syncKernelProviderSelection({
+      enabledModels: [...enabledModels],
+      enabledProviders: [...enabledProviders],
+    });
+  }, [enabledModels, enabledProviders]);
 
   const toggleModel = useCallback((key: string) => {
     setEnabledModels((current) => {

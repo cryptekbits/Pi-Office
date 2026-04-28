@@ -9,6 +9,8 @@ import type {
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
   CompanionNativeCaptureResponse,
+  CompanionSettingsSyncRequest,
+  CompanionSettingsSyncResponse,
   CompanionShellCapability,
   CompanionShellExecuteRequest,
   CompanionShellExecuteResponse,
@@ -154,6 +156,12 @@ function defaultCompanionState(): CompanionState {
         explicitMigrationRequired: true,
         reason: "Optional companion is not connected.",
       },
+      settingsSync: {
+        state: "unavailable",
+        available: false,
+        secretsIncluded: false,
+        reason: "Optional companion is not connected.",
+      },
       nativeCapture: {
         state: "unavailable",
         available: false,
@@ -289,6 +297,7 @@ export class CompanionClient {
     browserSessionId: string,
     officeState: OfficeStateUpdate,
     connectors: CompanionConnectorDefinition[],
+    settings: CompanionSettingsSyncRequest,
     windowId?: string,
   ): Promise<CompanionSessionBinding | undefined> {
     await this.ensureInitialized();
@@ -309,6 +318,7 @@ export class CompanionClient {
           saved: officeState.document.saved,
           title: officeState.document.title,
           connectors,
+          settings,
         }),
       });
 
@@ -339,6 +349,7 @@ export class CompanionClient {
           protocol: this.state.capabilities.protocol ?? TASKPANE_COMPANION_PROTOCOL,
           agent: defaultCompanionState().capabilities.agent,
           providerAuth: defaultCompanionState().capabilities.providerAuth,
+          settingsSync: defaultCompanionState().capabilities.settingsSync,
           nativeCapture: defaultCompanionState().capabilities.nativeCapture,
           mcp: defaultCompanionState().capabilities.mcp,
           memory: defaultCompanionState().capabilities.memory,
@@ -346,6 +357,49 @@ export class CompanionClient {
       };
       return undefined;
     }
+  }
+
+  async syncSettings(
+    browserSessionId: string,
+    request: CompanionSettingsSyncRequest,
+  ): Promise<CompanionSettingsSyncResponse | undefined> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      return undefined;
+    }
+
+    const response = await fetchJsonWithTimeout<CompanionSettingsSyncResponse>(
+      `${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/settings/sync`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    );
+    this.state = {
+      ...this.state,
+      capabilities: {
+        ...this.state.capabilities,
+        settingsSync: {
+          state: "available",
+          available: true,
+          version: "companion-settings-sync-v1",
+          lastSyncedAt: response.syncedAt,
+          companionRuntimeMode: response.companionRuntimeMode,
+          enabledProviderCount: response.enabledProviderCount,
+          enabledModelCount: response.enabledModelCount,
+          connectorCount: response.connectorCount,
+          secretsIncluded: false,
+        },
+      },
+    };
+    binding.companion = {
+      ...binding.companion,
+      capabilities: {
+        ...binding.companion.capabilities,
+        settingsSync: this.state.capabilities.settingsSync,
+      },
+    };
+    return response;
   }
 
   getBinding(browserSessionId: string): CompanionSessionBinding | undefined {

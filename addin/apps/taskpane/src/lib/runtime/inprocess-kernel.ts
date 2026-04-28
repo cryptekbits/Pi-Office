@@ -44,6 +44,7 @@ import {
   type CompanionNativeCaptureRequest,
   type CompanionNativeCaptureResponse,
   type CompanionRuntimeMode,
+  type CompanionSettingsSyncRequest,
   type CompanionShellExecuteRequest,
   type CompanionState,
   type ConnectorDiagnostic,
@@ -160,6 +161,11 @@ interface PendingAskUser {
   resolve: (value: AskUserResponse) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
+}
+
+export interface ProviderModelSelectionState {
+  enabledProviders: string[];
+  enabledModels: string[];
 }
 
 interface PendingToolPermission {
@@ -526,6 +532,12 @@ function disconnectedCompanionCapabilities(endpoint?: string): CompanionState["c
       state: "unavailable",
       available: false,
       explicitMigrationRequired: true,
+      reason: "Optional companion is not connected.",
+    },
+    settingsSync: {
+      state: "unavailable",
+      available: false,
+      secretsIncluded: false,
       reason: "Optional companion is not connected.",
     },
     nativeCapture: {
@@ -3067,6 +3079,10 @@ class InProcessKernel {
   private readonly sessionsById = new Map<string, BrowserOfficeSession>();
   private readonly sessionsByDocument = new Map<string, BrowserOfficeSession>();
   private userPreferences: UserPreferences = { ...DEFAULT_USER_PREFERENCES };
+  private providerModelSelection: ProviderModelSelectionState = {
+    enabledProviders: [],
+    enabledModels: [],
+  };
 
   private async getConnectorRuntime(): Promise<BrowserConnectorRuntime> {
     if (this.connectorRuntime) {
@@ -3131,8 +3147,26 @@ class InProcessKernel {
     this.userPreferences = { ...this.userPreferences, ...patch };
     for (const session of this.sessionsById.values()) {
       session.refreshPreferences();
+      void this.syncCompanionSettingsForSession(session);
     }
     return { ok: true, preferences: { ...this.userPreferences } };
+  }
+
+  setProviderModelSelection(selection: Partial<ProviderModelSelectionState>): { ok: true; selection: ProviderModelSelectionState } {
+    const enabledProviders = Array.isArray(selection.enabledProviders)
+      ? selection.enabledProviders.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : this.providerModelSelection.enabledProviders;
+    const enabledModels = Array.isArray(selection.enabledModels)
+      ? selection.enabledModels.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : this.providerModelSelection.enabledModels;
+    this.providerModelSelection = {
+      enabledProviders: Array.from(new Set(enabledProviders)).sort(),
+      enabledModels: Array.from(new Set(enabledModels)).sort(),
+    };
+    for (const session of this.sessionsById.values()) {
+      void this.syncCompanionSettingsForSession(session);
+    }
+    return { ok: true, selection: { ...this.providerModelSelection } };
   }
 
   connectBridge(sessionId: string): LocalBridgeSocket {
@@ -3275,7 +3309,48 @@ class InProcessKernel {
           workspaceId: officeState.document.workspaceDir,
         })
       : [];
-    return this.companionClient.openSession(session.sessionId, officeState, connectors, windowId);
+    return this.companionClient.openSession(
+      session.sessionId,
+      officeState,
+      connectors,
+      this.buildCompanionSettingsSyncRequest(session.sessionId, connectors.length),
+      windowId,
+    );
+  }
+
+  private buildCompanionSettingsSyncRequest(
+    browserSessionId: string,
+    connectorCount = 0,
+  ): CompanionSettingsSyncRequest {
+    return {
+      browserSessionId,
+      preferences: { ...this.userPreferences },
+      providerSelection: {
+        enabledProviders: [...this.providerModelSelection.enabledProviders],
+        enabledModels: [...this.providerModelSelection.enabledModels],
+        defaultModelByProvider: { ...this.userPreferences.defaultModelByProvider },
+      },
+      connectorCount,
+      secretsIncluded: false,
+    };
+  }
+
+  private async syncCompanionSettingsForSession(session: BrowserOfficeSession): Promise<void> {
+    try {
+      await this.companionClient.syncSettings(
+        session.sessionId,
+        this.buildCompanionSettingsSyncRequest(
+          session.sessionId,
+          session.companion.connectorToolNames?.length ?? 0,
+        ),
+      );
+      const binding = this.companionClient.getBinding(session.sessionId);
+      if (binding) {
+        session.setCompanion(binding);
+      }
+    } catch {
+      // Best-effort non-secret sync; disconnected companions stay covered by taskpane fallback.
+    }
   }
 
   private async syncSessionCompanion(
@@ -3863,4 +3938,8 @@ export function createLocalBridgeSocket(sessionId: string): LocalBridgeSocket {
 
 export function syncKernelPreferences(preferences: UserPreferences): void {
   kernel.setPreferences(preferences);
+}
+
+export function syncKernelProviderSelection(selection: ProviderModelSelectionState): void {
+  kernel.setProviderModelSelection(selection);
 }

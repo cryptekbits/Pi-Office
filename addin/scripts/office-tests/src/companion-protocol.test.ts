@@ -31,21 +31,24 @@ test("advanced companion protocol covers the required ownership seams", () => {
   assert.equal(protocolFeature("tool_requests").state, "available");
   assert.equal(protocolFeature("chat_streaming").state, "reserved");
   assert.equal(protocolFeature("office_tool_execution").owner, "taskpane");
-  assert.equal(protocolFeature("settings_sync").state, "planned");
+  assert.equal(protocolFeature("settings_sync").state, "available");
   assert.equal(protocolFeature("auth_migration").state, "planned");
   assert.match(protocolFeature("auth_migration").summary, /no silent taskpane-to-companion migration/i);
 });
 
-test("reserved companion agent protocol routes are declared and implemented as route stubs", () => {
+test("companion protocol routes are declared and implemented", () => {
   const serverSource = readFileSync(join(process.cwd(), "..", "companion", "src", "server.ts"), "utf8");
 
-  for (const featureId of ["chat_streaming", "office_tool_execution"] as const) {
+  for (const featureId of ["settings_sync", "chat_streaming", "office_tool_execution"] as const) {
     const feature = protocolFeature(featureId);
-    assert.equal(feature.state, "reserved");
     for (const route of feature.routes) {
       assert.match(serverSource, new RegExp(route.path.replaceAll("/", "\\/")));
     }
   }
+
+  assert.equal(protocolFeature("settings_sync").routes.some((route) => route.path === "/v1/sessions/:sessionId/settings/sync"), true);
+  assert.equal(protocolFeature("chat_streaming").state, "reserved");
+  assert.equal(protocolFeature("office_tool_execution").state, "reserved");
 });
 
 test("available companion tool routes stay listed in the shared protocol descriptor", () => {

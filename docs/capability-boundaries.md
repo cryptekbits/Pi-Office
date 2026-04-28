@@ -2,6 +2,8 @@
 
 Pi-Office uses `UserPreferences.companionRuntimeMode` to control runtime ownership. The default is Smart Auto routing: the taskpane remains fully usable by itself, and when a healthy companion is connected, eligible non-Office capabilities prefer companion execution while keeping taskpane fallback where the browser runtime can honestly execute the work. Basic mode keeps companion-only tools hidden from model turns. Advanced mode prefers companion-owned provider/auth/agent capability once advertised, but falls back to taskpane-supported inference until those companion surfaces exist.
 
+Connected companion sessions receive an explicit non-secret settings sync containing taskpane preferences, runtime mode, enabled provider/model choices, provider default selections, and connector summary counts. This sync deliberately excludes provider API keys, OAuth tokens, and manual connector secrets; moving secrets into companion-owned auth remains an explicit future migration flow.
+
 ## Runtime Fields
 
 Every resolved capability is described with these fields:
