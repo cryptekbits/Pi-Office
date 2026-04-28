@@ -1575,23 +1575,23 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] The Check-step warning area avoids duplicate adjacent local-runtime/companion warnings.
   - Notes/Evidence: Implemented in `addin/apps/taskpane/src/app/components/IntegrationsSection.tsx` and `addin/apps/taskpane/src/app/styles.css` by adding `connectionTypeChipLabel`, using compact chips in Library/Connected/Check metadata, removing the recommended-host Check chip, coalescing local STDIO companion diagnostics in `renderDiagnostics`, and reducing row spacing/icon sizes while removing the fixed description max width. Browser verification at `https://localhost:3443/` confirmed denser Library rows, centered search, one-line GitHub desktop description, `STDIO` / `HTTP` chips, no Check-step host chip, and one coalesced `Companion required` warning. A 390px headless Edge pass reported no page or row overflow. Validation: `npm run typecheck:addin`; `npm run test:office` passed with 144 tests; `npm run build:addin`; `npm run check:bundle`; `npm run validate:manifests`.
 
-- [ ] IMPROVEMENT-002: Clarify release packaging and runtime assumptions after the independent taskpane transition
+- [x] IMPROVEMENT-002: Clarify release packaging and runtime assumptions after the independent taskpane transition
   - Category: Improvement
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS6 and risk list.
   - Details: The architecture now separates the independent taskpane from an optional companion. Release packaging must make clear what ships as the Office taskpane, what is optional local companion functionality, how certs/dev-only assets are handled, and what users need for sideload versus packaged deployment.
   - Dependencies: BUG-001 and connector execution decisions in BUG-002.
   - Subtasks:
-    - [ ] Document development, sideload, CI, and packaged release runtime assumptions in README or release docs.
-    - [ ] Clarify whether the optional companion is distributed as npm, zip, binary, or source-only for now.
-    - [ ] Ensure manifest URLs, icon cache busting, shortcut resources, and dev/prod host origins are described accurately.
-    - [ ] Add validation steps that prove release docs match actual scripts and manifests.
+    - [x] Document development, sideload, CI, and packaged release runtime assumptions in README or release docs.
+    - [x] Clarify whether the optional companion is distributed as npm, zip, binary, or source-only for now.
+    - [x] Ensure manifest URLs, icon cache busting, shortcut resources, and dev/prod host origins are described accurately.
+    - [x] Add validation steps that prove release docs match actual scripts and manifests.
   - Acceptance Criteria:
-    - [ ] A fresh developer can identify which command starts taskpane-only development and which command starts the optional companion.
-    - [ ] CI/release docs do not imply dev certs or local-only files are committed.
-    - [ ] Optional companion limitations are explicit and do not conflict with taskpane-first architecture.
-  - Notes/Evidence: Transition plan lists "Release packaging/runtime assumptions unclear" under WS6.
+    - [x] A fresh developer can identify which command starts taskpane-only development and which command starts the optional companion.
+    - [x] CI/release docs do not imply dev certs or local-only files are committed.
+    - [x] Optional companion limitations are explicit and do not conflict with taskpane-first architecture.
+  - Notes/Evidence: Transition plan lists "Release packaging/runtime assumptions unclear" under WS6. Closed 2026-04-28 with `docs/release-runtime.md`, which now records shipped surfaces, root/add-in/companion command ownership, gitignored dev cert assumptions, taskpane dev host `https://localhost:3443`, optional companion endpoint `https://localhost:3444`, sideload manifest resources, Node 24 CI gates, and the current source-checkout-only packaging posture. `README.md` links the doc from Current Architecture and narrows companion packaging copy so it no longer implies npm/zip/binary distribution exists. `addin/scripts/office-tests/src/transition-regressions.test.ts` now asserts the release-runtime doc stays aligned with package scripts and manifest version/URL/cache-bust assumptions. Validation passed: `npm run typecheck:addin`, `npm --prefix addin run test:office -- transition-regressions` (267 tests), `npm run build`, `npm run check:bundle` (`main.js=1553.1 KiB`), `npm run validate:manifests`, and `git diff --check`.
 
 - [x] IMPROVEMENT-003: Consolidate Office tool contracts and user-facing descriptions
   - Category: Improvement

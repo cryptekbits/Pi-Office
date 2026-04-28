@@ -28,6 +28,7 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 - Local stdio, local HTTP, and companion-brokered MCP connectors require the optional companion; browser-compatible hosted HTTP profiles can run directly when their catalog profile and provider CORS allow it
 - Multiple Office windows can reuse one machine-local companion while keeping logical taskpane sessions isolated
 - Privacy and storage behavior, including local credential limits and clear-data controls, is documented in [`docs/privacy-and-storage.md`](docs/privacy-and-storage.md)
+- Development, sideload, validation, and current packaging assumptions are documented in [`docs/release-runtime.md`](docs/release-runtime.md)
 
 ## License And Governance
 
@@ -125,7 +126,7 @@ If Word launches with a blank document during debugging, open the target saved d
 - Companion provider API-key storage is available through explicit secure-storage routes where supported; companion-owned inference, memory, and agent sessions remain capability-gated advanced-mode work. Browser API-key providers remain taskpane-local unless the user explicitly moves auth to the companion.
 - Browser-direct hosted HTTP connectors can run from the taskpane when supported; companion-brokered connectors such as Granola use the companion for system-browser sign-in and MCP execution
 - The versioned Basic/Advanced taskpane-companion contract is documented in [`docs/advanced-companion-protocol.md`](docs/advanced-companion-protocol.md)
-- Packaging for `dist/binaries`, zip, and npm distribution is planned later
+- Packaging for production-hosted manifests, companion installers, zip/binary artifacts, and npm distribution is planned later; the current repo posture is source checkout plus local sideload scripts
 - Runtime capability boundaries are documented in [`docs/capability-boundaries.md`](docs/capability-boundaries.md)
 
 ## Notes
