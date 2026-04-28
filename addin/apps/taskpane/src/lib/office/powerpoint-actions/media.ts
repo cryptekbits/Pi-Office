@@ -22,6 +22,7 @@ import {
   searchPowerPointIcons,
   type PowerPointIconCatalogEntry,
 } from "../powerpoint-icons";
+import { getPowerPointAssetSourceCatalog } from "../powerpoint-assets";
 
 const POWERPOINT_MEDIA_ACTIONS = new Set([
   "searchIcons",
@@ -180,6 +181,7 @@ export async function applyPowerPointMediaAction(
       totalMatches: icons.length,
       icons,
       catalog: "pi-office-built-in-svg-icon-catalog",
+      supportedAssetSources: getPowerPointAssetSourceCatalog(),
       note: "Use insertIcon with iconId to place a selected icon on the target slide.",
     };
   }
@@ -212,8 +214,10 @@ export async function applyPowerPointMediaAction(
               iconGlyph: icon.glyph,
               iconKeywords: icon.keywords,
               catalog: "pi-office-built-in-svg-icon-catalog",
+              iconAssetSourceId: "provided-image-base64",
               iconAssetSource: "provided-base64",
               iconAssetMimeType: "image/png",
+              iconAssetFormat: "png",
               insertionMode: "shape-image-replace",
             }
           : replaced;
@@ -227,7 +231,7 @@ export async function applyPowerPointMediaAction(
           throw new Error("PowerPoint insertIcon image mode requires PowerPointApi 1.4 or newer.");
         }
         const shape = shapes.addImage(`data:image/png;base64,${providedBase64}`) as PowerPoint.Shape;
-        applyPowerPointShapeProperties(shape, options);
+        applyPowerPointShapeProperties(shape, withDefaultIconShapeOptions(icon, options));
         shape.load("id,name,type");
         await context.sync();
         context.presentation.setSelectedSlides([slide.id]);
@@ -247,8 +251,10 @@ export async function applyPowerPointMediaAction(
           iconGlyph: icon.glyph,
           iconKeywords: icon.keywords,
           catalog: "pi-office-built-in-svg-icon-catalog",
+          iconAssetSourceId: "provided-image-base64",
           iconAssetSource: "provided-base64",
           iconAssetMimeType: "image/png",
+          iconAssetFormat: "png",
           insertionMode: "image-shape",
         };
       });
@@ -308,6 +314,7 @@ export async function applyPowerPointMediaAction(
           iconGlyph: icon.glyph,
           iconKeywords: icon.keywords,
           catalog: "pi-office-built-in-svg-icon-catalog",
+          iconAssetSourceId: "built-in-icon-svg",
           completion: "fallback",
           fallbackStrategy: "explicit-glyph-textbox",
           insertionMode: "glyph-textbox",
@@ -337,6 +344,7 @@ export async function applyPowerPointMediaAction(
         iconGlyph: icon.glyph,
         iconKeywords: icon.keywords,
         catalog: "pi-office-built-in-svg-icon-catalog",
+        iconAssetSourceId: "built-in-icon-svg",
         iconAssetSource: "pi-office-built-in-svg-icon-catalog",
         iconAssetMimeType: asset.mimeType,
         iconAssetFormat: asset.sourceFormat,
@@ -362,7 +370,17 @@ export async function applyPowerPointMediaAction(
       const shape = shapes.addImage(`data:image/png;base64,${imageBase64}`) as PowerPoint.Shape;
       shape.load("id,name,width,height");
       await context.sync();
-      return { ok: true, host: "powerpoint", action: type, shapeId: shape.id, shapeName: shape.name, slideId: slide.id };
+      return {
+        ok: true,
+        host: "powerpoint",
+        action: type,
+        shapeId: shape.id,
+        shapeName: shape.name,
+        slideId: slide.id,
+        assetSourceId: "provided-image-base64",
+        assetMimeType: "image/png",
+        insertionMode: "image-shape",
+      };
     });
   }
 
@@ -399,6 +417,7 @@ async function copyImageBetweenSlides(
     sourceSlideIndex?: number;
     sourceShapeId?: string;
     sourceShapeName?: string;
+    assetSourceId?: string;
   } = {};
 
   if (!imageBase64) {
@@ -426,6 +445,11 @@ async function copyImageBetweenSlides(
       sourceSlideIndex: extracted.sourceSlideIndex,
       sourceShapeId: extracted.sourceShapeId,
       sourceShapeName: extracted.sourceShapeName,
+      assetSourceId: "powerpoint-shape-snapshot",
+    };
+  } else {
+    sourceSummary = {
+      assetSourceId: "provided-image-base64",
     };
   }
 

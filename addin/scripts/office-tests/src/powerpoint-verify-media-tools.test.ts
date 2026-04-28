@@ -5,6 +5,10 @@ import test from "node:test";
 
 import { OFFICE_APPEND_SYSTEM_PROMPT } from "../../../packages/pi-office-pack/src/defaults.js";
 import { createOfficeToolExecutor } from "../../../apps/taskpane/src/lib/office-bridge.js";
+import {
+  getPowerPointAssetSourceCatalog,
+  inferPowerPointAssetDescriptor,
+} from "../../../apps/taskpane/src/lib/office/powerpoint-assets.js";
 import { buildPowerPointIconSvg, resolvePowerPointIcon, searchPowerPointIcons } from "../../../apps/taskpane/src/lib/office/powerpoint-icons.js";
 import { createOfficeExtension } from "../../../packages/pi-office-pack/src/extension.js";
 import {
@@ -125,10 +129,44 @@ test("PowerPoint icon insertion path prefers image shapes and gates glyph fallba
   const mediaPath = join(process.cwd(), "apps", "taskpane", "src", "lib", "office", "powerpoint-actions", "media.ts");
   const mediaSource = readFileSync(mediaPath, "utf8");
   assert.match(mediaSource, /renderPowerPointIconAsset/);
+  assert.match(mediaSource, /supportedAssetSources: getPowerPointAssetSourceCatalog\(\)/);
+  assert.match(mediaSource, /iconAssetSourceId: "built-in-icon-svg"/);
+  assert.match(mediaSource, /assetSourceId: "powerpoint-shape-snapshot"/);
   assert.match(mediaSource, /shapes\.addImage\(`data:\$\{asset\.mimeType\};base64,\$\{asset\.data\}`\)/);
   assert.match(mediaSource, /allowGlyphFallback=true/);
   assert.match(mediaSource, /fallbackStrategy: "explicit-glyph-textbox"/);
   assert.doesNotMatch(mediaSource, /catalog: "taskpane-runtime-icon-catalog"/);
+});
+
+test("PowerPoint asset pipeline defines source contracts and infers inserted icon assets", () => {
+  const sourceCatalog = getPowerPointAssetSourceCatalog();
+  assert.ok(sourceCatalog.some((source) => source.id === "built-in-icon-svg" && source.status === "available"));
+  assert.ok(sourceCatalog.some((source) => source.id === "provided-image-base64" && source.status === "available"));
+  assert.ok(sourceCatalog.some((source) => source.id === "selected-image-shape" && source.status === "available"));
+  assert.ok(sourceCatalog.some((source) => source.id === "generated-image-base64" && source.status === "available-through-composition"));
+  assert.ok(sourceCatalog.some((source) => source.id === "reusable-slide-component" && source.status === "planned"));
+
+  const inferred = inferPowerPointAssetDescriptor({
+    id: "shape-icon-1",
+    name: "Icon Trend Up",
+    contentKind: "image",
+    slideId: "slide-2",
+    slideIndex: 2,
+    altTextTitle: "Trend Up",
+    altTextDescription: "Pi-Office built-in Trend Up icon from the SVG icon catalog.",
+  });
+  assert.equal(inferred?.sourceId, "built-in-icon-svg");
+  assert.equal(inferred?.assetName, "Trend Up");
+  assert.equal(inferred?.expectedInsertionMode, "icon-image-shape");
+  assert.equal(inferred?.verificationStatus, "verified-image-shape");
+
+  const assetDocPath = join(process.cwd(), "..", "docs", "powerpoint-asset-pipeline.md");
+  const assetDocText = readFileSync(assetDocPath, "utf8");
+  assert.match(assetDocText, /Built-in SVG icon catalog/);
+  assert.match(assetDocText, /Generated image handoff/);
+  assert.match(assetDocText, /Selected PowerPoint image shape/);
+  assert.match(assetDocText, /Reusable slide component/);
+  assert.match(assetDocText, /verify_slide_visual/);
 });
 
 async function loadKernelModule() {
@@ -336,7 +374,17 @@ test("createOfficeToolExecutor dispatches PowerPoint chart/media/icon tools and 
         summary: "PowerPoint context captured",
         snippets: {
           selectedSlides: [{ id: "slide-2", index: 2 }],
-          selectedShapeDescriptors: [{ id: "shape-3", name: "Revenue Chart" }],
+          selectedShapeDescriptors: [
+            {
+              id: "shape-icon-1",
+              name: "Icon Trend Up",
+              contentKind: "image",
+              slideId: "slide-2",
+              slideIndex: 2,
+              altTextTitle: "Trend Up",
+              altTextDescription: "Pi-Office built-in Trend Up icon from the SVG icon catalog.",
+            },
+          ],
         },
         formatting: {
           selectedSlides: [{ index: 2, layoutName: "Title and Content" }],
@@ -463,13 +511,20 @@ test("createOfficeToolExecutor dispatches PowerPoint chart/media/icon tools and 
   });
   const verifyVisualPayload = verifyVisualResult.content as {
     visual: { kind: string; imageCount: number };
-    details: { kind: string; mutating: boolean };
+    details: {
+      kind: string;
+      mutating: boolean;
+      assetVerification: { selectedAssetCount: number; selectedAssets: Array<{ sourceId: string; verificationStatus: string }> };
+    };
     visuals: unknown[];
   };
   assert.equal(verifyVisualPayload.visual.kind, "powerpoint-slide-snapshot");
   assert.equal(verifyVisualPayload.visual.imageCount, 1);
   assert.equal(verifyVisualPayload.details.kind, "powerpoint-slide-visual-verification");
   assert.equal(verifyVisualPayload.details.mutating, false);
+  assert.equal(verifyVisualPayload.details.assetVerification.selectedAssetCount, 1);
+  assert.equal(verifyVisualPayload.details.assetVerification.selectedAssets[0]?.sourceId, "built-in-icon-svg");
+  assert.equal(verifyVisualPayload.details.assetVerification.selectedAssets[0]?.verificationStatus, "verified-image-shape");
   assert.equal(Array.isArray(verifyVisualPayload.visuals), true);
   assert.equal(verifyVisualUnsupported.success, false);
   assert.match(String(verifyVisualUnsupported.error), /only available for PowerPoint/);

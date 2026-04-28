@@ -29,6 +29,7 @@ Pi-powered Microsoft Office add-in scaffold for Word, Excel, and PowerPoint.
 - Multiple Office windows can reuse one machine-local companion while keeping logical taskpane sessions isolated
 - Privacy and storage behavior, including local credential limits and clear-data controls, is documented in [`docs/privacy-and-storage.md`](docs/privacy-and-storage.md)
 - Development, sideload, validation, and current packaging assumptions are documented in [`docs/release-runtime.md`](docs/release-runtime.md)
+- PowerPoint icon/image asset-source and verification boundaries are documented in [`docs/powerpoint-asset-pipeline.md`](docs/powerpoint-asset-pipeline.md)
 
 ## License And Governance
 

@@ -1,4 +1,5 @@
 import type { OfficeAnchor, OfficeHost, OfficeHostAction, OfficeToolRequest, OfficeToolResult } from "@pi-office/pi-office-pack/protocol";
+import { inferPowerPointAssetDescriptor } from "../powerpoint-assets";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -397,6 +398,10 @@ function toPowerPointVisualVerificationPayload(payload: unknown, maxImages: numb
   const visuals = Array.isArray(payload.visuals) ? payload.visuals : [];
   const snippets = isRecord(payload.snippets) ? payload.snippets : {};
   const formatting = isRecord(payload.formatting) ? payload.formatting : {};
+  const selectedShapeDescriptors = Array.isArray(snippets.selectedShapeDescriptors) ? snippets.selectedShapeDescriptors : [];
+  const verifiedAssets = selectedShapeDescriptors
+    .map((shape) => inferPowerPointAssetDescriptor(shape))
+    .filter((shape): shape is NonNullable<typeof shape> => Boolean(shape));
 
   return {
     summary: trimString(payload.summary) ?? "PowerPoint visual verification context captured.",
@@ -412,7 +417,15 @@ function toPowerPointVisualVerificationPayload(payload: unknown, maxImages: numb
       mutating: false,
       host: "powerpoint",
       selectedSlides: snippets.selectedSlides,
-      selectedShapeDescriptors: snippets.selectedShapeDescriptors,
+      selectedShapeDescriptors,
+      assetVerification: {
+        selectedAssetCount: verifiedAssets.length,
+          selectedAssets: verifiedAssets,
+          note:
+            verifiedAssets.length > 0
+            ? "Selected PowerPoint image assets were classified with available shape and asset-source metadata."
+            : "No selected image asset metadata was detected; select the inserted icon/image shape and rerun verify_slide_visual for asset checks.",
+      },
       formatting: {
         selectedSlides: formatting.selectedSlides,
         selectedShapes: formatting.selectedShapes,
