@@ -2,7 +2,7 @@
 
 Pi-Office uses `UserPreferences.companionRuntimeMode` to control runtime ownership. The default is Smart Auto routing: the taskpane remains fully usable by itself, and when a healthy companion is connected, eligible non-Office capabilities prefer companion execution while keeping taskpane fallback where the browser runtime can honestly execute the work. Basic mode keeps companion-only tools hidden from model turns. Advanced mode prefers companion-owned provider/auth/agent capability once advertised, but falls back to taskpane-supported inference until those companion surfaces exist.
 
-Connected companion sessions receive an explicit non-secret settings sync containing taskpane preferences, runtime mode, enabled provider/model choices, provider default selections, and connector summary counts. This sync deliberately excludes provider API keys, OAuth tokens, and manual connector secrets; moving secrets into companion-owned auth remains an explicit future migration flow.
+Connected companion sessions receive an explicit non-secret settings sync containing taskpane preferences, runtime mode, enabled provider/model choices, provider default selections, and connector summary counts. This sync deliberately excludes provider API keys, OAuth tokens, and manual connector secrets. Moving provider API keys into companion-owned auth now uses a separate explicit provider-auth route with secure companion storage where available; broad OAuth/cloud migration remains planned.
 
 ## Runtime Fields
 
@@ -34,9 +34,9 @@ Office document mutation is permanently taskpane-owned. A companion-owned agent 
 
 ## Provider Auth And Inference
 
-Browser API-key providers remain supported in taskpane-only mode. When the companion eventually has provider auth configured, Smart Auto can prefer companion inference for eligible turns. Pi-Office must not silently move provider secrets from browser storage to the companion; any migration must be an explicit user action.
+Browser API-key providers remain supported in taskpane-only mode. Companion API-key provider storage is available through `POST /v1/provider-auth/api-key` only after explicit user action, reports redacted state through `GET /v1/provider-auth/status`, and clears via `DELETE /v1/provider-auth`. On Windows companion hosts this storage uses the same DPAPI `CurrentUser` envelope pattern as connector OAuth tokens; on platforms without secure storage support, provider-secret writes fail closed until `SECURITY-010` adds non-Windows keychain backends.
 
-Current companion capability metadata exposes provider-auth and agent-session contracts but reports them unavailable until real companion auth/session storage exists.
+Companion-owned inference still requires a companion Pi agent/session runtime. Even when provider-auth storage is available, Smart Auto and Advanced mode must keep inference taskpane-owned until both `CompanionCapabilities.providerAuth` and `CompanionCapabilities.agent` report available.
 
 ## Visual Capture
 

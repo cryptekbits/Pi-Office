@@ -126,7 +126,7 @@ export const TASKPANE_COMPANION_PROTOCOL: CompanionProtocolDescriptor = {
       state: "reserved",
       owner: "companion",
       version: "companion-agent-v1",
-      summary: "Reserved for companion-owned Pi agent sessions after companion provider auth/session storage exists.",
+      summary: "Reserved for companion-owned Pi agent sessions after the companion agent runtime lands.",
       routes: [
         {
           method: "POST",
@@ -194,12 +194,31 @@ export const TASKPANE_COMPANION_PROTOCOL: CompanionProtocolDescriptor = {
     },
     {
       id: "auth_migration",
-      label: "Auth migration",
-      state: "planned",
+      label: "Companion provider auth setup",
+      state: "available",
       owner: "shared",
       version: "companion-auth-migration-v1",
-      summary: "Provider secrets require explicit user action and secure companion storage; no silent taskpane-to-companion migration is allowed.",
-      routes: [],
+      summary: "Manual companion provider API-key setup uses explicit user action and secure companion storage; broader OAuth/cloud migration remains planned.",
+      routes: [
+        {
+          method: "GET",
+          path: "/v1/provider-auth/status",
+          state: "available",
+          description: "Returns companion provider-auth storage capability and redacted provider credential state.",
+        },
+        {
+          method: "POST",
+          path: "/v1/provider-auth/api-key",
+          state: "available",
+          description: "Stores a provider API key in companion secure storage after explicit user action.",
+        },
+        {
+          method: "DELETE",
+          path: "/v1/provider-auth",
+          state: "available",
+          description: "Clears one provider credential or all companion-held provider credentials.",
+        },
+      ],
     },
   ],
 };
@@ -477,6 +496,9 @@ export interface CompanionAgentCapability extends CompanionSimpleCapability {
 export interface CompanionProviderAuthCapability extends CompanionSimpleCapability {
   explicitMigrationRequired: boolean;
   supportedAuthMethods?: ProviderAuthMethod[] | undefined;
+  secureStorage?: boolean | undefined;
+  storageKind?: string | undefined;
+  configuredProviderCount?: number | undefined;
 }
 
 export interface CompanionProviderModelSelection {
@@ -1788,6 +1810,30 @@ export interface AuthStatusResponse {
   unverifiedProviders: string[];
   verificationFailedProviders: string[];
   providerStates: ProviderAuthDescriptor[];
+}
+
+export interface CompanionProviderAuthStatusResponse {
+  ok: true;
+  storageKind: string;
+  secureStorage: boolean;
+  explicitMigrationRequired: true;
+  supportedAuthMethods: ProviderAuthMethod[];
+  storedProviders: string[];
+  configuredProviders: string[];
+  verifiedProviders: string[];
+  unverifiedProviders: string[];
+  verificationFailedProviders: string[];
+  providerStates: ProviderAuthDescriptor[];
+}
+
+export interface CompanionProviderApiKeyRequest {
+  provider: string;
+  apiKey: string;
+  explicitUserAction: true;
+}
+
+export interface CompanionProviderAuthClearRequest {
+  provider?: string | undefined;
 }
 
 export interface SessionUsageTotals {

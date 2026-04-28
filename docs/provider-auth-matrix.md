@@ -1,6 +1,6 @@
 # Pi-Office Provider/Auth And Model Matrix
 
-Last updated: 2026-04-26
+Last updated: 2026-04-28
 
 This matrix records what Pi-Office can honestly execute today versus what is only planned for companion-owned auth. **Basic** means the browser taskpane owns inference and Office.js execution. **Pro** means the optional companion will own inference, provider auth/session state, MCP, memory, and non-Office tools while the taskpane remains the Office.js executor. **Simple** and **Advanced** are only settings catalog detail levels.
 
@@ -60,11 +60,12 @@ Pi-Office consumes Pi as the orchestration and model-catalog runtime through `pi
 - `defaultModelByProvider` stores user defaults and is validated against the Pi catalog before persistence.
 - `/v1/auth/api-key` rejects providers that are not browser-callable API-key providers, so users cannot create false configured state for Codex, Copilot, Gemini CLI, Antigravity, Bedrock, Vertex, or Azure.
 - `/v1/auth/start` remains unavailable in Basic browser-only mode and returns a Pro/companion-owned OAuth message for providers that need OAuth.
+- The companion now exposes explicit provider API-key setup through `GET /v1/provider-auth/status`, `POST /v1/provider-auth/api-key`, and `DELETE /v1/provider-auth`; these routes do not silently migrate taskpane secrets and fail closed when secure companion storage is unavailable.
 - Image generation remains OpenAI-only in the browser taskpane.
 
 ## Next Implementation Order
 
 1. Keep browser API-key providers honest and verified through readiness states.
-2. Implement one Pro/companion-owned OAuth provider at a time, starting with the provider that has the clearest official token-refresh contract.
-3. Move provider secrets to companion/OS keychain storage as part of `FEATURE-006` before advertising subscription-backed sign-in broadly.
+2. Wire companion-held provider API keys into companion-owned Pi agent sessions after the agent/session runtime lands.
+3. Implement one Pro/companion-owned OAuth provider at a time, starting with the provider that has the clearest official token-refresh contract.
 4. Revisit non-OpenAI image providers only after their runtime execution paths exist.

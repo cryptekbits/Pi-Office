@@ -10,6 +10,9 @@ import type {
   CompanionConnectorOAuthStatusRequest,
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
+  CompanionProviderApiKeyRequest,
+  CompanionProviderAuthCapability,
+  CompanionProviderAuthClearRequest,
   CompanionSettingsSyncCapability,
   CompanionSettingsSyncRequest,
   CompanionSettingsSyncResponse,
@@ -29,6 +32,7 @@ import { executeFileTool } from "./file-tools.js";
 import { companionCorsMiddleware } from "./http.js";
 import { captureNativeViewport, createNativeCaptureCapability } from "./native-capture.js";
 import { CompanionOAuthBroker } from "./oauth-broker.js";
+import { CompanionProviderAuthStore } from "./provider-auth-store.js";
 import { createCompanionRuntimeDiagnostics } from "./runtime-diagnostics.js";
 import { CompanionShellSandbox } from "./shell-sandbox.js";
 
@@ -61,6 +65,7 @@ function createCompanionState(
   connectorToolNames?: string[] | undefined,
   shell?: CompanionShellCapability | undefined,
   settingsSync?: CompanionSettingsSyncCapability | undefined,
+  providerAuth?: CompanionProviderAuthCapability | undefined,
 ): CompanionState {
   const connectorToolCount = connectorToolNames?.length ?? 0;
   return {
@@ -83,9 +88,9 @@ function createCompanionState(
         officeToolProxy: true,
         providerAuth: false,
         smartAuto: true,
-        reason: "Companion-owned inference is capability-gated until provider auth is explicitly configured in the companion.",
+        reason: "Companion-owned inference is capability-gated until the companion agent runtime and provider auth setup are available.",
       },
-      providerAuth: {
+      providerAuth: providerAuth ?? {
         state: "unavailable",
         available: false,
         version: "companion-provider-auth-v1",
@@ -169,6 +174,7 @@ function settingsCapabilityFromSync(sync: CompanionSettingsSyncResponse): Compan
 export class CompanionServer {
   private readonly config = loadConfig();
   private readonly oauthBroker = new CompanionOAuthBroker(this.config);
+  private readonly providerAuthStore = CompanionProviderAuthStore.create(this.config);
   private readonly connectorBridge = new CompanionConnectorBridge(this.oauthBroker);
   private readonly sessionsByBrowserId = new Map<string, SessionRecord>();
   private readonly sessionsById = new Map<string, SessionRecord>();
@@ -199,7 +205,14 @@ export class CompanionServer {
         ok: true,
         endpoint: this.config.endpoint,
         identity: this.config.identity,
-        capabilities: createCompanionState(this.config, undefined, []).capabilities,
+        capabilities: createCompanionState(
+          this.config,
+          undefined,
+          [],
+          undefined,
+          undefined,
+          this.providerAuthStore.getCapability(),
+        ).capabilities,
       };
       response.json(body);
     });
@@ -260,6 +273,36 @@ export class CompanionServer {
       response.status(result.statusCode).type("html").send(result.html);
     });
 
+    app.get("/v1/provider-auth/status", (_request, response) => {
+      try {
+        response.json(this.providerAuthStore.status());
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.post("/v1/provider-auth/api-key", (request, response) => {
+      try {
+        response.json(this.providerAuthStore.setApiKey(request.body as CompanionProviderApiKeyRequest));
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.delete("/v1/provider-auth", (request, response) => {
+      try {
+        response.json(this.providerAuthStore.clear(request.body as CompanionProviderAuthClearRequest | undefined));
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
     app.post("/v1/sessions/open", async (request, response) => {
       const body = request.body as CompanionSessionOpenRequest;
       if (!body?.browserSessionId || !body?.host || !body?.documentId) {
@@ -306,6 +349,7 @@ export class CompanionServer {
           prepared.connectorToolNames,
           createShellSandbox(this.config, session).getCapability(),
           session.settingsSync,
+          this.providerAuthStore.getCapability(),
         ),
         connectors: prepared.connectors,
       };
@@ -377,7 +421,7 @@ export class CompanionServer {
       response.status(501).json({
         ok: false,
         error:
-          "Companion-owned Pi agent sessions require explicit companion provider auth setup. Smart Auto will keep using the taskpane runtime until that capability is available.",
+          "Companion-owned Pi agent sessions require the companion agent runtime plus explicit companion provider auth setup. Smart Auto will keep using the taskpane runtime until that capability is available.",
       });
     });
 

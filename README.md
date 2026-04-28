@@ -122,7 +122,7 @@ If Word launches with a blank document during debugging, open the target saved d
 - Connected companion sessions receive non-secret taskpane preference and provider/model selection sync; provider API keys, OAuth tokens, and manual connector secrets are never migrated silently
 - True viewport/window screenshots are companion-native only; taskpane-only visual tools remain Office.js snapshots and metadata
 - Shell/bash access is hidden unless the companion shell sandbox reports an available isolation backend and passing destructive probes; there is no raw host shell fallback
-- Companion-owned provider auth, inference, memory, and agent sessions are capability-gated advanced-mode work. Browser API-key providers remain taskpane-local unless the user explicitly moves auth to the companion.
+- Companion provider API-key storage is available through explicit secure-storage routes where supported; companion-owned inference, memory, and agent sessions remain capability-gated advanced-mode work. Browser API-key providers remain taskpane-local unless the user explicitly moves auth to the companion.
 - Browser-direct hosted HTTP connectors can run from the taskpane when supported; companion-brokered connectors such as Granola use the companion for system-browser sign-in and MCP execution
 - The versioned Basic/Advanced taskpane-companion contract is documented in [`docs/advanced-companion-protocol.md`](docs/advanced-companion-protocol.md)
 - Packaging for `dist/binaries`, zip, and npm distribution is planned later

@@ -22,6 +22,11 @@ interface CreateStoreOptions extends WindowsDpapiOptions {
   platform?: NodeJS.Platform | undefined;
 }
 
+interface SecretStoreFileNames {
+  legacyFileName: string;
+  encryptedFileName: string;
+}
+
 function runDpapiPowerShell(mode: "protect" | "unprotect", value: string): string {
   const script = `
 $ErrorActionPreference = "Stop"
@@ -150,10 +155,21 @@ export function createCompanionOAuthTokenStore(
   config: CompanionConfig,
   options: CreateStoreOptions = {},
 ): OAuthTokenPersistence {
-  const legacyPath = join(config.dataDir, "connector-oauth-tokens.json");
+  return createCompanionSecretStore(config, {
+    legacyFileName: "connector-oauth-tokens.json",
+    encryptedFileName: "connector-oauth-tokens.dpapi.json",
+  }, options);
+}
+
+export function createCompanionSecretStore(
+  config: CompanionConfig,
+  fileNames: SecretStoreFileNames,
+  options: CreateStoreOptions = {},
+): OAuthTokenPersistence {
+  const legacyPath = join(config.dataDir, fileNames.legacyFileName);
   if ((options.platform ?? process.platform) === "win32") {
     return new WindowsDpapiTokenStore(
-      join(config.dataDir, "connector-oauth-tokens.dpapi.json"),
+      join(config.dataDir, fileNames.encryptedFileName),
       legacyPath,
       options.protect ?? protectWithWindowsDpapi,
       options.unprotect ?? unprotectWithWindowsDpapi,

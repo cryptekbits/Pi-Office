@@ -32,14 +32,14 @@ test("advanced companion protocol covers the required ownership seams", () => {
   assert.equal(protocolFeature("chat_streaming").state, "reserved");
   assert.equal(protocolFeature("office_tool_execution").owner, "taskpane");
   assert.equal(protocolFeature("settings_sync").state, "available");
-  assert.equal(protocolFeature("auth_migration").state, "planned");
-  assert.match(protocolFeature("auth_migration").summary, /no silent taskpane-to-companion migration/i);
+  assert.equal(protocolFeature("auth_migration").state, "available");
+  assert.match(protocolFeature("auth_migration").summary, /explicit user action/i);
 });
 
 test("companion protocol routes are declared and implemented", () => {
   const serverSource = readFileSync(join(process.cwd(), "..", "companion", "src", "server.ts"), "utf8");
 
-  for (const featureId of ["settings_sync", "chat_streaming", "office_tool_execution"] as const) {
+  for (const featureId of ["settings_sync", "chat_streaming", "office_tool_execution", "auth_migration"] as const) {
     const feature = protocolFeature(featureId);
     for (const route of feature.routes) {
       assert.match(serverSource, new RegExp(route.path.replaceAll("/", "\\/")));
