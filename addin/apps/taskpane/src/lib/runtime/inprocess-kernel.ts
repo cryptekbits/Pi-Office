@@ -28,6 +28,7 @@ import {
   AUTONOMY_LEVEL_AUTO_APPROVE,
   DEFAULT_USER_PREFERENCES,
   ARTIFACT_CLARIFICATION_MODES,
+  COMPANION_RUNTIME_MODES,
   EDIT_REJECT_REASON_LABELS,
   OFFICE_TOOL_NAMES,
   TASKPANE_COMPANION_PROTOCOL,
@@ -42,6 +43,7 @@ import {
   type CompanionConnectorDefinition,
   type CompanionNativeCaptureRequest,
   type CompanionNativeCaptureResponse,
+  type CompanionRuntimeMode,
   type CompanionShellExecuteRequest,
   type CompanionState,
   type ConnectorDiagnostic,
@@ -563,11 +565,29 @@ function disconnectedCompanionState(lastKnown?: Partial<CompanionState>): Compan
   };
 }
 
-function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: boolean): string {
+function companionRuntimeModeLabel(mode: CompanionRuntimeMode): string {
+  if (mode === "basic") return "Basic";
+  if (mode === "advanced") return "Advanced";
+  return "Smart Auto";
+}
+
+function summarizeCompanionForPrompt(
+  companion: CompanionState,
+  documentSaved: boolean,
+  runtimeMode: CompanionRuntimeMode,
+): string {
   const lines = [
     `Companion status: ${companion.status}`,
-    "Routing mode: Smart Auto. Office.js document execution always remains in this taskpane; eligible non-Office capabilities prefer the companion only when it advertises them.",
+    `Routing mode: ${companionRuntimeModeLabel(runtimeMode)}. Office.js document execution always remains in this taskpane.`,
   ];
+
+  if (runtimeMode === "basic") {
+    lines.push("Basic mode keeps companion-only tools hidden from model turns even if a companion is connected.");
+  } else if (runtimeMode === "advanced") {
+    lines.push("Advanced mode prefers companion-owned provider/auth/agent capability, with taskpane fallback until the companion advertises those surfaces.");
+  } else {
+    lines.push("Smart Auto prefers eligible non-Office companion capabilities only when the companion advertises them.");
+  }
 
   if (companion.endpoint) {
     lines.push(`Companion endpoint: ${companion.endpoint}`);
@@ -1744,6 +1764,19 @@ class BrowserOfficeSession {
     });
   }
 
+  refreshPreferences(): void {
+    const tools = this.buildTools();
+    this.agent.setTools(tools);
+    this.agent.setSystemPrompt(this.buildSystemPrompt(tools.map((tool) => tool.name)));
+    this.recordDebugEvent("runtime", {
+      type: "preferences_updated",
+      companionRuntimeMode: this.getPreferences().companionRuntimeMode,
+      autonomyLevel: this.getPreferences().autonomyLevel,
+      artifactClarificationMode: this.getPreferences().artifactClarificationMode,
+      toolNames: tools.map((tool) => tool.name),
+    });
+  }
+
   async prompt(text: string, mode: PromptMode = "prompt", images?: PromptImagePayload[]): Promise<void> {
     this.recordDebugEvent("runtime", {
       type: "prompt_request",
@@ -2139,6 +2172,7 @@ class BrowserOfficeSession {
       host: this.officeState.host,
       documentSaved: this.officeState.document.saved,
       companion: this.companionState,
+      companionRuntimeMode: this.getPreferences().companionRuntimeMode,
     });
   }
 
@@ -2237,7 +2271,11 @@ class BrowserOfficeSession {
     )}\n\n${composeOfficeAwarePrompt(
       "Prefer Office tools as the source of truth for the active document.",
       this.officeState,
-    )}\n\n${summarizeCompanionForPrompt(this.companionState, this.officeState.document.saved)}${browserDebugGuidance}`;
+    )}\n\n${summarizeCompanionForPrompt(
+      this.companionState,
+      this.officeState.document.saved,
+      this.getPreferences().companionRuntimeMode,
+    )}${browserDebugGuidance}`;
   }
 
   private isBrowserDebugMode(): boolean {
@@ -3084,7 +3122,16 @@ class InProcessKernel {
     ) {
       throw new Error("artifactClarificationMode must be balanced, draft_now, or ask_first.");
     }
+    if (
+      patch.companionRuntimeMode !== undefined &&
+      !COMPANION_RUNTIME_MODES.includes(patch.companionRuntimeMode)
+    ) {
+      throw new Error("companionRuntimeMode must be basic, smart_auto, or advanced.");
+    }
     this.userPreferences = { ...this.userPreferences, ...patch };
+    for (const session of this.sessionsById.values()) {
+      session.refreshPreferences();
+    }
     return { ok: true, preferences: { ...this.userPreferences } };
   }
 

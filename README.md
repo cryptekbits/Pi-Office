@@ -118,7 +118,7 @@ If Word launches with a blank document during debugging, open the target saved d
 - Without the companion, local files, local stdio/local HTTP MCP execution, and companion-brokered OAuth connectors are unavailable
 - With the companion connected, Pi-Office enables read-only `read`, `grep`, `find`, and `ls` for the saved document folder
 - With the companion connected, verified read-safe local stdio, local HTTP, companion-required remote HTTP, and brokered OAuth MCP tools can be exposed through the generic `mcp` tool
-- Smart Auto routing prefers companion execution for eligible non-Office capabilities when the companion advertises support, while keeping taskpane fallback for browser-supported providers and image generation
+- Runtime mode is user-selectable in Settings -> Companion: Basic keeps model turns taskpane-only, Smart Auto prefers advertised companion non-Office capabilities, and Advanced prefers future companion-owned inference/auth with taskpane fallback until those capabilities exist
 - True viewport/window screenshots are companion-native only; taskpane-only visual tools remain Office.js snapshots and metadata
 - Shell/bash access is hidden unless the companion shell sandbox reports an available isolation backend and passing destructive probes; there is no raw host shell fallback
 - Companion-owned provider auth, inference, memory, and agent sessions are capability-gated advanced-mode work. Browser API-key providers remain taskpane-local unless the user explicitly moves auth to the companion.

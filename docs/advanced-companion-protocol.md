@@ -1,11 +1,12 @@
 # Advanced Companion Protocol
 
-`FEATURE-006` splits Pi-Office into two honest runtime modes:
+`FEATURE-006` splits Pi-Office into honest runtime ownership modes:
 
-- **Basic:** the Office taskpane owns the Pi agent, provider API-key calls, chat loop, Office.js execution, and browser-supported connector fallback.
-- **Advanced:** the companion will own model inference, provider auth/session state, MCP and non-Office tools, memory, and local workspace context. The taskpane remains the presentation layer, Office.js executor, review surface, and permission owner for Office document writes.
+- **Basic:** the Office taskpane owns the Pi agent, provider API-key calls, chat loop, Office.js execution, and browser-supported connector fallback. Companion-only model tools stay hidden even if a companion is connected.
+- **Smart Auto:** the default. The taskpane remains fully usable and eligible non-Office companion capabilities are published only when the companion advertises them.
+- **Advanced:** the companion will own model inference, provider auth/session state, MCP and non-Office tools, memory, and local workspace context. The taskpane remains the presentation layer, Office.js executor, review surface, and permission owner for Office document writes. Until companion agent/auth support is available, Advanced mode uses honest taskpane fallback where possible.
 
-The shared protocol descriptor lives in `addin/packages/pi-office-pack/src/protocol.ts` as `TASKPANE_COMPANION_PROTOCOL`. Companion health and taskpane fallback state advertise that descriptor through `CompanionCapabilities.protocol`.
+The runtime preference lives in `UserPreferences.companionRuntimeMode` (`basic`, `smart_auto`, or `advanced`). The shared protocol descriptor lives in `addin/packages/pi-office-pack/src/protocol.ts` as `TASKPANE_COMPANION_PROTOCOL`. Companion health and taskpane fallback state advertise that descriptor through `CompanionCapabilities.protocol`.
 
 ## Contract
 
@@ -23,9 +24,10 @@ The shared protocol descriptor lives in `addin/packages/pi-office-pack/src/proto
 - Office document reads/writes, selection-sensitive actions, and Office permission prompts remain taskpane-owned because only the Office host can safely run Office.js against the active document.
 - Taskpane provider secrets must never silently migrate into the companion. Any move to companion provider auth needs explicit user action, clear storage disclosure, and a secure backend.
 - Basic mode must stay usable when the companion is absent, stopped, unhealthy, or disconnected.
+- Basic mode must not publish companion-only tools to model turns.
 - Companion-owned inference must not be advertised as available until `CompanionCapabilities.agent` and `CompanionCapabilities.providerAuth` both report available.
 - Reserved routes should fail closed with clear unavailable responses until their capability state changes.
 
 ## Validation
 
-`addin/scripts/office-tests/src/companion-protocol.test.ts` protects the descriptor shape, the Basic/Advanced ownership rules, the no-silent-secret-migration rule, and the reserved companion-agent route stubs.
+`addin/scripts/office-tests/src/companion-protocol.test.ts` protects the descriptor shape, the Basic/Advanced ownership rules, the no-silent-secret-migration rule, and the reserved companion-agent route stubs. `addin/scripts/office-tests/src/capability-routing.test.ts` covers Basic mode hiding companion-only tools and Advanced mode falling back to taskpane inference while companion auth is unavailable.

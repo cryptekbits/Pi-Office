@@ -132,6 +132,8 @@ test("settings and model selector expose Simple/Advanced filtering and warning c
   assert.match(settingsSource, /defaultModelByProvider/);
   assert.match(settingsSource, /Drafting Style/);
   assert.match(settingsSource, /artifactClarificationMode/);
+  assert.match(settingsSource, /Runtime mode/);
+  assert.match(settingsSource, /companionRuntimeMode/);
   assert.match(appSource, /pendingUnrecommendedModel/);
   assert.match(appSource, /suppressUnrecommendedModelWarning/);
   assert.match(appSource, /requiresUnrecommendedWarning/);

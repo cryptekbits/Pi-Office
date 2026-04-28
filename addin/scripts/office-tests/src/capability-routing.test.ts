@@ -110,6 +110,7 @@ test("capability routing prefers companion for eligible capabilities when advert
     host: "word",
     documentSaved: true,
     companion: connectedCompanion(),
+    companionRuntimeMode: "smart_auto",
   });
   const tools = getAvailableToolNames(capabilities);
 
@@ -120,6 +121,37 @@ test("capability routing prefers companion for eligible capabilities when advert
   assert.equal(tools.has("office_capture_viewport"), true);
   assert.equal(tools.has("mcp"), true);
   assert.equal(tools.has("read"), true);
+});
+
+test("Basic runtime mode keeps companion-only tools hidden even when connected", () => {
+  const capabilities = resolvePiOfficeCapabilities({
+    host: "word",
+    documentSaved: true,
+    companion: connectedCompanion(),
+    companionRuntimeMode: "basic",
+  });
+  const tools = getAvailableToolNames(capabilities);
+
+  assert.equal(getResolvedCapability(capabilities, "inference").activeRuntime, "addin");
+  assert.equal(getResolvedCapability(capabilities, "native_viewport_capture").available, false);
+  assert.equal(getResolvedCapability(capabilities, "local_files").available, false);
+  assert.match(getResolvedCapability(capabilities, "local_files").reason ?? "", /Basic mode/i);
+  assert.equal(tools.has("office_capture_viewport"), false);
+  assert.equal(tools.has("mcp"), false);
+  assert.equal(tools.has("read"), false);
+});
+
+test("Advanced runtime mode falls back to taskpane inference until companion auth is available", () => {
+  const capabilities = resolvePiOfficeCapabilities({
+    host: "word",
+    documentSaved: true,
+    companion: disconnectedCompanion(),
+    companionRuntimeMode: "advanced",
+  });
+
+  assert.equal(getResolvedCapability(capabilities, "inference").activeRuntime, "addin");
+  assert.match(getResolvedCapability(capabilities, "inference").reason ?? "", /Advanced mode/i);
+  assert.equal(getResolvedCapability(capabilities, "office_write").activeRuntime, "addin");
 });
 
 test("capability routing keeps Office tools taskpane-owned even with companion connected", () => {

@@ -262,7 +262,7 @@ test("protocol parity: Smart Auto hides viewport screenshots until companion nat
   assert.equal(initialCapabilities.find((capability) => capability.id === "native_viewport_capture")?.available, false);
   assert.equal(initialCapabilities.find((capability) => capability.id === "office_write")?.activeRuntime, "addin");
 
-  typedSession.setCompanionState({
+  const connectedNativeCaptureCompanion = {
     status: "connected",
     endpoint: "https://localhost:3444",
     identity: "test-companion",
@@ -298,7 +298,8 @@ test("protocol parity: Smart Auto hides viewport screenshots until companion nat
         toolCount: 0,
       },
     },
-  });
+  };
+  typedSession.setCompanionState(connectedNativeCaptureCompanion);
 
   toolNames = new Set(typedSession.agent.state.tools.map((tool) => tool.name));
   assert.equal(toolNames.has("office_capture_viewport"), true);
@@ -312,6 +313,23 @@ test("protocol parity: Smart Auto hides viewport screenshots until companion nat
   }>;
   assert.equal(companionCapabilities.find((capability) => capability.id === "native_viewport_capture")?.activeRuntime, "companion");
   assert.equal(companionCapabilities.find((capability) => capability.id === "inference")?.fallbackRuntime, undefined);
+
+  await runtime.dispatchKernelRequest("/v1/preferences", {
+    method: "POST",
+    body: JSON.stringify({ companionRuntimeMode: "basic" }),
+  });
+
+  toolNames = new Set(typedSession.agent.state.tools.map((tool) => tool.name));
+  assert.equal(toolNames.has("office_capture_viewport"), false);
+  assert.equal(toolNames.has("office_apply_edit"), true);
+
+  const basicCapabilities = await runtime.dispatchKernelRequest(`/v1/sessions/${(session as { sessionId: string }).sessionId}/capabilities`) as Array<{
+    id: string;
+    available: boolean;
+    activeRuntime?: string;
+  }>;
+  assert.equal(basicCapabilities.find((capability) => capability.id === "native_viewport_capture")?.available, false);
+  assert.equal(basicCapabilities.find((capability) => capability.id === "inference")?.activeRuntime, "addin");
   socket.close();
 });
 

@@ -1645,6 +1645,9 @@ export interface ThinkingCapabilities {
 export const ARTIFACT_CLARIFICATION_MODES = ["balanced", "draft_now", "ask_first"] as const;
 export type ArtifactClarificationMode = (typeof ARTIFACT_CLARIFICATION_MODES)[number];
 
+export const COMPANION_RUNTIME_MODES = ["basic", "smart_auto", "advanced"] as const;
+export type CompanionRuntimeMode = (typeof COMPANION_RUNTIME_MODES)[number];
+
 export interface UserPreferences {
   showThinkingTraces: boolean;
   autoAttachVisuals: boolean;
@@ -1659,6 +1662,7 @@ export interface UserPreferences {
   experimentalRewindSnapshots: boolean;
   nextPromptSuggestionsEnabled: boolean;
   artifactClarificationMode: ArtifactClarificationMode;
+  companionRuntimeMode: CompanionRuntimeMode;
   autonomyLevel: AutonomyLevel;
   toolPermissionOverrides: ToolPermissionOverride[];
 }
@@ -1677,6 +1681,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   experimentalRewindSnapshots: false,
   nextPromptSuggestionsEnabled: true,
   artifactClarificationMode: "balanced",
+  companionRuntimeMode: "smart_auto",
   autonomyLevel: "medium",
   toolPermissionOverrides: [],
 };

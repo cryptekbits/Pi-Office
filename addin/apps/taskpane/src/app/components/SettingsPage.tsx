@@ -36,6 +36,7 @@ import {
   AUTONOMY_LEVELS,
   AUTONOMY_LEVEL_AUTO_APPROVE,
   AUTONOMY_LEVEL_LABELS,
+  COMPANION_RUNTIME_MODES,
   IMAGE_REASONING_EFFORTS,
   OFFICE_TOOL_NAMES,
   THINKING_LEVELS,
@@ -275,6 +276,8 @@ export function SettingsPage({
             <CompanionSection
               officeState={officeState}
               companion={companion}
+              preferences={preferences}
+              onUpdatePreferences={onUpdatePreferences}
               onRetryCompanion={onRetryCompanion}
               onSaveCompanionEndpoint={onSaveCompanionEndpoint}
             />
@@ -525,11 +528,15 @@ function DiagnosticsSection({
 function CompanionSection({
   officeState,
   companion,
+  preferences,
+  onUpdatePreferences,
   onRetryCompanion,
   onSaveCompanionEndpoint,
 }: {
   officeState: OfficeStateUpdate | undefined;
   companion: CompanionState;
+  preferences: UserPreferences;
+  onUpdatePreferences: (patch: Partial<UserPreferences>) => void;
   onRetryCompanion: () => Promise<void> | void;
   onSaveCompanionEndpoint: (endpoint: string) => Promise<void> | void;
 }) {
@@ -538,6 +545,7 @@ function CompanionSection({
     host: officeState?.host ?? "word",
     documentSaved: officeState?.document.saved ?? false,
     companion,
+    companionRuntimeMode: preferences.companionRuntimeMode,
   });
 
   useEffect(() => {
@@ -565,6 +573,25 @@ function CompanionSection({
       <p className="settings-note">
         Pi-Office works without the companion. Smart Auto prefers companion execution for eligible non-Office capabilities only when the companion advertises them; Office.js document execution stays in the taskpane.
       </p>
+
+      <div className="settings-control-block">
+        <span className="label">Runtime mode</span>
+        <div className="segmented-control runtime-mode-toggle" aria-label="Runtime mode">
+          {COMPANION_RUNTIME_MODES.map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`segmented-item ${preferences.companionRuntimeMode === mode ? "segmented-active" : ""}`}
+              onClick={() => onUpdatePreferences({ companionRuntimeMode: mode })}
+            >
+              {mode === "basic" ? "Basic" : mode === "advanced" ? "Advanced" : "Smart Auto"}
+            </button>
+          ))}
+        </div>
+        <p className="settings-note">
+          Basic keeps model turns taskpane-only. Smart Auto uses companion-only tools when advertised. Advanced prefers companion-owned inference and auth once those capabilities are available, with taskpane fallback until then.
+        </p>
+      </div>
 
       <CapabilityGroups capabilities={capabilities} />
 
@@ -1176,6 +1203,7 @@ function ToolsSection({
     host: officeState?.host ?? "word",
     documentSaved: documentState === "saved",
     companion,
+    companionRuntimeMode: preferences.companionRuntimeMode,
   });
   const availableToolNames = getAvailableToolNames(capabilityResolutions);
   const visibleOfficeToolNames = OFFICE_TOOL_NAMES.filter(

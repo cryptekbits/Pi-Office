@@ -1,4 +1,4 @@
-import type { CompanionState, OfficeHost } from "./protocol.js";
+import type { CompanionRuntimeMode, CompanionState, OfficeHost } from "./protocol.js";
 
 export type CapabilityOwner = "addin-only" | "companion-only" | "either";
 export type CapabilityRuntime = "addin" | "companion";
@@ -45,6 +45,7 @@ export interface CapabilityResolutionInput {
   host: OfficeHost;
   documentSaved: boolean;
   companion: CompanionState;
+  companionRuntimeMode?: CompanionRuntimeMode | undefined;
 }
 
 export const PI_OFFICE_CAPABILITY_REGISTRY: CapabilityDefinition[] = [
@@ -247,6 +248,9 @@ function companionCapabilityAvailable(definition: CapabilityDefinition, input: C
 }
 
 export function resolvePiOfficeCapabilities(input: CapabilityResolutionInput): CapabilityResolution[] {
+  const runtimeMode = input.companionRuntimeMode ?? "smart_auto";
+  const companionDisabled = runtimeMode === "basic";
+
   return PI_OFFICE_CAPABILITY_REGISTRY.map((definition): CapabilityResolution => {
     if (definition.owner === "addin-only") {
       const hostMismatch =
@@ -261,6 +265,15 @@ export function resolvePiOfficeCapabilities(input: CapabilityResolutionInput): C
     }
 
     if (definition.owner === "companion-only") {
+      if (companionDisabled) {
+        return {
+          ...definition,
+          available: false,
+          preferredRuntime: "companion",
+          activeRuntime: undefined,
+          reason: "Basic mode is selected, so companion-only capabilities are hidden from model turns.",
+        };
+      }
       const reason = unavailableReason(definition, input);
       const available = !reason && companionCapabilityAvailable(definition, input);
       return {
@@ -272,14 +285,20 @@ export function resolvePiOfficeCapabilities(input: CapabilityResolutionInput): C
       };
     }
 
-    const companionAvailable = companionCapabilityAvailable(definition, input);
+    const companionAvailable = !companionDisabled && companionCapabilityAvailable(definition, input);
     return {
       ...definition,
       available: true,
       preferredRuntime: companionAvailable ? "companion" : "addin",
       activeRuntime: companionAvailable ? "companion" : "addin",
       fallbackRuntime: companionAvailable ? "addin" : undefined,
-      reason: companionAvailable ? undefined : "Using taskpane runtime until companion support is configured.",
+      reason: companionAvailable
+        ? undefined
+        : companionDisabled
+          ? "Basic mode is selected, so this capability stays taskpane-owned."
+          : runtimeMode === "advanced"
+            ? "Advanced mode is selected, but companion support is not configured; using taskpane fallback where available."
+            : "Using taskpane runtime until companion support is configured.",
     };
   });
 }

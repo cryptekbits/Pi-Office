@@ -366,6 +366,24 @@ test("artifact clarification mode preferences validate through the runtime route
   );
 });
 
+test("companion runtime mode preferences validate through the runtime route", async () => {
+  const runtime = await loadKernelModule();
+
+  const response = await runtime.dispatchKernelRequest("/v1/preferences", {
+    method: "POST",
+    body: JSON.stringify({ companionRuntimeMode: "basic" }),
+  }) as { preferences: { companionRuntimeMode: string } };
+  assert.equal(response.preferences.companionRuntimeMode, "basic");
+
+  await assert.rejects(
+    () => runtime.dispatchKernelRequest("/v1/preferences", {
+      method: "POST",
+      body: JSON.stringify({ companionRuntimeMode: "silent_migrate" }),
+    }),
+    /companionRuntimeMode must be basic, smart_auto, or advanced/,
+  );
+});
+
 test("provider auth routes reject unavailable browser auth methods", async () => {
   const runtime = await loadKernelModule();
 

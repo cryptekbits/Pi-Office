@@ -1,6 +1,6 @@
 # Pi-Office Capability Boundaries
 
-Pi-Office uses Smart Auto routing. The taskpane remains fully usable by itself. When a healthy companion is connected, eligible non-Office capabilities prefer companion execution and keep taskpane fallback where the browser runtime can honestly execute the work.
+Pi-Office uses `UserPreferences.companionRuntimeMode` to control runtime ownership. The default is Smart Auto routing: the taskpane remains fully usable by itself, and when a healthy companion is connected, eligible non-Office capabilities prefer companion execution while keeping taskpane fallback where the browser runtime can honestly execute the work. Basic mode keeps companion-only tools hidden from model turns. Advanced mode prefers companion-owned provider/auth/agent capability once advertised, but falls back to taskpane-supported inference until those companion surfaces exist.
 
 ## Runtime Fields
 
