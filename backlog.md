@@ -1691,10 +1691,10 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 - [ ] IMPROVEMENT-004: Build a professional PowerPoint visual asset and icon pipeline
   - Category: Improvement
-  - Status: open
+  - Status: in_progress
   - Priority: P2
   - Source: 2026-04-26 Office-host subagent review and ChatGPT inspiration comparison.
-  - Details: PowerPoint `insert_icon` currently relies on a tiny taskpane runtime catalog and can fall back to glyph text boxes unless base64 content is supplied. For pitch decks and professional slides, Pi-Office needs a higher-quality asset pipeline for icons, generated images, slide screenshots/previews, and reusable visual components.
+  - Details: PowerPoint `insert_icon` previously relied on a tiny taskpane runtime catalog and could fall back to glyph text boxes unless base64 content was supplied. For pitch decks and professional slides, Pi-Office needs a higher-quality asset pipeline for icons, generated images, slide screenshots/previews, and reusable visual components.
   - Dependencies: BUG-006 for image-provider execution honesty; BUG-007 for visual verification fidelity.
   - Subtasks:
     - [ ] Define supported asset sources for icons, generated images, user-provided images, and reusable slide components.
@@ -1705,7 +1705,7 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Inserted icons/assets render professionally in PowerPoint rather than as plain glyph placeholders except when explicitly requested.
     - [ ] Asset insertion reports source, format, and fallback behavior.
     - [ ] At least one deck-quality asset workflow is validated in PowerPoint.
-  - Notes/Evidence: Review pointed to the small runtime icon catalog and glyph-textbox insertion path in `addin/apps/taskpane/src/lib/office/powerpoint-actions.ts`, plus ChatGPT inspiration assets around generated slide stores and slide screenshots.
+  - Notes/Evidence: Review pointed to the small runtime icon catalog and glyph-textbox insertion path in `addin/apps/taskpane/src/lib/office/powerpoint-actions.ts`, plus ChatGPT inspiration assets around generated slide stores and slide screenshots. 2026-04-28 first implementation slice replaced the built-in PowerPoint icon catalog entries with original SVG geometry, added SVG-to-PNG rasterization for default `insert_icon` insertion through `shapes.addImage`, reports source/format/fallback metadata, and gates glyph text-box fallback behind `allowGlyphFallback=true` or `fallback: "glyph-textbox"`. Prompt/package guidance now says built-in icons insert as SVG-rasterized image shapes where supported. Automated coverage verifies SVG-backed catalog assets, image-shape insertion preference, and explicit glyph fallback gating. Remaining scope: generated-image/user-provided/reusable-component sources, inserted-asset previews, and a real PowerPoint deck-quality/manual validation pass.
 
 - [x] IMPROVEMENT-005: Simplify provider, model, and settings UX into guided and advanced surfaces
   - Category: Improvement

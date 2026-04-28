@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { OFFICE_APPEND_SYSTEM_PROMPT } from "../../../packages/pi-office-pack/src/defaults.js";
 import { createOfficeToolExecutor } from "../../../apps/taskpane/src/lib/office-bridge.js";
+import { buildPowerPointIconSvg, resolvePowerPointIcon, searchPowerPointIcons } from "../../../apps/taskpane/src/lib/office/powerpoint-icons.js";
 import { createOfficeExtension } from "../../../packages/pi-office-pack/src/extension.js";
 import {
   OFFICE_TOOL_NAMES,
@@ -104,6 +105,31 @@ function installRuntimePolyfills(): void {
     globalAny.btoa = (value: string) => Buffer.from(value, "binary").toString("base64");
   }
 }
+
+test("PowerPoint built-in icon catalog exposes SVG-backed assets instead of glyph-only matches", () => {
+  const results = searchPowerPointIcons("growth revenue", 4);
+  assert.ok(results.length > 0);
+  const trendIcon = results.find((icon) => icon.id === "trend-up") ?? resolvePowerPointIcon("trend-up");
+  assert.equal(trendIcon?.id, "trend-up");
+  assert.equal(typeof trendIcon?.svgContent, "string");
+  assert.match(trendIcon?.svgContent ?? "", /polyline|path|circle|rect/);
+
+  const svg = buildPowerPointIconSvg(trendIcon!, { color: "#0F766E" });
+  assert.match(svg, /^<svg /);
+  assert.match(svg, /stroke="#0F766E"/);
+  assert.match(svg, /<title>Trend Up<\/title>/);
+  assert.doesNotMatch(svg, /📈/);
+});
+
+test("PowerPoint icon insertion path prefers image shapes and gates glyph fallback explicitly", () => {
+  const mediaPath = join(process.cwd(), "apps", "taskpane", "src", "lib", "office", "powerpoint-actions", "media.ts");
+  const mediaSource = readFileSync(mediaPath, "utf8");
+  assert.match(mediaSource, /renderPowerPointIconAsset/);
+  assert.match(mediaSource, /shapes\.addImage\(`data:\$\{asset\.mimeType\};base64,\$\{asset\.data\}`\)/);
+  assert.match(mediaSource, /allowGlyphFallback=true/);
+  assert.match(mediaSource, /fallbackStrategy: "explicit-glyph-textbox"/);
+  assert.doesNotMatch(mediaSource, /catalog: "taskpane-runtime-icon-catalog"/);
+});
 
 async function loadKernelModule() {
   installRuntimePolyfills();

@@ -2,6 +2,7 @@ import type { OfficeAnchor, OfficeHostAction } from "@pi-office/pi-office-pack/p
 import {
   getActionImagePayload,
   isRecord,
+  loadImageElement,
   parsePositiveInteger,
   resolvePositiveCount,
   supportsRequirementSet,
@@ -15,7 +16,12 @@ import {
   resolvePowerPointShape,
   resolvePowerPointSlide,
 } from "../powerpoint-helpers";
-import { resolvePowerPointIcon, searchPowerPointIcons } from "../powerpoint-icons";
+import {
+  buildPowerPointIconSvg,
+  resolvePowerPointIcon,
+  searchPowerPointIcons,
+  type PowerPointIconCatalogEntry,
+} from "../powerpoint-icons";
 
 const POWERPOINT_MEDIA_ACTIONS = new Set([
   "searchIcons",
@@ -26,6 +32,117 @@ const POWERPOINT_MEDIA_ACTIONS = new Set([
 
 export function isPowerPointMediaAction(type: string): boolean {
   return POWERPOINT_MEDIA_ACTIONS.has(type);
+}
+
+function stripImageDataUrl(dataUrl: string): { data: string; mimeType: string } {
+  const commaIndex = dataUrl.indexOf(",");
+  const metadata = commaIndex >= 0 ? dataUrl.slice(5, commaIndex) : "";
+  return {
+    data: commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl,
+    mimeType: metadata.split(";")[0] || "image/png",
+  };
+}
+
+function encodeUtf8Base64(value: string): string {
+  if (typeof btoa !== "function") {
+    const bufferCtor = (
+      globalThis as unknown as {
+        Buffer?: { from: (input: string, encoding: "utf8") => { toString: (encoding: "base64") => string } };
+      }
+    ).Buffer;
+    if (bufferCtor) {
+      return bufferCtor.from(value, "utf8").toString("base64");
+    }
+    throw new Error("Base64 encoding is unavailable for PowerPoint icon insertion.");
+  }
+
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+async function renderPowerPointIconAsset(
+  icon: PowerPointIconCatalogEntry,
+  options: Record<string, unknown>,
+): Promise<{
+  data: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  sourceFormat: "svg-rasterized-png" | "svg";
+}> {
+  const color =
+    trimString(options.iconColor) ??
+    trimString(options.strokeColor) ??
+    trimString(options.fillColor) ??
+    trimString(options.fontColor);
+  const svg = buildPowerPointIconSvg(icon, { color });
+  const width = 320;
+  const height = 320;
+
+  if (
+    typeof document === "undefined" ||
+    typeof Blob === "undefined" ||
+    typeof URL === "undefined" ||
+    typeof btoa !== "function"
+  ) {
+    return {
+      data: encodeUtf8Base64(svg),
+      mimeType: "image/svg+xml",
+      width: 160,
+      height: 160,
+      sourceFormat: "svg",
+    };
+  }
+
+  const svgUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  try {
+    const image = await loadImageElement(svgUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Canvas rendering is unavailable for PowerPoint icon insertion.");
+    }
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+    const parsed = stripImageDataUrl(canvas.toDataURL("image/png"));
+    return {
+      data: parsed.data,
+      mimeType: parsed.mimeType,
+      width,
+      height,
+      sourceFormat: "svg-rasterized-png",
+    };
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+}
+
+function withDefaultIconShapeOptions(icon: PowerPointIconCatalogEntry, options: Record<string, unknown>): Record<string, unknown> {
+  const shapeOptions = { ...options };
+  delete shapeOptions.fillColor;
+  delete shapeOptions.fontColor;
+  delete shapeOptions.iconColor;
+  delete shapeOptions.strokeColor;
+  return {
+    width: 40,
+    height: 40,
+    ...shapeOptions,
+    name: trimString(options.name) ?? `Icon ${icon.name}`,
+    altTextTitle: trimString(options.altTextTitle) ?? icon.name,
+    altTextDescription:
+      trimString(options.altTextDescription) ??
+      `Pi-Office built-in ${icon.name} icon from the SVG icon catalog.`,
+  };
+}
+
+function shouldAllowGlyphFallback(options: Record<string, unknown>): boolean {
+  return options.allowGlyphFallback === true || options.fallback === "glyph-textbox";
 }
 
 export async function applyPowerPointMediaAction(
@@ -49,6 +166,9 @@ export async function applyPowerPointMediaAction(
       name: icon.name,
       keywords: icon.keywords,
       glyph: icon.glyph,
+      assetFormat: "svg",
+      preferredInsertionFormat: "svg-rasterized-png",
+      source: "pi-office-built-in-svg-icon-catalog",
     }));
 
     return {
@@ -59,7 +179,7 @@ export async function applyPowerPointMediaAction(
       maxResults,
       totalMatches: icons.length,
       icons,
-      catalog: "taskpane-runtime-icon-catalog",
+      catalog: "pi-office-built-in-svg-icon-catalog",
       note: "Use insertIcon with iconId to place a selected icon on the target slide.",
     };
   }
@@ -91,7 +211,9 @@ export async function applyPowerPointMediaAction(
               iconName: icon.name,
               iconGlyph: icon.glyph,
               iconKeywords: icon.keywords,
-              catalog: "taskpane-runtime-icon-catalog",
+              catalog: "pi-office-built-in-svg-icon-catalog",
+              iconAssetSource: "provided-base64",
+              iconAssetMimeType: "image/png",
               insertionMode: "shape-image-replace",
             }
           : replaced;
@@ -124,7 +246,9 @@ export async function applyPowerPointMediaAction(
           iconName: icon.name,
           iconGlyph: icon.glyph,
           iconKeywords: icon.keywords,
-          catalog: "taskpane-runtime-icon-catalog",
+          catalog: "pi-office-built-in-svg-icon-catalog",
+          iconAssetSource: "provided-base64",
+          iconAssetMimeType: "image/png",
           insertionMode: "image-shape",
         };
       });
@@ -133,34 +257,67 @@ export async function applyPowerPointMediaAction(
     return PowerPoint.run(async (context) => {
       const slide = await resolvePowerPointSlide(context, action.target, true);
       slide.load("id,index");
-      const textOptions: PowerPoint.ShapeAddOptions = {};
-      const left = toNumber(options.left);
-      const top = toNumber(options.top);
-      const width = toNumber(options.width);
-      const height = toNumber(options.height);
-      if (typeof left === "number") textOptions.left = left;
-      if (typeof top === "number") textOptions.top = top;
-      if (typeof width === "number") textOptions.width = width;
-      if (typeof height === "number") textOptions.height = height;
-      const shape = slide.shapes.addTextBox(icon.glyph, textOptions);
-      applyPowerPointShapeProperties(shape, {
-        ...options,
-        name: trimString(options.name) ?? `Icon ${icon.name}`,
-      });
-      const textFrame = shape.getTextFrameOrNullObject();
-      textFrame.load("isNullObject");
-      shape.load("id,name,type");
-      await context.sync();
-
-      if (!textFrame.isNullObject) {
-        const fontSize = toNumber(options.fontSize) ?? 28;
-        textFrame.textRange.font.size = fontSize;
-        const fontColor = trimString(options.fontColor) ?? trimString(options.fillColor);
-        if (fontColor) {
-          textFrame.textRange.font.color = fontColor;
+      const shapes = slide.shapes as any;
+      if (typeof shapes.addImage !== "function") {
+        if (!shouldAllowGlyphFallback(options)) {
+          throw new Error(
+            "PowerPoint insertIcon requires image insertion support. Set allowGlyphFallback=true only if a plain text glyph fallback is acceptable.",
+          );
         }
-        textFrame.wordWrap = false;
+        const textOptions: PowerPoint.ShapeAddOptions = {};
+        const left = toNumber(options.left);
+        const top = toNumber(options.top);
+        const width = toNumber(options.width);
+        const height = toNumber(options.height);
+        if (typeof left === "number") textOptions.left = left;
+        if (typeof top === "number") textOptions.top = top;
+        if (typeof width === "number") textOptions.width = width;
+        if (typeof height === "number") textOptions.height = height;
+        const shape = slide.shapes.addTextBox(icon.glyph, textOptions);
+        applyPowerPointShapeProperties(shape, withDefaultIconShapeOptions(icon, options));
+        const textFrame = shape.getTextFrameOrNullObject();
+        textFrame.load("isNullObject");
+        shape.load("id,name,type");
+        await context.sync();
+
+        if (!textFrame.isNullObject) {
+          const fontSize = toNumber(options.fontSize) ?? 28;
+          textFrame.textRange.font.size = fontSize;
+          const fontColor = trimString(options.fontColor) ?? trimString(options.fillColor);
+          if (fontColor) {
+            textFrame.textRange.font.color = fontColor;
+          }
+          textFrame.wordWrap = false;
+        }
+        await context.sync();
+
+        context.presentation.setSelectedSlides([slide.id]);
+        slide.setSelectedShapes([shape.id]);
+        await context.sync();
+        return {
+          ok: true,
+          host: "powerpoint",
+          action: type,
+          slideId: slide.id,
+          slideIndex: slide.index + 1,
+          shapeId: shape.id,
+          shapeName: shape.name,
+          shapeType: shape.type,
+          iconId: icon.id,
+          iconName: icon.name,
+          iconGlyph: icon.glyph,
+          iconKeywords: icon.keywords,
+          catalog: "pi-office-built-in-svg-icon-catalog",
+          completion: "fallback",
+          fallbackStrategy: "explicit-glyph-textbox",
+          insertionMode: "glyph-textbox",
+        };
       }
+
+      const asset = await renderPowerPointIconAsset(icon, options);
+      const shape = shapes.addImage(`data:${asset.mimeType};base64,${asset.data}`) as PowerPoint.Shape;
+      applyPowerPointShapeProperties(shape, withDefaultIconShapeOptions(icon, options));
+      shape.load("id,name,type");
       await context.sync();
 
       context.presentation.setSelectedSlides([slide.id]);
@@ -179,8 +336,13 @@ export async function applyPowerPointMediaAction(
         iconName: icon.name,
         iconGlyph: icon.glyph,
         iconKeywords: icon.keywords,
-        catalog: "taskpane-runtime-icon-catalog",
-        insertionMode: "glyph-textbox",
+        catalog: "pi-office-built-in-svg-icon-catalog",
+        iconAssetSource: "pi-office-built-in-svg-icon-catalog",
+        iconAssetMimeType: asset.mimeType,
+        iconAssetFormat: asset.sourceFormat,
+        iconAssetWidth: asset.width,
+        iconAssetHeight: asset.height,
+        insertionMode: "icon-image-shape",
       };
     });
   }

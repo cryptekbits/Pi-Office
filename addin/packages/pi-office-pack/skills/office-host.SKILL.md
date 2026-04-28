@@ -22,7 +22,7 @@ Use this skill when a task depends on the active Microsoft Office document.
 - In PowerPoint, use `verify_slides` for non-mutating structural slide/layout/master verification and `verify_slide_visual` for non-mutating visual verification based on supported slide/shape snapshots.
 - In PowerPoint, use `edit_slide_chart` for chart inspect/create/update operations so chart edits follow the supported serialized OOXML chart runtime path.
 - In PowerPoint, use `copy_image_between_slides` for image-copy workflows between source/destination slides or shapes.
-- In PowerPoint, use `search_icons` before `insert_icon` so icon insertion is grounded in the supported runtime icon catalog path.
+- In PowerPoint, use `search_icons` before `insert_icon` so icon insertion is grounded in the supported runtime icon catalog path. Built-in icons insert as SVG-rasterized image shapes where supported; use glyph fallback only when the user explicitly accepts a text-glyph fallback.
 - Keep `edit_slide_xml` scoped to serialized OOXML/package operations. Use `edit_slide_master` only to apply an existing slide layout; it does not edit slide masters or layout definitions.
 - `office_execute_js` is an escape hatch for operations not covered by other tools. Use the host-appropriate run function (Word.run, Excel.run, PowerPoint.run). Never use it for simple text edits. It is a best-effort restricted subset enforced with regex checks (not an isolated sandbox) and blocks network, storage, eval, and system-access patterns.
 - For broad professional tasks, choose the closest Pi-Office workflow pack and follow its context, tool, review, and completion gates.

@@ -252,7 +252,7 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     riskLevel: "low",
     keywords: ["powerpoint", "icons", "search", "catalog", "visual"],
     label: "Search Slide Icons",
-    description: "PowerPoint-only first-class icon search. Returns icon matches from the supported runtime icon catalog without mutating slides.",
+    description: "PowerPoint-only first-class icon search. Returns icon matches from the supported SVG-backed runtime icon catalog without mutating slides.",
     parameters: Type.Object({
       query: Type.String({ description: "Icon search query text." }),
       maxResults: Type.Optional(Type.Number({ minimum: 1, maximum: 50, description: "Maximum number of icon matches to return." })),
@@ -269,7 +269,7 @@ export const POWERPOINT_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[]
     riskLevel: "medium",
     keywords: ["powerpoint", "icons", "insert", "visual", "symbol"],
     label: "Insert Slide Icon",
-    description: "PowerPoint-only first-class icon insertion tool that inserts or updates an icon-like visual on the target slide.",
+    description: "PowerPoint-only first-class icon insertion tool that inserts or updates an SVG-rasterized icon image shape on the target slide where supported.",
     parameters: Type.Object({
       iconId: Type.Optional(Type.String({ description: "Icon ID returned by search_icons." })),
       iconName: Type.Optional(Type.String({ description: "Icon name alias when iconId is unknown." })),

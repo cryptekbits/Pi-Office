@@ -1318,7 +1318,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       name: "search_icons",
       label: "Search Slide Icons",
       description:
-        "PowerPoint-only first-class icon search. Returns icon matches from the supported runtime icon catalog without mutating slides.",
+        "PowerPoint-only first-class icon search. Returns icon matches from the supported SVG-backed runtime icon catalog without mutating slides.",
       parameters: searchIconsParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("search_icons", params);
@@ -1334,7 +1334,7 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
       name: "insert_icon",
       label: "Insert Slide Icon",
       description:
-        "PowerPoint-only first-class icon insertion tool that inserts or updates an icon-like visual on the target slide.",
+        "PowerPoint-only first-class icon insertion tool that inserts or updates an SVG-rasterized icon image shape on the target slide where supported.",
       parameters: insertIconParams,
       execute: async (_toolCallId, params) => {
         const result = await options.invokeTool("insert_icon", params);
