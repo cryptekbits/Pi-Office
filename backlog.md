@@ -1622,9 +1622,9 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [ ] Install, typecheck, build, bundle budget, manifest validation, and Office tests still pass on GitHub Actions.
   - Notes/Evidence: CI run `24986830664` passed, but emitted GitHub's Node.js 20 deprecation warning for `actions/checkout@v4` and `actions/setup-node@v4`.
 
-- [ ] IMPROVEMENT-011: Calibrate ask-user, fast-draft, and creativity steering for professional artifact generation
+- [x] IMPROVEMENT-011: Calibrate ask-user, fast-draft, and creativity steering for professional artifact generation
   - Category: Improvement
-  - Status: in progress
+  - Status: done
   - Priority: P1
   - Source: 2026-04-27 user feedback after `debugging-logs/3.not-perfect-gemini.json`: the user expected some models to use `ask_user`, but also noted that many users prefer shortcuts and too many questions can become annoying.
   - Details: The current global prompt tells models to use `ask_user` whenever subjective choices such as tone, audience, format, scope, or style matter, and says "Do not guess - ask." In practice, Gemini Pro did not mention `ask_user` in reasoning and drafted immediately. That was not necessarily wrong for the initial prompt because the user provided a clear audience, artifact type, and page target, and autonomy was set to `extreme`; however, the steering is too binary. Pi-Office needs a product-level decision policy that supports both fast drafting and clarification-first workflows. Professional output quality should come from a "creative brief" defaulting layer: if the user gave enough constraints, proceed with tasteful assumptions and state them briefly; if missing choices would materially change the result, ask one compact `ask_user` question with 2-3 options; if the user selects an "ask me first" mode, clarify more; if the user selects fast draft/high autonomy, avoid interrupting and produce a strong first version with suggested refinements.
@@ -1633,14 +1633,14 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Replace the broad "Do not guess - ask" instruction with a clearer ask-vs-assume decision tree tied to autonomy and task ambiguity.
     - [x] Add prompt guidance that caps clarification to one compact `ask_user` call by default, with 2-3 high-impact options and an optional free-form note.
     - [x] Add fast-draft defaults for common professional artifacts: audience, tone, depth, visual density, creativity level, and verification gates.
-    - [ ] Add UI or preference language that distinguishes "Draft now" from "Ask me first" without asking users to manage low-level autonomy settings.
+    - [x] Add UI or preference language that distinguishes "Draft now" from "Ask me first" without asking users to manage low-level autonomy settings.
     - [x] Add tests or prompt snapshots proving `ask_user` guidance remains visible and does not conflict with tool-permission guidance.
   - Acceptance Criteria:
-    - [ ] Models can decide when to ask versus proceed without over-questioning clear requests.
-    - [ ] `ask_user` is used for high-impact ambiguity, not as a generic permission prompt and not ignored because the instruction is too broad.
-    - [ ] Fast-draft users still get useful AI-generated output quickly, with assumptions and follow-up refinement chips rather than a long preflight questionnaire.
-    - [ ] Professional artifact prompts explicitly encode creativity/taste defaults instead of relying on model personality alone.
-  - Notes/Evidence: First steering slice replaced the absolute "Do not guess - ask" guidance with an ask-vs-assume policy: ask only for high-impact ambiguity, proceed with a tasteful fast draft when the user signals speed or gives enough constraints, keep clarification compact, and scale creativity to artifact type and user intent. Prompt regression coverage now checks that fast-draft guidance remains visible. UI preference language for "Draft now" versus "Ask me first" remains open. `debugging-logs/3.not-perfect-gemini.json` used `openrouter::google/gemini-3.1-pro-preview`, `thinkingLevel: high`, and `autonomyLevel: extreme`. The model generated a serviceable executive FFT draft immediately, which matches a fast-draft preference, but it did not reason about `ask_user` at all. Current prompt guidance lives in `addin/packages/pi-office-pack/src/defaults.ts`; runtime `ask_user` exists in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts` and the Office pack extension.
+    - [x] Models can decide when to ask versus proceed without over-questioning clear requests.
+    - [x] `ask_user` is used for high-impact ambiguity, not as a generic permission prompt and not ignored because the instruction is too broad.
+    - [x] Fast-draft users still get useful AI-generated output quickly, with assumptions and follow-up refinement chips rather than a long preflight questionnaire.
+    - [x] Professional artifact prompts explicitly encode creativity/taste defaults instead of relying on model personality alone.
+  - Notes/Evidence: First steering slice replaced the absolute "Do not guess - ask" guidance with an ask-vs-assume policy: ask only for high-impact ambiguity, proceed with a tasteful fast draft when the user signals speed or gives enough constraints, keep clarification compact, and scale creativity to artifact type and user intent. Prompt regression coverage now checks that fast-draft guidance remains visible. `debugging-logs/3.not-perfect-gemini.json` used `openrouter::google/gemini-3.1-pro-preview`, `thinkingLevel: high`, and `autonomyLevel: extreme`. The model generated a serviceable executive FFT draft immediately, which matches a fast-draft preference, but it did not reason about `ask_user` at all. Closed 2026-04-28 by adding `artifactClarificationMode` with `Balanced`, `Draft now`, and `Ask me first` Settings language, injecting mode-specific drafting guidance into `composeAutonomyPrompt`, validating preference writes through `/v1/preferences`, and preserving the boundary that tool approvals remain in the Tools tab. Validation passed with `npm run typecheck:addin` and `npm --prefix addin run test:office -- defaults-autonomy model-curation provider-auth-readiness` (238 tests).
 
 - [x] IMPROVEMENT-012: Define native parallel-tool and Office write-serialization policy
   - Category: Improvement

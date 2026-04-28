@@ -1446,6 +1446,9 @@ export interface ThinkingCapabilities {
   currentLevel: ThinkingLevel;
 }
 
+export const ARTIFACT_CLARIFICATION_MODES = ["balanced", "draft_now", "ask_first"] as const;
+export type ArtifactClarificationMode = (typeof ARTIFACT_CLARIFICATION_MODES)[number];
+
 export interface UserPreferences {
   showThinkingTraces: boolean;
   autoAttachVisuals: boolean;
@@ -1459,6 +1462,7 @@ export interface UserPreferences {
   imageReasoningEffort: ImageReasoningEffort;
   experimentalRewindSnapshots: boolean;
   nextPromptSuggestionsEnabled: boolean;
+  artifactClarificationMode: ArtifactClarificationMode;
   autonomyLevel: AutonomyLevel;
   toolPermissionOverrides: ToolPermissionOverride[];
 }
@@ -1476,6 +1480,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   imageReasoningEffort: "high",
   experimentalRewindSnapshots: false,
   nextPromptSuggestionsEnabled: true,
+  artifactClarificationMode: "balanced",
   autonomyLevel: "medium",
   toolPermissionOverrides: [],
 };

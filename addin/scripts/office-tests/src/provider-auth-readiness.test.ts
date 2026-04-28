@@ -348,6 +348,24 @@ test("provider default model preferences validate against the Pi catalog and see
   assert.equal(session.agent.state.model.id, "gpt-5.4-pro");
 });
 
+test("artifact clarification mode preferences validate through the runtime route", async () => {
+  const runtime = await loadKernelModule();
+
+  const response = await runtime.dispatchKernelRequest("/v1/preferences", {
+    method: "POST",
+    body: JSON.stringify({ artifactClarificationMode: "ask_first" }),
+  }) as { preferences: { artifactClarificationMode: string } };
+  assert.equal(response.preferences.artifactClarificationMode, "ask_first");
+
+  await assert.rejects(
+    () => runtime.dispatchKernelRequest("/v1/preferences", {
+      method: "POST",
+      body: JSON.stringify({ artifactClarificationMode: "always_interrupt" }),
+    }),
+    /artifactClarificationMode must be balanced, draft_now, or ask_first/,
+  );
+});
+
 test("provider auth routes reject unavailable browser auth methods", async () => {
   const runtime = await loadKernelModule();
 

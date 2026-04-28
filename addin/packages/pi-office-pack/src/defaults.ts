@@ -178,6 +178,21 @@ const CATEGORY_LABELS: Record<string, string> = {
   interaction: "interaction",
 };
 
+const CLARIFICATION_MODE_GUIDANCE: Record<UserPreferences["artifactClarificationMode"], string[]> = {
+  balanced: [
+    "Clarification mode: Balanced.",
+    "For professional artifact work, proceed with a tasteful draft when the request has enough context; use one compact ask_user question only when a missing choice would materially change the result.",
+  ],
+  draft_now: [
+    "Clarification mode: Draft now.",
+    "Prefer making a strong first draft with brief assumptions over asking preflight questions; use ask_user only for high-impact ambiguity, compliance-sensitive choices, destructive document changes, or missing facts that cannot be safely assumed.",
+  ],
+  ask_first: [
+    "Clarification mode: Ask me first.",
+    "Before broad professional artifact generation or subjective rewriting, use one compact ask_user question with two or three high-impact options, then complete the task immediately after the answer.",
+  ],
+};
+
 export function composeAutonomyPrompt(
   preferences: UserPreferences,
   includeExternalTools: boolean,
@@ -230,6 +245,10 @@ export function composeAutonomyPrompt(
     `- If a tool call is denied by the user, adapt your approach using the remaining available tools. If no alternative exists, explain what you cannot do and why.`,
     `- NEVER ask the user to change the autonomy level. If a needed tool is unavailable or denied, simply explain the limitation.`,
     `- Disabled tools do not exist in this session. Do not reference or attempt to call them.`,
+    ``,
+    `## Artifact Drafting Preference`,
+    ``,
+    ...CLARIFICATION_MODE_GUIDANCE[preferences.artifactClarificationMode ?? "balanced"],
   ];
 
   return lines.join("\n");

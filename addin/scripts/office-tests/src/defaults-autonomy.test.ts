@@ -33,3 +33,22 @@ test("composeAutonomyPrompt keeps raw Office.js execution out of auto-approved t
   assert.match(prompt, /Require user approval: office_execute_js \(manual-escape-hatch\)/);
   assert.doesNotMatch(prompt, /Auto-approved tools: office_execute_js/);
 });
+
+test("composeAutonomyPrompt exposes artifact drafting preference guidance", () => {
+  const draftNowPrompt = composeAutonomyPrompt(
+    { ...DEFAULT_USER_PREFERENCES, artifactClarificationMode: "draft_now" },
+    false,
+    ["ask_user"],
+  );
+  const askFirstPrompt = composeAutonomyPrompt(
+    { ...DEFAULT_USER_PREFERENCES, artifactClarificationMode: "ask_first" },
+    false,
+    ["ask_user"],
+  );
+
+  assert.match(draftNowPrompt, /Artifact Drafting Preference/);
+  assert.match(draftNowPrompt, /Clarification mode: Draft now/);
+  assert.match(draftNowPrompt, /Prefer making a strong first draft/);
+  assert.match(askFirstPrompt, /Clarification mode: Ask me first/);
+  assert.match(askFirstPrompt, /Before broad professional artifact generation/);
+});

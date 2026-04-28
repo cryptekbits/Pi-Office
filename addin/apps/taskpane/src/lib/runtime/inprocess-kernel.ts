@@ -27,6 +27,7 @@ import {
 import {
   AUTONOMY_LEVEL_AUTO_APPROVE,
   DEFAULT_USER_PREFERENCES,
+  ARTIFACT_CLARIFICATION_MODES,
   EDIT_REJECT_REASON_LABELS,
   OFFICE_TOOL_NAMES,
   TOOL_CATEGORY_MAP,
@@ -3071,6 +3072,12 @@ class InProcessKernel {
           throw new Error(`Model ${provider}/${modelId} is not available in the Pi provider catalog.`);
         }
       }
+    }
+    if (
+      patch.artifactClarificationMode !== undefined &&
+      !ARTIFACT_CLARIFICATION_MODES.includes(patch.artifactClarificationMode)
+    ) {
+      throw new Error("artifactClarificationMode must be balanced, draft_now, or ask_first.");
     }
     this.userPreferences = { ...this.userPreferences, ...patch };
     return { ok: true, preferences: { ...this.userPreferences } };

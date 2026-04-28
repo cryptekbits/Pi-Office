@@ -1410,6 +1410,26 @@ function PreferencesSection({
   preferences: UserPreferences;
   onUpdate: (patch: Partial<UserPreferences>) => void;
 }) {
+  const draftingModes = [
+    {
+      value: "balanced" as const,
+      label: "Balanced",
+      description: "Draft when the brief is clear; ask one focused question when a missing choice matters.",
+    },
+    {
+      value: "draft_now" as const,
+      label: "Draft now",
+      description: "Use tasteful assumptions and move quickly, with questions reserved for high-impact ambiguity.",
+    },
+    {
+      value: "ask_first" as const,
+      label: "Ask me first",
+      description: "Clarify broad professional artifacts before drafting, then complete the work after the answer.",
+    },
+  ];
+  const selectedDraftingMode =
+    draftingModes.find((mode) => mode.value === preferences.artifactClarificationMode) ?? draftingModes[0]!;
+
   return (
     <div className="settings-section">
       <h3>Chat Behavior</h3>
@@ -1457,6 +1477,27 @@ function PreferencesSection({
           onChange={(v) => onUpdate({ experimentalRewindSnapshots: v })}
         />
       </div>
+
+      <h3>Drafting Style</h3>
+      <p className="settings-note">
+        Controls whether Pi-Office should draft immediately or clarify first for subjective professional artifacts. Tool approvals still follow the Tools tab.
+      </p>
+      <div className="segmented-control segmented-control-wide" aria-label="Drafting style">
+        {draftingModes.map((mode) => (
+          <button
+            key={mode.value}
+            type="button"
+            className={`segmented-item ${preferences.artifactClarificationMode === mode.value ? "segmented-active" : ""}`}
+            onClick={() => onUpdate({ artifactClarificationMode: mode.value })}
+            title={mode.description}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+      <p className="settings-note">
+        {selectedDraftingMode.description}
+      </p>
 
       <h3>Default Thinking Level</h3>
       <p className="settings-note">
