@@ -14,6 +14,7 @@ import {
 
 const expectedPackIdsByHost: Record<OfficeHost, string[]> = {
   word: [
+    "word-review-workbench",
     "word-research-paper",
     "word-resume-polish",
     "word-spec-review",
@@ -62,6 +63,7 @@ test("professional workflow packs cover Word, Excel, and PowerPoint artifact fam
 test("workflow guidance is injected into prompts and packaged skill text", () => {
   const guidance = formatWorkflowPackGuidance();
   assert.match(guidance, /Research Paper Review/);
+  assert.match(guidance, /Word Review Workbench/);
   assert.match(guidance, /DCF Review/);
   assert.match(guidance, /Pitch Deck Outline/);
   assert.match(guidance, /\boffice_propose_edits\b/);
@@ -77,7 +79,7 @@ test("workflow guidance is injected into prompts and packaged skill text", () =>
 
   const officeHostSkillPath = join(process.cwd(), "packages", "pi-office-pack", "skills", "office-host.SKILL.md");
   const officeHostSkillText = readFileSync(officeHostSkillPath, "utf8");
-  assert.match(officeHostSkillText, /workflow packs cover research paper review/i);
+  assert.match(officeHostSkillText, /workflow packs cover review workbench, research paper review/i);
   assert.match(officeHostSkillText, /workflow packs cover DCF review/i);
   assert.match(officeHostSkillText, /workflow packs cover pitch-deck outline/i);
 });
@@ -85,9 +87,9 @@ test("workflow guidance is injected into prompts and packaged skill text", () =>
 test("taskpane starter prompts expose host-specific workflow packs", () => {
   assert.deepEqual(getWorkflowQuickPrompts(undefined), []);
   assert.deepEqual(getWorkflowQuickPrompts("word"), [
+    "Open a Word review workbench for the current selection.",
     "Run the research paper workflow on this document.",
     "Polish this resume for a sharper professional story.",
-    "Review this spec and turn gaps into action items.",
   ]);
   assert.deepEqual(getWorkflowQuickPrompts("excel"), [
     "Run a DCF review on the active workbook.",
@@ -104,5 +106,5 @@ test("taskpane starter prompts expose host-specific workflow packs", () => {
   const chatViewText = readFileSync(join(process.cwd(), "apps", "taskpane", "src", "app", "components", "ChatView.tsx"), "utf8");
   assert.match(helperText, /getWorkflowQuickPrompts\(officeState\?\.host,\s*3\)/);
   assert.match(chatViewText, /getQuickPrompts\(officeState\)/);
-  assert.equal(OFFICE_WORKFLOW_PACKS.length, 14);
+  assert.equal(OFFICE_WORKFLOW_PACKS.length, 15);
 });

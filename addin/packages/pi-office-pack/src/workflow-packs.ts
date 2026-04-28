@@ -1,6 +1,7 @@
 import type { OfficeHost } from "./protocol.js";
 
 export type WorkflowPackId =
+  | "word-review-workbench"
   | "word-research-paper"
   | "word-resume-polish"
   | "word-spec-review"
@@ -29,6 +30,23 @@ export interface OfficeWorkflowPack {
 }
 
 export const OFFICE_WORKFLOW_PACKS: readonly OfficeWorkflowPack[] = [
+  {
+    id: "word-review-workbench",
+    host: "word",
+    title: "Word Review Workbench",
+    userPrompt: "Open a Word review workbench for the current selection.",
+    intent: "Stage selection or section edits as reviewable Word-native proposals with comment, tracked-change, and verification awareness.",
+    requiredContext: ["current selection or section anchor", "nearby headings and paragraph IDs", "comments and tracked changes", "field or content-control warnings when visible"],
+    preferredTools: ["office_get_context", "word_search", "office_read_section", "word_annotation_review", "word_redline_review", "office_propose_edits", "verify_doc"],
+    reviewGates: [
+      "Ask before accepting or rejecting broad tracked changes, resolving comments, or editing protected/shared text.",
+      "Keep rewrite, summarize, comment, replace, and append outputs staged separately until the user chooses an insertion path.",
+    ],
+    completionChecks: [
+      "Return proposed edits with anchors, risk notes, and unresolved comments or revisions.",
+      "Verify the document after any accepted write and report remaining review items.",
+    ],
+  },
   {
     id: "word-research-paper",
     host: "word",
