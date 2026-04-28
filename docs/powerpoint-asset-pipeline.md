@@ -16,6 +16,7 @@ Pi-Office treats PowerPoint visuals as native Office assets where the host APIs 
 ## Current Rules
 
 - `search_icons` returns the built-in SVG icon catalog plus the supported asset-source contract.
+- Search and insertion results return lightweight `assetPreview` descriptors with source ID, label, insertion mode, format, shape metadata where available, and verification guidance. They do not include raw base64 image payloads.
 - `insert_icon` uses SVG-rasterized image shapes by default. Glyph text boxes require an explicit `allowGlyphFallback=true` or `fallback: "glyph-textbox"` option.
 - `generate_image` insertions tag PowerPoint image shapes with generated-image source metadata, prompt/model metadata, and accessibility alt text where PowerPoint image insertion is available.
 - Existing generated image payloads can be inserted through `insert_slide_element` / `insert_inline_picture` by passing `assetSourceId: "generated-image-base64"`.

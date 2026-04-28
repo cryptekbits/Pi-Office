@@ -9,6 +9,7 @@ import {
   resolvePowerPointSlide,
   summarizePowerPointShape,
 } from "../powerpoint-helpers";
+import { createPowerPointComponentAssetPreview } from "../powerpoint-asset-previews";
 import { isRecord, toNumber, trimString } from "../shared";
 
 const POWERPOINT_COMPONENT_ACTIONS = new Set(["addReusableComponent"]);
@@ -379,6 +380,16 @@ export async function applyPowerPointComponentAction(
     createdShapeCount: result.shapes.length,
     createdShapes: result.shapes.map((shape) => summarizePowerPointShape(slide, shape)),
     componentPreview: result.preview,
+    assetPreview: createPowerPointComponentAssetPreview({
+      assetSourceId: "reusable-slide-component",
+      componentId: component.id,
+      componentLabel: component.label,
+      componentPreview: result.preview,
+      insertionMode: "native-shape-component",
+      createdShapeCount: result.shapes.length,
+      slideId: slide.id,
+      slideIndex: slide.index + 1,
+    }),
     verificationHint: "Select the created component shapes and run verify_slide_visual to classify reusable component metadata.",
   };
 }

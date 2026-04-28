@@ -23,6 +23,10 @@ import {
   type PowerPointIconCatalogEntry,
 } from "../powerpoint-icons";
 import { getPowerPointAssetSourceCatalog } from "../powerpoint-assets";
+import {
+  createPowerPointIconAssetPreview,
+  createPowerPointImageAssetPreview,
+} from "../powerpoint-asset-previews";
 
 const POWERPOINT_MEDIA_ACTIONS = new Set([
   "searchIcons",
@@ -223,6 +227,16 @@ export async function applyPowerPointMediaAction(
       assetFormat: "svg",
       preferredInsertionFormat: "svg-rasterized-png",
       source: "pi-office-built-in-svg-icon-catalog",
+      assetPreview: createPowerPointIconAssetPreview({
+        assetSourceId: "built-in-icon-svg",
+        iconId: icon.id,
+        iconName: icon.name,
+        iconGlyph: icon.glyph,
+        insertionMode: "icon-image-shape",
+        format: "svg",
+        mimeType: "image/svg+xml",
+        source: "pi-office-built-in-svg-icon-catalog",
+      }),
     }));
     const { getPowerPointReusableSlideComponentCatalog } = await import("../powerpoint-components");
 
@@ -274,6 +288,20 @@ export async function applyPowerPointMediaAction(
               iconAssetMimeType: "image/png",
               iconAssetFormat: "png",
               insertionMode: "shape-image-replace",
+              assetPreview: createPowerPointIconAssetPreview({
+                assetSourceId: "provided-image-base64",
+                label: icon.name,
+                iconId: icon.id,
+                iconName: icon.name,
+                iconGlyph: icon.glyph,
+                insertionMode: "shape-image-replace",
+                format: "png",
+                mimeType: "image/png",
+                shapeId: trimString(replaced.shapeId),
+                shapeName: trimString(replaced.shapeName),
+                slideId: trimString(replaced.slideId),
+                slideIndex: toNumber(replaced.slideIndex),
+              }),
             }
           : replaced;
       }
@@ -287,7 +315,7 @@ export async function applyPowerPointMediaAction(
         }
         const shape = shapes.addImage(`data:image/png;base64,${providedBase64}`) as PowerPoint.Shape;
         applyPowerPointShapeProperties(shape, withDefaultIconShapeOptions(icon, options));
-        shape.load("id,name,type");
+        shape.load("id,name,type,width,height");
         await context.sync();
         context.presentation.setSelectedSlides([slide.id]);
         slide.setSelectedShapes([shape.id]);
@@ -311,6 +339,22 @@ export async function applyPowerPointMediaAction(
           iconAssetMimeType: "image/png",
           iconAssetFormat: "png",
           insertionMode: "image-shape",
+          assetPreview: createPowerPointIconAssetPreview({
+            assetSourceId: "provided-image-base64",
+            label: icon.name,
+            iconId: icon.id,
+            iconName: icon.name,
+            iconGlyph: icon.glyph,
+            insertionMode: "image-shape",
+            format: "png",
+            mimeType: "image/png",
+            width: shape.width,
+            height: shape.height,
+            shapeId: shape.id,
+            shapeName: shape.name,
+            slideId: slide.id,
+            slideIndex: slide.index + 1,
+          }),
         };
       });
     }
@@ -338,7 +382,7 @@ export async function applyPowerPointMediaAction(
         applyPowerPointShapeProperties(shape, withDefaultIconShapeOptions(icon, options));
         const textFrame = shape.getTextFrameOrNullObject();
         textFrame.load("isNullObject");
-        shape.load("id,name,type");
+        shape.load("id,name,type,width,height");
         await context.sync();
 
         if (!textFrame.isNullObject) {
@@ -373,13 +417,29 @@ export async function applyPowerPointMediaAction(
           completion: "fallback",
           fallbackStrategy: "explicit-glyph-textbox",
           insertionMode: "glyph-textbox",
+          assetPreview: createPowerPointIconAssetPreview({
+            assetSourceId: "built-in-icon-svg",
+            label: icon.name,
+            iconId: icon.id,
+            iconName: icon.name,
+            iconGlyph: icon.glyph,
+            insertionMode: "glyph-textbox",
+            format: "text-glyph",
+            width: shape.width,
+            height: shape.height,
+            shapeId: shape.id,
+            shapeName: shape.name,
+            slideId: slide.id,
+            slideIndex: slide.index + 1,
+            fallbackStrategy: "explicit-glyph-textbox",
+          }),
         };
       }
 
       const asset = await renderPowerPointIconAsset(icon, options);
       const shape = shapes.addImage(`data:${asset.mimeType};base64,${asset.data}`) as PowerPoint.Shape;
       applyPowerPointShapeProperties(shape, withDefaultIconShapeOptions(icon, options));
-      shape.load("id,name,type");
+      shape.load("id,name,type,width,height");
       await context.sync();
 
       context.presentation.setSelectedSlides([slide.id]);
@@ -406,6 +466,23 @@ export async function applyPowerPointMediaAction(
         iconAssetWidth: asset.width,
         iconAssetHeight: asset.height,
         insertionMode: "icon-image-shape",
+        assetPreview: createPowerPointIconAssetPreview({
+          assetSourceId: "built-in-icon-svg",
+          label: icon.name,
+          iconId: icon.id,
+          iconName: icon.name,
+          iconGlyph: icon.glyph,
+          insertionMode: "icon-image-shape",
+          format: asset.sourceFormat,
+          mimeType: asset.mimeType,
+          width: asset.width,
+          height: asset.height,
+          shapeId: shape.id,
+          shapeName: shape.name,
+          slideId: slide.id,
+          slideIndex: slide.index + 1,
+          source: "pi-office-built-in-svg-icon-catalog",
+        }),
       };
     });
   }
@@ -417,6 +494,7 @@ export async function applyPowerPointMediaAction(
   if (type === "insertInlinePicture") {
     return PowerPoint.run(async (context) => {
       const slide = await resolvePowerPointSlide(context, action.target, true);
+      slide.load("id,index");
       const imageBase64 = action.content ?? "";
       const assetSourceId = normalizePowerPointImageAssetSourceId(options);
       const assetMimeType = trimString(options.assetMimeType) ?? trimString(options.mimeType) ?? "image/png";
@@ -439,9 +517,28 @@ export async function applyPowerPointMediaAction(
         shapeName: shape.name,
         shapeType: shape.type,
         slideId: slide.id,
+        slideIndex: slide.index + 1,
         assetSourceId,
         assetMimeType,
         insertionMode: "image-shape",
+        assetPreview: createPowerPointImageAssetPreview({
+          assetSourceId,
+          label:
+            trimString(options.altTextTitle) ??
+            trimString(options.name) ??
+            trimString(options.generatedImagePrompt) ??
+            trimString(options.altText) ??
+            shape.name,
+          insertionMode: "image-shape",
+          format: "base64-image",
+          mimeType: assetMimeType,
+          width: shape.width,
+          height: shape.height,
+          shapeId: shape.id,
+          shapeName: shape.name,
+          slideId: slide.id,
+          slideIndex: slide.index + 1,
+        }),
       };
     });
   }
@@ -528,6 +625,24 @@ async function copyImageBetweenSlides(
           ...sourceSummary,
           copiedImageMimeType: "image/png",
           insertionMode: "shape-image-replace",
+          assetPreview: createPowerPointImageAssetPreview({
+            assetSourceId: sourceSummary.assetSourceId ?? "provided-image-base64",
+            label:
+              trimString(options.altTextTitle) ??
+              trimString(options.name) ??
+              sourceSummary.sourceShapeName,
+            insertionMode: "shape-image-replace",
+            format: "png",
+            mimeType: "image/png",
+            shapeId: trimString(replaced.shapeId),
+            shapeName: trimString(replaced.shapeName),
+            slideId: trimString(replaced.slideId),
+            slideIndex: toNumber(replaced.slideIndex),
+            sourceShapeId: sourceSummary.sourceShapeId,
+            sourceShapeName: sourceSummary.sourceShapeName,
+            sourceSlideId: sourceSummary.sourceSlideId,
+            sourceSlideIndex: sourceSummary.sourceSlideIndex,
+          }),
         }
       : replaced;
   }
@@ -541,7 +656,7 @@ async function copyImageBetweenSlides(
     }
     const shape = shapes.addImage(`data:image/png;base64,${imageBase64}`) as PowerPoint.Shape;
     applyPowerPointShapeProperties(shape, withDefaultImageShapeOptions(options, sourceSummary.assetSourceId ?? "provided-image-base64"));
-    shape.load("id,name,type");
+    shape.load("id,name,type,width,height");
     await context.sync();
     context.presentation.setSelectedSlides([slide.id]);
     slide.setSelectedShapes([shape.id]);
@@ -558,6 +673,27 @@ async function copyImageBetweenSlides(
       ...sourceSummary,
       copiedImageMimeType: "image/png",
       insertionMode: "image-shape",
+      assetPreview: createPowerPointImageAssetPreview({
+        assetSourceId: sourceSummary.assetSourceId ?? "provided-image-base64",
+        label:
+          trimString(options.altTextTitle) ??
+          trimString(options.name) ??
+          sourceSummary.sourceShapeName ??
+          shape.name,
+        insertionMode: "image-shape",
+        format: "png",
+        mimeType: "image/png",
+        width: shape.width,
+        height: shape.height,
+        shapeId: shape.id,
+        shapeName: shape.name,
+        slideId: slide.id,
+        slideIndex: slide.index + 1,
+        sourceShapeId: sourceSummary.sourceShapeId,
+        sourceShapeName: sourceSummary.sourceShapeName,
+        sourceSlideId: sourceSummary.sourceSlideId,
+        sourceSlideIndex: sourceSummary.sourceSlideIndex,
+      }),
     };
   });
 }

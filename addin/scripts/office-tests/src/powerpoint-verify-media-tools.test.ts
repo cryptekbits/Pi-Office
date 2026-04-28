@@ -9,6 +9,11 @@ import {
   getPowerPointAssetSourceCatalog,
   inferPowerPointAssetDescriptor,
 } from "../../../apps/taskpane/src/lib/office/powerpoint-assets.js";
+import {
+  createPowerPointComponentAssetPreview,
+  createPowerPointIconAssetPreview,
+  createPowerPointImageAssetPreview,
+} from "../../../apps/taskpane/src/lib/office/powerpoint-asset-previews.js";
 import { getPowerPointReusableSlideComponentCatalog } from "../../../apps/taskpane/src/lib/office/powerpoint-components.js";
 import { buildPowerPointIconSvg, resolvePowerPointIcon, searchPowerPointIcons } from "../../../apps/taskpane/src/lib/office/powerpoint-icons.js";
 import { createOfficeExtension } from "../../../packages/pi-office-pack/src/extension.js";
@@ -134,6 +139,10 @@ test("PowerPoint icon insertion path prefers image shapes and gates glyph fallba
   assert.match(mediaSource, /iconAssetSourceId: "built-in-icon-svg"/);
   assert.match(mediaSource, /assetSourceId: "powerpoint-shape-snapshot"/);
   assert.match(mediaSource, /normalizePowerPointImageAssetSourceId/);
+  assert.match(mediaSource, /createPowerPointIconAssetPreview/);
+  assert.match(mediaSource, /createPowerPointImageAssetPreview/);
+  assert.match(mediaSource, /assetPreview: createPowerPointIconAssetPreview/);
+  assert.match(mediaSource, /assetPreview: createPowerPointImageAssetPreview/);
   assert.match(mediaSource, /await import\("\.\.\/powerpoint-components"\)/);
   assert.match(mediaSource, /reusableComponents: getPowerPointReusableSlideComponentCatalog\(\)/);
   assert.match(mediaSource, /Pi-Office generated image from generate_image/);
@@ -212,7 +221,69 @@ test("PowerPoint asset pipeline defines source contracts and infers inserted ico
   assert.match(assetDocText, /Selected PowerPoint image shape/);
   assert.match(assetDocText, /Reusable slide component/);
   assert.match(assetDocText, /add_reusable_component/);
+  assert.match(assetDocText, /assetPreview/);
   assert.match(assetDocText, /verify_slide_visual/);
+});
+
+test("PowerPoint asset previews are lightweight descriptors for icons, images, and components", () => {
+  const iconPreview = createPowerPointIconAssetPreview({
+    assetSourceId: "built-in-icon-svg",
+    iconId: "trend-up",
+    iconName: "Trend Up",
+    iconGlyph: "T",
+    insertionMode: "icon-image-shape",
+    format: "svg-rasterized-png",
+    mimeType: "image/png",
+    width: 320,
+    height: 320,
+    shapeId: "shape-icon-1",
+    slideId: "slide-2",
+    slideIndex: 2,
+  });
+  assert.equal(iconPreview.kind, "icon");
+  assert.equal(iconPreview.assetSourceId, "built-in-icon-svg");
+  assert.equal(iconPreview.label, "Trend Up");
+  assert.equal(iconPreview.iconId, "trend-up");
+  assert.equal(iconPreview.insertionMode, "icon-image-shape");
+  assert.match(iconPreview.verificationHint, /verify_slide_visual/);
+
+  const imagePreview = createPowerPointImageAssetPreview({
+    assetSourceId: "generated-image-base64",
+    label: "Market backdrop",
+    insertionMode: "image-shape",
+    format: "png",
+    mimeType: "image/png",
+    sourceShapeName: "Hero image",
+  });
+  assert.equal(imagePreview.kind, "image");
+  assert.equal(imagePreview.assetSourceId, "generated-image-base64");
+  assert.equal(imagePreview.label, "Market backdrop");
+  assert.equal(imagePreview.sourceShapeName, "Hero image");
+
+  const componentPreview = createPowerPointComponentAssetPreview({
+    assetSourceId: "reusable-slide-component",
+    componentId: "metric-card",
+    componentLabel: "Metric card",
+    insertionMode: "native-shape-component",
+    createdShapeCount: 5,
+    componentPreview: {
+      metricLabel: "ARR",
+      metricValue: "$12.4M",
+      metricDelta: "+18% YoY",
+    },
+  });
+  assert.equal(componentPreview.kind, "component");
+  assert.equal(componentPreview.assetSourceId, "reusable-slide-component");
+  assert.equal(componentPreview.componentId, "metric-card");
+  assert.equal(componentPreview.createdShapeCount, 5);
+  assert.match(componentPreview.componentTextPreview ?? "", /metricValue: \$12\.4M/);
+
+  for (const preview of [iconPreview, imagePreview, componentPreview]) {
+    const record = preview as unknown as Record<string, unknown>;
+    assert.equal(record.data, undefined);
+    assert.equal(record.base64, undefined);
+    assert.equal(record.imageBase64, undefined);
+  }
 });
 
 test("generated image insertion carries PowerPoint asset provenance through runtime and UI paths", () => {
@@ -241,6 +312,8 @@ test("reusable PowerPoint components are native-shape assets with verification m
   assert.match(componentSource, /POWERPOINT_COMPONENT_ACTIONS = new Set\(\["addReusableComponent"\]\)/);
   assert.match(componentSource, /assetSourceId: "reusable-slide-component"/);
   assert.match(componentSource, /insertionMode: "native-shape-component"/);
+  assert.match(componentSource, /createPowerPointComponentAssetPreview/);
+  assert.match(componentSource, /assetPreview: createPowerPointComponentAssetPreview/);
   assert.match(componentSource, /Pi-Office reusable slide component/);
   assert.match(componentSource, /metric-card/);
   assert.match(componentSource, /quote-callout/);
