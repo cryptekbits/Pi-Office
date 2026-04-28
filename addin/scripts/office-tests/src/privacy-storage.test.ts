@@ -124,7 +124,10 @@ test("provider auth clear-all removes encrypted credentials and the local crypto
     method: "POST",
     body: JSON.stringify({ provider: "openai", apiKey: "test-provider-key" }),
   });
-  assert.ok(storage.getItem("pi-office-auth"));
+  const authEnvelope = storage.getItem("pi-office-auth");
+  assert.ok(authEnvelope);
+  assert.match(authEnvelope, /ciphertext/);
+  assert.doesNotMatch(authEnvelope, /test-provider-key/);
   assert.ok(storage.getItem("pi-office-auth-key-v1"));
 
   await runtime.dispatchKernelRequest("/v1/auth", { method: "DELETE" });

@@ -23,6 +23,23 @@ test("composeAutonomyPrompt falls back to workspace tool inventory when explicit
   assert.match(prompt, /\boffice_get_context\b/);
 });
 
+test("composeAutonomyPrompt only lists workspace tools when the session exposes them", () => {
+  const unsavedOrNoCompanionPrompt = composeAutonomyPrompt(
+    { ...DEFAULT_USER_PREFERENCES, autonomyLevel: "high" },
+    false,
+  );
+  const savedWithCompanionPrompt = composeAutonomyPrompt(
+    { ...DEFAULT_USER_PREFERENCES, autonomyLevel: "high" },
+    true,
+  );
+
+  assert.doesNotMatch(unsavedOrNoCompanionPrompt, /workspace-read/);
+  assert.doesNotMatch(unsavedOrNoCompanionPrompt, /read \(workspace-read\)/);
+  assert.match(savedWithCompanionPrompt, /read \(workspace-read\)/);
+  assert.match(savedWithCompanionPrompt, /grep \(workspace-read\)/);
+  assert.match(savedWithCompanionPrompt, /ls \(workspace-read\)/);
+});
+
 test("composeAutonomyPrompt keeps raw Office.js execution out of auto-approved tools", () => {
   const prompt = composeAutonomyPrompt(
     { ...DEFAULT_USER_PREFERENCES, autonomyLevel: "extreme" },

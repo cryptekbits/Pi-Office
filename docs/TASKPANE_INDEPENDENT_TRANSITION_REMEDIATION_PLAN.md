@@ -32,6 +32,9 @@ It is based on multi-worker audits across:
   - Added runtime diagnostics panel in settings to surface recent route/auth/connector request failures.
   - Expanded Office smoke plan matrix with host-specific taskpane stability scenarios (focus/scroll/prompt/connector/reconnect).
   - Re-ran validators: `typecheck`, `build`, `check:bundle`, `validate:manifests`, `test:office`, `preflight:dev`.
+- **2026-04-28 (`TESTING-001` closure)**
+  - Added transition regression coverage for encrypted auth storage, saved/unsaved workspace-tool prompt exposure, checkpoint persistence across forced session reopen, companion/native-capture gating, disconnect cancellation, office-refresh race guards, raw-shell gating, and dev/sideload preflight assumptions.
+  - Remaining Office desktop host behavior that cannot be proven in Node tests stays in the manual validation matrix and `TESTING-002`.
 
 ---
 
@@ -290,7 +293,7 @@ Focus: close critical correctness and security blockers first.
 - [x] Resolve chat/taskpane focus and vertical scroll reliability regressions.
 - [x] Add preflight checks for cert presence/trust and port `3443` conflicts.
 - [x] Regenerate and clean lockfile/workspace references after companion removal.
-- [ ] Add failing tests for the above regressions before fixes where feasible.
+- [x] Add failing tests for the above regressions before fixes where feasible.
 
 ## P1 — Functional Parity
 

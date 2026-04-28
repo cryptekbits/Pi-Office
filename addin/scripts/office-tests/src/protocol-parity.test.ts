@@ -642,8 +642,8 @@ test("protocol parity: edit proposal request/decision roundtrip", async () => {
   socket.close();
 });
 
-test("protocol parity: rewind and checkpoint persist/load events", async () => {
-  const { socket, session, documentId } = await openSessionHarness("rewind-checkpoint");
+test("protocol parity: rewind and checkpoint persist/load events survive session reopen", async () => {
+  const { runtime, socket, session, documentId } = await openSessionHarness("rewind-checkpoint");
   const agent = (session as { agent: { replaceMessages: (messages: unknown[]) => void; state: { messages: unknown[] } } }).agent;
   agent.replaceMessages([
     { role: "user", content: [{ type: "text", text: "User message" }], timestamp: Date.now() - 1000 },
@@ -697,6 +697,33 @@ test("protocol parity: rewind and checkpoint persist/load events", async () => {
   const loaded = await loadedPromise;
   const event = loaded.event as { checkpoint?: { id?: string } };
   assert.equal(event.checkpoint?.id, checkpoint.id);
+
+  const reopened = await runtime.dispatchKernelRequest("/v1/sessions/open", {
+    method: "POST",
+    body: JSON.stringify({
+      host: "word",
+      documentId,
+      saved: true,
+      title: "Doc checkpoint reopen",
+      forceNew: true,
+    }),
+  }) as { sessionId: string };
+  const reopenedSocket = runtime.createLocalBridgeSocket(reopened.sessionId);
+  await waitForEvent(reopenedSocket, "open");
+  const reopenedAvailablePromise = waitForServerMessage(
+    reopenedSocket,
+    (payload) =>
+      payload.type === "available_checkpoints" &&
+      Array.isArray(payload.checkpoints) &&
+      payload.checkpoints.some((entry: { id?: string }) => entry.id === checkpoint.id),
+  );
+  reopenedSocket.send(JSON.stringify({ type: "client_ready" }));
+  const reopenedAvailable = await reopenedAvailablePromise;
+  assert.equal(
+    (reopenedAvailable.checkpoints as Array<{ id: string }>).some((entry) => entry.id === checkpoint.id),
+    true,
+  );
+  reopenedSocket.close();
   socket.close();
 });
 

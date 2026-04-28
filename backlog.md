@@ -1727,24 +1727,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 ### Testing
 
-- [ ] TESTING-001: Add regression tests for transition regressions where feasible
+- [x] TESTING-001: Add regression tests for transition regressions where feasible
   - Category: Testing
-  - Status: open
+  - Status: done
   - Priority: P1
   - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` P0 checklist.
   - Details: The transition plan marked many core regressions fixed, but left an unchecked task to add failing tests for those regressions where feasible. Future work should ensure that encrypted auth migration, saved-mode prompt behavior, checkpoint route handling, focus/scroll stability, preflight behavior, and lockfile/workspace drift are covered by automated or targeted smoke tests as appropriate.
   - Dependencies: BUG-001 for CI clean-checkout viability.
   - Subtasks:
-    - [ ] Inventory which transition fixes already have automated tests.
-    - [ ] Add missing tests for saved-document mode prompt/autonomy behavior.
-    - [ ] Add route/event tests for checkpoint persist/load and session reconnect behavior if not already covered.
-    - [ ] Add preflight script tests or dry-run assertions for missing certs and port conflicts.
-    - [ ] Document any cases that remain manual-only because Office desktop host behavior cannot be automated here.
+    - [x] Inventory which transition fixes already have automated tests.
+    - [x] Add missing tests for saved-document mode prompt/autonomy behavior.
+    - [x] Add route/event tests for checkpoint persist/load and session reconnect behavior if not already covered.
+    - [x] Add preflight script tests or dry-run assertions for missing certs and port conflicts.
+    - [x] Document any cases that remain manual-only because Office desktop host behavior cannot be automated here.
   - Acceptance Criteria:
-    - [ ] Each critical transition regression has either an automated regression test or an explicit manual-only rationale.
-    - [ ] `npm run test:office` includes the relevant protocol/runtime regression coverage.
-    - [ ] CI can run the added tests without local Office desktop.
-  - Notes/Evidence: Transition plan P0 line item "Add failing tests for the above regressions before fixes where feasible" remains unchecked.
+    - [x] Each critical transition regression has either an automated regression test or an explicit manual-only rationale.
+    - [x] `npm run test:office` includes the relevant protocol/runtime regression coverage.
+    - [x] CI can run the added tests without local Office desktop.
+  - Notes/Evidence: Closed 2026-04-28. Added `addin/scripts/office-tests/src/transition-regressions.test.ts` as a coverage guard for the P0 transition remediation lanes, including encrypted auth storage, saved/unsaved workspace-tool prompt exposure, checkpoint reconnect persistence, disconnect cancellation, native-capture gating, office-refresh race coverage, raw-shell gating, and dev/sideload preflight assumptions. Strengthened `privacy-storage.test.ts` so provider credentials are asserted absent from the local encrypted envelope, `defaults-autonomy.test.ts` so workspace-read tools only appear when exposed, and `protocol-parity.test.ts` so persisted checkpoints are advertised after a forced session reopen. Manual Office desktop host behavior remains tracked separately in `TESTING-002`. Validation: `npm --prefix addin run test:office -- transition-regressions privacy-storage defaults-autonomy protocol-parity office-refresh-policy external-context-gaps` passed with 260 tests, plus add-in typecheck, root build, bundle budget, manifest validation, and whitespace checks.
 
 - [ ] TESTING-002: Complete manual Office desktop validation matrix
   - Category: Testing
