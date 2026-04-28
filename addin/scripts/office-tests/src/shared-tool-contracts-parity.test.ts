@@ -467,6 +467,33 @@ test("PowerPoint media actions stay routed through the media action domain", () 
   }
 });
 
+test("PowerPoint slide-structure actions stay routed through the slide-structure action domain", () => {
+  const powerPointActionsSource = readProjectFile("apps/taskpane/src/lib/office/powerpoint-actions.ts");
+  const slideStructureActionsSource = readProjectFile("apps/taskpane/src/lib/office/powerpoint-actions/slide-structure.ts");
+  const slideStructureActionNames = [
+    "addSlide",
+    "addAgendaSlide",
+    "addTransitionSlide",
+    "combineSlides",
+    "reorderSlides",
+    "reorderStoryline",
+    "applyLayout",
+    "moveSlide",
+    "duplicateSlide",
+    "duplicateSlides",
+    "deleteSlide",
+    "deleteSlides",
+    "selectSlides",
+  ];
+
+  assert.match(powerPointActionsSource, /from "\.\/powerpoint-actions\/slide-structure"/);
+  assert.match(powerPointActionsSource, /isPowerPointSlideStructureAction\(type\)/);
+  assert.match(powerPointActionsSource, /applyPowerPointSlideStructureAction\(context, action, type, options\)/);
+  for (const actionName of slideStructureActionNames) {
+    assert.match(slideStructureActionsSource, new RegExp(`"${actionName}"`));
+  }
+});
+
 test("deferred Word tool bridge action types are implemented by applyWordAction", async () => {
   const wordActionsSource = readProjectFile("apps/taskpane/src/lib/office/word-actions.ts");
   const dispatchedActions: string[] = [];
