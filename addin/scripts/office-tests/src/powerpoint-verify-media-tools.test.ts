@@ -132,6 +132,8 @@ test("PowerPoint icon insertion path prefers image shapes and gates glyph fallba
   assert.match(mediaSource, /supportedAssetSources: getPowerPointAssetSourceCatalog\(\)/);
   assert.match(mediaSource, /iconAssetSourceId: "built-in-icon-svg"/);
   assert.match(mediaSource, /assetSourceId: "powerpoint-shape-snapshot"/);
+  assert.match(mediaSource, /normalizePowerPointImageAssetSourceId/);
+  assert.match(mediaSource, /Pi-Office generated image from generate_image/);
   assert.match(mediaSource, /shapes\.addImage\(`data:\$\{asset\.mimeType\};base64,\$\{asset\.data\}`\)/);
   assert.match(mediaSource, /allowGlyphFallback=true/);
   assert.match(mediaSource, /fallbackStrategy: "explicit-glyph-textbox"/);
@@ -160,13 +162,48 @@ test("PowerPoint asset pipeline defines source contracts and infers inserted ico
   assert.equal(inferred?.expectedInsertionMode, "icon-image-shape");
   assert.equal(inferred?.verificationStatus, "verified-image-shape");
 
+  const generated = inferPowerPointAssetDescriptor({
+    id: "shape-image-2",
+    name: "Generated Image",
+    contentKind: "image",
+    slideId: "slide-2",
+    slideIndex: 2,
+    altTextTitle: "Market backdrop",
+    altTextDescription: "Pi-Office generated image from generate_image. Model: gpt-image-1. Prompt: market backdrop",
+  });
+  assert.equal(generated?.sourceId, "generated-image-base64");
+  assert.equal(generated?.assetName, "Market backdrop");
+  assert.equal(generated?.expectedInsertionMode, "image-shape");
+  assert.equal(generated?.verificationStatus, "verified-image-shape");
+
   const assetDocPath = join(process.cwd(), "..", "docs", "powerpoint-asset-pipeline.md");
   const assetDocText = readFileSync(assetDocPath, "utf8");
   assert.match(assetDocText, /Built-in SVG icon catalog/);
   assert.match(assetDocText, /Generated image handoff/);
+  assert.match(assetDocText, /assetSourceId: "generated-image-base64"/);
   assert.match(assetDocText, /Selected PowerPoint image shape/);
   assert.match(assetDocText, /Reusable slide component/);
   assert.match(assetDocText, /verify_slide_visual/);
+});
+
+test("generated image insertion carries PowerPoint asset provenance through runtime and UI paths", () => {
+  const extensionPath = join(process.cwd(), "packages", "pi-office-pack", "src", "extension.ts");
+  const extensionSource = readFileSync(extensionPath, "utf8");
+  assert.match(extensionSource, /assetSourceId: "generated-image-base64"/);
+  assert.match(extensionSource, /generatedImagePrompt: typedParams\.prompt/);
+  assert.match(extensionSource, /generatedImageModel: result\.modelName/);
+
+  const runtimePath = join(process.cwd(), "apps", "taskpane", "src", "lib", "runtime", "inprocess-kernel.ts");
+  const runtimeSource = readFileSync(runtimePath, "utf8");
+  assert.match(runtimeSource, /assetSourceId: "generated-image-base64"/);
+  assert.match(runtimeSource, /generatedImagePrompt: prompt/);
+  assert.match(runtimeSource, /generatedImageModel: modelId/);
+
+  const imageBlockPath = join(process.cwd(), "apps", "taskpane", "src", "app", "components", "ImageBlock.tsx");
+  const imageBlockSource = readFileSync(imageBlockPath, "utf8");
+  assert.match(imageBlockSource, /assetSourceId: "generated-image-base64"/);
+  assert.match(imageBlockSource, /generatedImageModel: modelName/);
+  assert.match(imageBlockSource, /generatedImageWidth: width/);
 });
 
 async function loadKernelModule() {
@@ -537,6 +574,7 @@ test("PowerPoint guidance aligns chart/media/icon and verification tools with su
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\binsert_icon\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bverify_slides\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bverify_slide_visual\b/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /generated-image-base64/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /serialized|XML|OOXML/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /does not edit slide masters/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /slide snapshot|visual verification/i);
@@ -549,6 +587,7 @@ test("PowerPoint guidance aligns chart/media/icon and verification tools with su
   assert.match(officeHostSkillText, /\binsert_icon\b/);
   assert.match(officeHostSkillText, /\bverify_slides\b/);
   assert.match(officeHostSkillText, /\bverify_slide_visual\b/);
+  assert.match(officeHostSkillText, /generated-image-base64/);
   assert.match(officeHostSkillText, /serialized|XML|OOXML/i);
   assert.match(officeHostSkillText, /does not edit slide masters/i);
   assert.match(officeHostSkillText, /slide snapshot|visual verification/i);

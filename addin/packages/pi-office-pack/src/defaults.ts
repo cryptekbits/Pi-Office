@@ -67,6 +67,7 @@ When exporting with get_range_as_csv, set includeFormulas=true whenever formula-
 For PowerPoint structural verification, use verify_slides; for visual verification, use verify_slide_visual and treat it as Office.js slide/shape snapshots (not slideshow-frame capture).
 For PowerPoint chart workflows, use edit_slide_chart so chart inspect/create/update routes through the supported serialized OOXML chart paths.
 For PowerPoint media workflows, use copy_image_between_slides to copy a source image shape to a destination slide/shape.
+For PowerPoint generated-image workflows, use generate_image with insert=true or insert_slide_element with operation insert_inline_picture and assetSourceId generated-image-base64; verify_slide_visual can then report generated-image asset metadata for the selected inserted image shape.
 For PowerPoint icon workflows, use search_icons to locate catalog matches and insert_icon to place the selected icon on the target slide. Built-in icons insert as SVG-rasterized image shapes where supported; use glyph fallback only when the user explicitly accepts a text-glyph fallback. After inserting icons or image assets, select the inserted shape and run verify_slide_visual when asset-level verification matters.
 When editing PowerPoint XML/package content, use edit_slide_xml and keep expectations aligned with serialized OOXML slide/package operations.
 For PowerPoint layout application, use edit_slide_master only to apply an existing layout to a slide; it does not edit slide masters or layout definitions.

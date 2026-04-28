@@ -495,6 +495,9 @@ const insertSlideElementParams = Type.Object({
   shapeId: Type.Optional(Type.String({ description: "Optional shape target for grouped operations." })),
   content: Type.Optional(Type.String({ description: "Primary text payload (or base64 image payload for insert_inline_picture)." })),
   text: Type.Optional(Type.String({ description: "Alias for content when inserting text." })),
+  assetSourceId: Type.Optional(Type.String({ description: "Optional image asset source ID, such as generated-image-base64 when inserting a generated image payload." })),
+  assetMimeType: Type.Optional(Type.String({ description: "Optional image MIME type for insert_inline_picture payloads. Defaults to image/png." })),
+  altText: Type.Optional(Type.String({ description: "Optional accessibility alt text for inserted image payloads." })),
   values: Type.Optional(Type.Any({ description: "Matrix payload for table insertion when applicable." })),
   options: Type.Optional(Type.Any({ description: "Additional insertion options forwarded to the host adapter." })),
 }, { additionalProperties: true });
@@ -586,6 +589,8 @@ const copyImageBetweenSlidesParams = Type.Object({
   sourceSlideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based source slide index when sourceSlideId is unknown." })),
   sourceShapeId: Type.Optional(Type.String({ description: "Source image shape ID to copy from." })),
   sourceImageBase64: Type.Optional(Type.String({ description: "Optional image base64 override when source shape export is unavailable." })),
+  assetSourceId: Type.Optional(Type.String({ description: "Optional source ID for direct image payloads, such as generated-image-base64 when the payload came from generate_image." })),
+  assetMimeType: Type.Optional(Type.String({ description: "Optional source MIME type for direct image payloads. Defaults to image/png." })),
   targetSlideId: Type.Optional(Type.String({ description: "Destination slide ID for image placement/replacement." })),
   targetSlideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based destination slide index when targetSlideId is unknown." })),
   targetShapeId: Type.Optional(Type.String({ description: "Destination shape ID to update. If omitted, inserts a new image shape." })),
@@ -1513,7 +1518,15 @@ export function createOfficeExtension(options: OfficeExtensionOptions): Extensio
                   type: "insertInlinePicture",
                   content: result.base64,
                   placement: "after",
-                  options: { altText: typedParams.prompt.slice(0, 120) },
+                  options: {
+                    altText: typedParams.prompt.slice(0, 120),
+                    assetSourceId: "generated-image-base64",
+                    assetMimeType: result.mimeType,
+                    generatedImagePrompt: typedParams.prompt,
+                    generatedImageModel: result.modelName,
+                    generatedImageWidth: result.width,
+                    generatedImageHeight: result.height,
+                  },
                 },
               } as Record<string, unknown>);
             } catch (insertError) {

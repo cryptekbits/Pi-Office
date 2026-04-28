@@ -142,6 +142,59 @@ function withDefaultIconShapeOptions(icon: PowerPointIconCatalogEntry, options: 
   };
 }
 
+function truncatePowerPointAssetText(value: string | undefined, maxLength: number): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.length > maxLength ? `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...` : value;
+}
+
+function normalizePowerPointImageAssetSourceId(options: Record<string, unknown>): string {
+  const sourceId =
+    trimString(options.assetSourceId) ??
+    trimString(options.sourceAssetId) ??
+    trimString(options.imageAssetSourceId);
+  switch (sourceId) {
+    case "generated-image-base64":
+    case "provided-image-base64":
+    case "powerpoint-shape-snapshot":
+      return sourceId;
+    default:
+      return "provided-image-base64";
+  }
+}
+
+function withDefaultImageShapeOptions(options: Record<string, unknown>, assetSourceId: string): Record<string, unknown> {
+  const altText =
+    trimString(options.altText) ??
+    trimString(options.generatedImagePrompt) ??
+    trimString(options.prompt);
+  if (assetSourceId !== "generated-image-base64") {
+    return {
+      ...options,
+      altTextTitle: trimString(options.altTextTitle) ?? truncatePowerPointAssetText(altText, 120),
+      altTextDescription: trimString(options.altTextDescription) ?? truncatePowerPointAssetText(altText, 240),
+    };
+  }
+
+  const prompt = truncatePowerPointAssetText(trimString(options.generatedImagePrompt) ?? altText, 180);
+  const model = trimString(options.generatedImageModel);
+  const descriptionParts = ["Pi-Office generated image from generate_image."];
+  if (model) {
+    descriptionParts.push(`Model: ${model}.`);
+  }
+  if (prompt) {
+    descriptionParts.push(`Prompt: ${prompt}`);
+  }
+
+  return {
+    ...options,
+    name: trimString(options.name) ?? "Generated Image",
+    altTextTitle: trimString(options.altTextTitle) ?? truncatePowerPointAssetText(altText ?? "Generated Image", 120),
+    altTextDescription: trimString(options.altTextDescription) ?? descriptionParts.join(" "),
+  };
+}
+
 function shouldAllowGlyphFallback(options: Record<string, unknown>): boolean {
   return options.allowGlyphFallback === true || options.fallback === "glyph-textbox";
 }
@@ -363,12 +416,18 @@ export async function applyPowerPointMediaAction(
     return PowerPoint.run(async (context) => {
       const slide = await resolvePowerPointSlide(context, action.target, true);
       const imageBase64 = action.content ?? "";
+      const assetSourceId = normalizePowerPointImageAssetSourceId(options);
+      const assetMimeType = trimString(options.assetMimeType) ?? trimString(options.mimeType) ?? "image/png";
       const shapes = slide.shapes as any;
       if (typeof shapes.addImage !== "function") {
         throw new Error("PowerPoint image insertion requires PowerPointApi 1.4 or newer.");
       }
-      const shape = shapes.addImage(`data:image/png;base64,${imageBase64}`) as PowerPoint.Shape;
-      shape.load("id,name,width,height");
+      const shape = shapes.addImage(`data:${assetMimeType};base64,${imageBase64}`) as PowerPoint.Shape;
+      applyPowerPointShapeProperties(shape, withDefaultImageShapeOptions(options, assetSourceId));
+      shape.load("id,name,width,height,type");
+      await context.sync();
+      context.presentation.setSelectedSlides([slide.id]);
+      slide.setSelectedShapes([shape.id]);
       await context.sync();
       return {
         ok: true,
@@ -376,9 +435,10 @@ export async function applyPowerPointMediaAction(
         action: type,
         shapeId: shape.id,
         shapeName: shape.name,
+        shapeType: shape.type,
         slideId: slide.id,
-        assetSourceId: "provided-image-base64",
-        assetMimeType: "image/png",
+        assetSourceId,
+        assetMimeType,
         insertionMode: "image-shape",
       };
     });
@@ -448,8 +508,9 @@ async function copyImageBetweenSlides(
       assetSourceId: "powerpoint-shape-snapshot",
     };
   } else {
+    const assetSourceId = normalizePowerPointImageAssetSourceId(options);
     sourceSummary = {
-      assetSourceId: "provided-image-base64",
+      assetSourceId,
     };
   }
 
@@ -477,7 +538,7 @@ async function copyImageBetweenSlides(
       throw new Error("PowerPoint copyImageBetweenSlides insertion requires PowerPointApi 1.4 or newer.");
     }
     const shape = shapes.addImage(`data:image/png;base64,${imageBase64}`) as PowerPoint.Shape;
-    applyPowerPointShapeProperties(shape, options);
+    applyPowerPointShapeProperties(shape, withDefaultImageShapeOptions(options, sourceSummary.assetSourceId ?? "provided-image-base64"));
     shape.load("id,name,type");
     await context.sync();
     context.presentation.setSelectedSlides([slide.id]);

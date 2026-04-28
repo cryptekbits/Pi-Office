@@ -10,12 +10,14 @@ Pi-Office treats PowerPoint visuals as native Office assets where the host APIs 
 | Provided image payload | Available | PNG base64 supplied by a tool result or user workflow | Inserted as a PowerPoint image shape, or used to replace a target image placeholder | `verify_slide_visual` can return the selected image shape snapshot and metadata |
 | Existing PowerPoint shape snapshot | Available | PNG snapshot exported from a selected/source shape where PowerPoint APIs support it | Copied into a destination slide or target image shape | `verify_slide_visual` can inspect the destination image shape |
 | Selected PowerPoint image shape | Available | Existing selected image shape without Pi-Office source metadata | Existing presentation content; source provenance cannot be inferred from Office.js shape metadata alone | `verify_slide_visual` can confirm the selected shape is an image and return its shape metadata |
-| Generated image handoff | Available through composition | OpenAI image result as PNG base64 | Use `generate_image`, then insert the returned base64 through the PowerPoint image path | `verify_slide_visual` can inspect the inserted image shape; provenance remains attached to the generation result |
+| Generated image handoff | Available through composition | OpenAI image result as PNG base64 | Use `generate_image` with insertion enabled, or insert the returned base64 through `insert_slide_element` with `assetSourceId: "generated-image-base64"` | `verify_slide_visual` can inspect the selected inserted image shape and report generated-image source metadata |
 | Reusable slide component | Planned | Future Pi-Office component package | Not implemented; use native shapes, tables, charts, icons, or images for now | Planned; current verification remains slide/shape snapshots plus structure metadata |
 
 ## Current Rules
 
 - `search_icons` returns the built-in SVG icon catalog plus the supported asset-source contract.
 - `insert_icon` uses SVG-rasterized image shapes by default. Glyph text boxes require an explicit `allowGlyphFallback=true` or `fallback: "glyph-textbox"` option.
+- `generate_image` insertions tag PowerPoint image shapes with generated-image source metadata, prompt/model metadata, and accessibility alt text where PowerPoint image insertion is available.
+- Existing generated image payloads can be inserted through `insert_slide_element` / `insert_inline_picture` by passing `assetSourceId: "generated-image-base64"`.
 - `verify_slide_visual` is the non-mutating check after inserting icons or images. Select the inserted shape before running it when asset-level verification matters.
 - Full slideshow-frame screenshots are not claimed here; PowerPoint verification uses Office.js slide and shape snapshot paths.

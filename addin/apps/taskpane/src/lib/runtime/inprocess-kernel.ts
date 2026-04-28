@@ -2785,7 +2785,13 @@ class BrowserOfficeSession {
                 type: "insertInlinePicture",
                 content: base64,
                 placement: "after",
-                options: { altText: prompt.slice(0, 120) },
+                options: {
+                  altText: prompt.slice(0, 120),
+                  assetSourceId: "generated-image-base64",
+                  assetMimeType: "image/png",
+                  generatedImagePrompt: prompt,
+                  generatedImageModel: modelId,
+                },
               },
             });
           }

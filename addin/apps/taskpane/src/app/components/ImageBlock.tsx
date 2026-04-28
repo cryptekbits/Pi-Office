@@ -39,7 +39,15 @@ export const ImageBlock = memo(function ImageBlock({
         type: "insertInlinePicture",
         content: base64,
         placement: "after",
-        options: { altText: prompt.slice(0, 120) },
+        options: {
+          altText: prompt.slice(0, 120),
+          assetSourceId: "generated-image-base64",
+          assetMimeType: mimeType,
+          generatedImagePrompt: prompt,
+          generatedImageModel: modelName,
+          generatedImageWidth: width,
+          generatedImageHeight: height,
+        },
       });
       setInsertStatus("success");
       setTimeout(() => setInsertStatus(""), 3000);
@@ -48,7 +56,7 @@ export const ImageBlock = memo(function ImageBlock({
     } finally {
       setInserting(false);
     }
-  }, [base64, prompt, officeState]);
+  }, [base64, prompt, officeState, mimeType, modelName, width, height]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -86,7 +94,15 @@ export const ImageBlock = memo(function ImageBlock({
                 type: "insertInlinePicture",
                 content: pngBase64,
                 placement: "after",
-                options: { altText: prompt.slice(0, 120) },
+                options: {
+                  altText: prompt.slice(0, 120),
+                  assetSourceId: "generated-image-base64",
+                  assetMimeType: mimeType,
+                  generatedImagePrompt: prompt,
+                  generatedImageModel: modelName,
+                  generatedImageWidth: width,
+                  generatedImageHeight: height,
+                },
               });
             } catch {
               // silent
@@ -94,7 +110,7 @@ export const ImageBlock = memo(function ImageBlock({
           }
         : undefined,
     });
-  }, [base64, prompt, officeState]);
+  }, [base64, prompt, officeState, mimeType, modelName, width, height]);
 
   const dataUrl = `data:${mimeType};base64,${base64}`;
 

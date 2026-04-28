@@ -26,6 +26,8 @@ export interface PowerPointVerifiedAssetDescriptor {
   fallbackStrategy?: string | undefined;
 }
 
+const GENERATED_IMAGE_ALT_PREFIX = "Pi-Office generated image from generate_image.";
+
 export const POWERPOINT_ASSET_SOURCE_CATALOG: readonly PowerPointAssetSourceDefinition[] = [
   {
     id: "built-in-icon-svg",
@@ -104,6 +106,7 @@ export function inferPowerPointAssetDescriptor(shape: unknown): PowerPointVerifi
   const slideIndex = toNumber(shape.slideIndex);
   const iconMatch = altTextDescription?.match(/^Pi-Office built-in (.+) icon from the SVG icon catalog\.$/i);
   const iconNameMatch = shapeName?.match(/^Icon\s+(.+)$/i);
+  const generatedImageMatch = altTextDescription?.startsWith(GENERATED_IMAGE_ALT_PREFIX);
 
   if (iconMatch) {
     const assetName = iconMatch[1] ?? altTextTitle ?? iconNameMatch?.[1];
@@ -135,6 +138,22 @@ export function inferPowerPointAssetDescriptor(shape: unknown): PowerPointVerifi
       expectedInsertionMode: contentKind === "image" ? "image-shape" : "glyph-textbox",
       verificationStatus: contentKind === "image" ? "selected-image-shape" : "fallback-or-unknown",
       fallbackStrategy: "name-only-icon-metadata",
+    };
+  }
+
+  if (generatedImageMatch) {
+    return {
+      shapeId,
+      shapeName,
+      slideId,
+      slideIndex,
+      contentKind,
+      sourceId: "generated-image-base64",
+      sourceLabel: sourceLabel("generated-image-base64"),
+      assetName: altTextTitle ?? shapeName ?? "Generated Image",
+      expectedInsertionMode: "image-shape",
+      verificationStatus: contentKind === "image" ? "verified-image-shape" : "fallback-or-unknown",
+      fallbackStrategy: contentKind === "image" ? undefined : "generated-image-metadata-on-non-image-shape",
     };
   }
 
