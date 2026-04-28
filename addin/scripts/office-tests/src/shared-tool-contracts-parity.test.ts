@@ -494,6 +494,38 @@ test("PowerPoint slide-structure actions stay routed through the slide-structure
   }
 });
 
+test("PowerPoint package, notes, and chart actions stay routed through the package action domain", () => {
+  const powerPointActionsSource = readProjectFile("apps/taskpane/src/lib/office/powerpoint-actions.ts");
+  const packageActionsSource = readProjectFile("apps/taskpane/src/lib/office/powerpoint-actions/package.ts");
+  const packageActionNames = [
+    "inspectPresentationPackage",
+    "getPresentationTheme",
+    "getSlideNotes",
+    "readSlideNotes",
+    "inspectSlideNotes",
+    "getSlideCharts",
+    "inspectSlideCharts",
+    "readSlideCharts",
+    "setSlideNotes",
+    "replaceSlideNotes",
+    "addSlideChart",
+    "createSlideChart",
+    "addChartToSlide",
+    "insertSlideChart",
+    "updateSlideChart",
+    "setChartData",
+    "updateChartData",
+    "replaceChartData",
+  ];
+
+  assert.match(powerPointActionsSource, /from "\.\/powerpoint-actions\/package"/);
+  assert.match(powerPointActionsSource, /isPowerPointPackageAction\(type\)/);
+  assert.match(powerPointActionsSource, /applyPowerPointPackageAction\(action, type, options\)/);
+  for (const actionName of packageActionNames) {
+    assert.match(packageActionsSource, new RegExp(`"${actionName}"`));
+  }
+});
+
 test("deferred Word tool bridge action types are implemented by applyWordAction", async () => {
   const wordActionsSource = readProjectFile("apps/taskpane/src/lib/office/word-actions.ts");
   const dispatchedActions: string[] = [];
