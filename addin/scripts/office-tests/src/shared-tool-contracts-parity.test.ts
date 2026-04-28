@@ -526,6 +526,68 @@ test("PowerPoint package, notes, and chart actions stay routed through the packa
   }
 });
 
+test("Excel range, worksheet, table, and media actions stay routed through focused action domains", () => {
+  const excelActionsSource = readProjectFile("apps/taskpane/src/lib/office/excel-actions.ts");
+  const rangeActionsSource = readProjectFile("apps/taskpane/src/lib/office/excel-actions/ranges.ts");
+  const worksheetActionsSource = readProjectFile("apps/taskpane/src/lib/office/excel-actions/worksheets.ts");
+  const tableActionsSource = readProjectFile("apps/taskpane/src/lib/office/excel-actions/tables.ts");
+  const mediaActionsSource = readProjectFile("apps/taskpane/src/lib/office/excel-actions/media.ts");
+  const rangeActionNames = [
+    "setRangeValues",
+    "getRangeValues",
+    "clearRange",
+    "resizeRange",
+    "copyRange",
+    "formatRange",
+    "sortRange",
+    "applyFilter",
+    "removeDuplicates",
+    "addConditionalFormat",
+  ];
+  const worksheetActionNames = [
+    "createWorksheet",
+    "renameWorksheet",
+    "duplicateWorksheet",
+    "deleteWorksheet",
+    "setWorksheetGridlines",
+    "setPrintArea",
+  ];
+  const tableActionNames = [
+    "createTable",
+    "formatTable",
+    "applyTableFilter",
+    "clearTableFilter",
+    "clearTableFilters",
+    "reapplyTableFilters",
+  ];
+  const mediaActionNames = ["insertInlinePicture"];
+
+  assert.match(excelActionsSource, /from "\.\/excel-actions\/ranges"/);
+  assert.match(excelActionsSource, /isExcelRangeAction\(type\)/);
+  assert.match(excelActionsSource, /applyExcelRangeAction\(context, action, type, options\)/);
+  assert.match(excelActionsSource, /from "\.\/excel-actions\/worksheets"/);
+  assert.match(excelActionsSource, /isExcelWorksheetAction\(type\)/);
+  assert.match(excelActionsSource, /applyExcelWorksheetAction\(context, action, type, options\)/);
+  assert.match(excelActionsSource, /from "\.\/excel-actions\/tables"/);
+  assert.match(excelActionsSource, /isExcelTableAction\(type\)/);
+  assert.match(excelActionsSource, /applyExcelTableAction\(context, action, type, options\)/);
+  assert.match(excelActionsSource, /from "\.\/excel-actions\/media"/);
+  assert.match(excelActionsSource, /isExcelMediaAction\(type\)/);
+  assert.match(excelActionsSource, /applyExcelMediaAction\(context, action, type\)/);
+  for (const actionName of rangeActionNames) {
+    assert.match(rangeActionsSource, new RegExp(`"${actionName}"`));
+  }
+  for (const actionName of worksheetActionNames) {
+    assert.match(worksheetActionsSource, new RegExp(`"${actionName}"`));
+  }
+  for (const actionName of tableActionNames) {
+    assert.match(tableActionsSource, new RegExp(`"${actionName}"`));
+  }
+  for (const actionName of mediaActionNames) {
+    assert.match(mediaActionsSource, new RegExp(`"${actionName}"`));
+  }
+});
+
 test("deferred Word tool bridge action types are implemented by applyWordAction", async () => {
   const wordActionsSource = readProjectFile("apps/taskpane/src/lib/office/word-actions.ts");
   const dispatchedActions: string[] = [];
