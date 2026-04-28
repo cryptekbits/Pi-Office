@@ -132,7 +132,7 @@ export const TASKPANE_COMPANION_PROTOCOL: CompanionProtocolDescriptor = {
           method: "POST",
           path: "/v1/sessions/:sessionId/agent/prompt",
           state: "reserved",
-          description: "Reserved prompt/stream entrypoint; current companion returns unavailable until advanced agent mode lands.",
+          description: "Agent preflight entrypoint; current companion owns session readiness checks and returns fail-closed until the companion Pi agent runtime lands.",
         },
       ],
     },
@@ -188,7 +188,7 @@ export const TASKPANE_COMPANION_PROTOCOL: CompanionProtocolDescriptor = {
           method: "POST",
           path: "/v1/sessions/:sessionId/agent/office-tool-result",
           state: "reserved",
-          description: "Reserved return path for Office tool results produced by the taskpane on behalf of a companion agent.",
+          description: "Office tool result return path; current companion accepts only session-scoped acknowledgements and rejects results without a pending companion Office request.",
         },
       ],
     },
@@ -531,6 +531,59 @@ export interface CompanionSettingsSyncCapability extends CompanionSimpleCapabili
   enabledProviderCount?: number | undefined;
   enabledModelCount?: number | undefined;
   connectorCount?: number | undefined;
+  secretsIncluded: false;
+}
+
+export type CompanionAgentPromptMode = "prompt" | "steer" | "followUp";
+
+export type CompanionAgentPromptStatus =
+  | "accepted"
+  | "taskpane_fallback"
+  | "provider_auth_required"
+  | "agent_runtime_unavailable";
+
+export interface CompanionAgentPromptRequest {
+  promptId?: string | undefined;
+  browserSessionId?: string | undefined;
+  mode?: CompanionAgentPromptMode | undefined;
+  text: string;
+  modelProvider?: string | undefined;
+  modelId?: string | undefined;
+  secretsIncluded: false;
+}
+
+export interface CompanionAgentPromptResponse {
+  ok: boolean;
+  status: CompanionAgentPromptStatus;
+  sessionId: string;
+  promptId?: string | undefined;
+  companionRuntimeMode?: CompanionRuntimeMode | undefined;
+  modelProvider?: string | undefined;
+  modelId?: string | undefined;
+  reason: string;
+  taskpaneFallback: boolean;
+  officeToolProxy: true;
+  secretsIncluded: false;
+}
+
+export type CompanionOfficeToolResultStatus =
+  | "acknowledged"
+  | "no_pending_office_tool_request";
+
+export interface CompanionAgentOfficeToolResultRequest {
+  browserSessionId?: string | undefined;
+  toolCallId?: string | undefined;
+  toolName?: string | undefined;
+  result?: unknown;
+  secretsIncluded: false;
+}
+
+export interface CompanionAgentOfficeToolResultResponse {
+  ok: boolean;
+  status: CompanionOfficeToolResultStatus;
+  sessionId: string;
+  toolCallId?: string | undefined;
+  reason: string;
   secretsIncluded: false;
 }
 

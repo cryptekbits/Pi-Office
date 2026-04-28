@@ -8,6 +8,8 @@ import type {
   CompanionConnectorOAuthClearRequest,
   CompanionConnectorOAuthStartRequest,
   CompanionConnectorOAuthStatusRequest,
+  CompanionAgentOfficeToolResultRequest,
+  CompanionAgentPromptRequest,
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
   CompanionProviderApiKeyRequest,
@@ -28,6 +30,7 @@ import type {
 } from "@pi-office/pi-office-pack/protocol";
 import { loadConfig, type CompanionConfig } from "./config.js";
 import { CompanionConnectorBridge } from "./connector-bridge.js";
+import { CompanionAgentSessionManager } from "./agent-session.js";
 import { executeFileTool } from "./file-tools.js";
 import { companionCorsMiddleware } from "./http.js";
 import { captureNativeViewport, createNativeCaptureCapability } from "./native-capture.js";
@@ -49,6 +52,7 @@ interface SessionRecord {
   workspaceDir?: string | undefined;
   connectorToolNames: string[];
   settingsSync?: CompanionSettingsSyncCapability | undefined;
+  settings?: CompanionSettingsSyncRequest | undefined;
 }
 
 function createShellSandbox(config: CompanionConfig, session?: SessionRecord | undefined): CompanionShellSandbox {
@@ -175,6 +179,7 @@ export class CompanionServer {
   private readonly config = loadConfig();
   private readonly oauthBroker = new CompanionOAuthBroker(this.config);
   private readonly providerAuthStore = CompanionProviderAuthStore.create(this.config);
+  private readonly agentSessions = new CompanionAgentSessionManager(this.providerAuthStore);
   private readonly connectorBridge = new CompanionConnectorBridge(this.oauthBroker);
   private readonly sessionsByBrowserId = new Map<string, SessionRecord>();
   private readonly sessionsById = new Map<string, SessionRecord>();
@@ -338,6 +343,7 @@ export class CompanionServer {
       session.connectorToolNames = prepared.connectorToolNames;
       if (body.settings) {
         session.settingsSync = settingsCapabilityFromSync(normalizeSettingsSync(body.settings));
+        session.settings = body.settings;
       }
 
       const reply: CompanionSessionOpenResponse = {
@@ -366,6 +372,7 @@ export class CompanionServer {
       try {
         const result = normalizeSettingsSync(request.body as CompanionSettingsSyncRequest);
         session.settingsSync = settingsCapabilityFromSync(result);
+        session.settings = request.body as CompanionSettingsSyncRequest;
         response.json(result);
       } catch (error) {
         response.status(400).json({
@@ -417,20 +424,39 @@ export class CompanionServer {
       response.json(result);
     });
 
-    app.post("/v1/sessions/:sessionId/agent/prompt", (_request, response) => {
-      response.status(501).json({
-        ok: false,
-        error:
-          "Companion-owned Pi agent sessions require the companion agent runtime plus explicit companion provider auth setup. Smart Auto will keep using the taskpane runtime until that capability is available.",
-      });
+    app.post("/v1/sessions/:sessionId/agent/prompt", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      try {
+        response.json(this.agentSessions.handlePrompt(session, request.body as CompanionAgentPromptRequest));
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
-    app.post("/v1/sessions/:sessionId/agent/office-tool-result", (_request, response) => {
-      response.status(501).json({
-        ok: false,
-        error:
-          "Companion-owned Office tool proxying is reserved for companion agent mode. Office.js execution remains taskpane-owned.",
-      });
+    app.post("/v1/sessions/:sessionId/agent/office-tool-result", (request, response) => {
+      const session = this.sessionsById.get(request.params.sessionId);
+      if (!session) {
+        response.status(404).json({ error: "Unknown companion session." });
+        return;
+      }
+
+      try {
+        response.json(this.agentSessions.handleOfficeToolResult(
+          session,
+          request.body as CompanionAgentOfficeToolResultRequest,
+        ));
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     });
 
     app.post("/v1/sessions/:sessionId/files/:toolName", async (request, response) => {
