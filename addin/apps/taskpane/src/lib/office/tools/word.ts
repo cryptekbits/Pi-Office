@@ -252,6 +252,8 @@ export const WORD_OFFICE_TOOL_DEFINITIONS: readonly OfficeToolDefinition[] = [
       display: Type.Optional(Type.String({ description: "block (default) or inline. Use block for standalone research-paper equations." })),
       target: Type.Optional(Type.Any({ description: "Optional Word anchor. Use { kind: \"document\" } plus placement=end to append an equation to the document." })),
       placement: Type.Optional(Type.String({ description: "replace, before, after, start, or end. Defaults to replacing the current selection; document targets default to end." })),
+      numbering: Type.Optional(Type.Union([Type.String(), Type.Number()], { description: "Optional visible equation number for block equations, for example 1 or (2.3)." })),
+      caption: Type.Optional(Type.String({ description: "Optional visible centered caption paragraph inserted after a block equation." })),
       altText: Type.Optional(Type.String({ description: "Optional human-readable description for auditing or future accessibility metadata." })),
     }),
     executor: "office-bridge",

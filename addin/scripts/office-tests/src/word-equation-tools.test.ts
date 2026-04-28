@@ -38,6 +38,8 @@ test("Word equation bridge dispatches LaTeX as an insertEquation host action", a
       latex: "$$E=mc^2+\\frac{a}{b}$$",
       display: "block",
       placement: "after",
+      numbering: "1",
+      caption: "Einstein mass-energy relation",
       target: { kind: "heading", text: "Methods" },
     },
   } as OfficeToolRequest);
@@ -49,6 +51,8 @@ test("Word equation bridge dispatches LaTeX as an insertEquation host action", a
   assert.equal(calls[0]?.action.placement, "after");
   assert.equal((calls[0]?.action.target as { kind?: string }).kind, "heading");
   assert.equal((calls[0]?.action.options as Record<string, unknown>).display, "block");
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).numbering, "1");
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).caption, "Einstein mass-energy relation");
 });
 
 test("LaTeX converter emits persisted Word OfficeMath OOXML evidence", () => {
@@ -70,8 +74,40 @@ test("LaTeX converter emits persisted Word OfficeMath OOXML evidence", () => {
   assert.equal(fftEquation.unsupportedCommands.length, 0);
 });
 
+test("LaTeX converter supports matrix environments and block equation metadata", () => {
+  const equation = createWordEquationOoxml(
+    "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
+    "block",
+    { numbering: "2.1", caption: "State transition matrix" },
+  );
+
+  assert.match(equation.ooxml, /<m:m\b/);
+  assert.match(equation.ooxml, /<m:mr>/);
+  assert.match(equation.ooxml, /<m:d\b/);
+  assert.match(equation.ooxml, /\(2\.1\)/);
+  assert.match(equation.ooxml, /State transition matrix/);
+  assert.equal(equation.numbering, "(2.1)");
+  assert.equal(equation.caption, "State transition matrix");
+  assert.equal(equation.evidence.containsMatrix, true);
+  assert.equal(equation.evidence.containsEquationNumber, true);
+  assert.equal(equation.evidence.containsCaption, true);
+  assert.equal(equation.unsupportedCommands.length, 0);
+});
+
+test("inline equation metadata is reported but not inserted visibly", () => {
+  const equation = createWordEquationOoxml("x+y", "inline", { numbering: 3, caption: "Inline note" });
+
+  assert.equal(equation.numbering, "(3)");
+  assert.equal(equation.caption, "Inline note");
+  assert.equal(equation.evidence.containsEquationNumber, false);
+  assert.equal(equation.evidence.containsCaption, false);
+  assert.match(equation.warnings.join("\n"), /only inserted for block equations/i);
+});
+
 test("Word equation guidance prevents raw LaTeX HTML insertion claims", () => {
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bword_equation\b/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /matrices/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /numbering\/caption/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\$\$\.\.\.\$\$/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /m:oMath verification/i);
 });

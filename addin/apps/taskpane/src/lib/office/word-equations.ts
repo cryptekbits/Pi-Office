@@ -6,6 +6,7 @@ type MathNode =
   | { kind: "group"; children: MathNode[] }
   | { kind: "fraction"; numerator: MathNode[]; denominator: MathNode[] }
   | { kind: "radical"; body: MathNode[] }
+  | { kind: "matrix"; rows: MathNode[][][]; leftDelimiter?: string | undefined; rightDelimiter?: string | undefined }
   | { kind: "script"; base: MathNode; subscript?: MathNode[] | undefined; superscript?: MathNode[] | undefined };
 
 const COMMAND_SYMBOLS: Record<string, string> = {
@@ -58,6 +59,8 @@ export interface WordEquationOoxmlResult {
   ooxml: string;
   normalizedLatex: string;
   display: "block" | "inline";
+  numbering?: string | undefined;
+  caption?: string | undefined;
   warnings: string[];
   unsupportedCommands: string[];
   evidence: {
@@ -65,7 +68,15 @@ export interface WordEquationOoxmlResult {
     containsFraction: boolean;
     containsRadical: boolean;
     containsScript: boolean;
+    containsMatrix: boolean;
+    containsEquationNumber: boolean;
+    containsCaption: boolean;
   };
+}
+
+export interface WordEquationOoxmlOptions {
+  numbering?: string | number | undefined;
+  caption?: string | undefined;
 }
 
 function escapeXml(value: string): string {
@@ -171,6 +182,10 @@ class LatexMathParser {
       return { kind: "radical", body: this.parseRequiredGroup("square-root body") };
     }
 
+    if (command === "begin") {
+      return this.parseEnvironment();
+    }
+
     if (command === "text" || command === "mathrm" || command === "operatorname") {
       return { kind: "group", children: this.parseRequiredGroup(`${command} body`) };
     }
@@ -231,6 +246,76 @@ class LatexMathParser {
     return atom ? [atom] : [{ kind: "text", text: "" }];
   }
 
+  private parseEnvironment(): MathNode {
+    const environmentName = this.readRequiredGroupText("environment name");
+    if (!environmentName) {
+      return { kind: "text", text: "\\begin" };
+    }
+
+    const rawContent = this.readUntilEndEnvironment(environmentName);
+    if (!MATRIX_ENVIRONMENTS.has(environmentName)) {
+      this.unsupportedCommands.add(`begin{${environmentName}}`);
+      this.warnings.add(`Unsupported LaTeX environment ${environmentName} was preserved as plain OfficeMath text.`);
+      return { kind: "text", text: `\\begin{${environmentName}}${rawContent}\\end{${environmentName}}` };
+    }
+
+    const rows = rawContent
+      .split(/\\\\/)
+      .map((row) => row.trim())
+      .filter(Boolean)
+      .map((row) =>
+        row.split("&").map((cell) => {
+          const parser = new LatexMathParser(cell.trim());
+          const parsed = parser.parse();
+          for (const warning of parser.warnings) this.warnings.add(warning);
+          for (const unsupported of parser.unsupportedCommands) this.unsupportedCommands.add(unsupported);
+          const emptyCell: MathNode[] = [{ kind: "text", text: "" }];
+          return parsed.length ? parsed : emptyCell;
+        }),
+      );
+
+    if (!rows.length) {
+      this.warnings.add(`LaTeX ${environmentName} environment did not include any matrix rows.`);
+      rows.push([[{ kind: "text", text: "" }]]);
+    }
+
+    const delimiters = MATRIX_DELIMITERS[environmentName] ?? {};
+    return { kind: "matrix", rows, leftDelimiter: delimiters.left, rightDelimiter: delimiters.right };
+  }
+
+  private readRequiredGroupText(label: string): string {
+    this.skipSpaces();
+    if (this.peek() !== "{") {
+      this.warnings.add(`Expected a braced ${label}.`);
+      return "";
+    }
+    this.index += 1;
+    const start = this.index;
+    while (this.index < this.input.length && this.peek() !== "}") {
+      this.index += 1;
+    }
+    const value = this.input.slice(start, this.index);
+    if (this.peek() === "}") {
+      this.index += 1;
+    } else {
+      this.warnings.add(`Missing a closing brace for ${label}.`);
+    }
+    return value.trim();
+  }
+
+  private readUntilEndEnvironment(environmentName: string): string {
+    const endMarker = `\\end{${environmentName}}`;
+    const start = this.index;
+    const endIndex = this.input.indexOf(endMarker, this.index);
+    if (endIndex < 0) {
+      this.index = this.input.length;
+      this.warnings.add(`Missing ${endMarker} in the LaTeX equation.`);
+      return this.input.slice(start);
+    }
+    this.index = endIndex + endMarker.length;
+    return this.input.slice(start, endIndex);
+  }
+
   private parseGroup(): MathNode[] {
     if (this.peek() !== "{") {
       return [];
@@ -274,6 +359,16 @@ class LatexMathParser {
   }
 }
 
+const MATRIX_ENVIRONMENTS = new Set(["matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix"]);
+
+const MATRIX_DELIMITERS: Record<string, { left?: string; right?: string }> = {
+  pmatrix: { left: "(", right: ")" },
+  bmatrix: { left: "[", right: "]" },
+  Bmatrix: { left: "{", right: "}" },
+  vmatrix: { left: "|", right: "|" },
+  Vmatrix: { left: "‖", right: "‖" },
+};
+
 function renderNodes(nodes: MathNode[]): string {
   return nodes.map(renderNode).join("");
 }
@@ -285,6 +380,17 @@ function renderSlot(nodes: MathNode[] | undefined): string {
 
 function renderText(text: string): string {
   return `<m:r><m:t xml:space="preserve">${escapeXml(text)}</m:t></m:r>`;
+}
+
+function renderMatrix(node: Extract<MathNode, { kind: "matrix" }>): string {
+  const matrixRows = node.rows
+    .map((row) => `<m:mr>${row.map((cell) => `<m:e>${renderSlot(cell)}</m:e>`).join("")}</m:mr>`)
+    .join("");
+  const matrix = `<m:m><m:mPr/><m:mrPr/>${matrixRows}</m:m>`;
+  if (!node.leftDelimiter && !node.rightDelimiter) {
+    return matrix;
+  }
+  return `<m:d><m:dPr>${node.leftDelimiter ? `<m:begChr m:val="${escapeXml(node.leftDelimiter)}"/>` : ""}${node.rightDelimiter ? `<m:endChr m:val="${escapeXml(node.rightDelimiter)}"/>` : ""}</m:dPr><m:e>${matrix}</m:e></m:d>`;
 }
 
 function renderNode(node: MathNode): string {
@@ -300,6 +406,9 @@ function renderNode(node: MathNode): string {
   if (node.kind === "radical") {
     return `<m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e>${renderSlot(node.body)}</m:e></m:rad>`;
   }
+  if (node.kind === "matrix") {
+    return renderMatrix(node);
+  }
   if (node.kind === "script") {
     if (node.subscript && node.superscript) {
       return `<m:sSubSup><m:e>${renderNode(node.base)}</m:e><m:sub>${renderSlot(node.subscript)}</m:sub><m:sup>${renderSlot(node.superscript)}</m:sup></m:sSubSup>`;
@@ -312,11 +421,31 @@ function renderNode(node: MathNode): string {
   return "";
 }
 
+function normalizeEquationNumber(value: string | number | undefined): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `(${Math.trunc(value)})`;
+  }
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) {
+    return undefined;
+  }
+  return /^\(.+\)$/.test(trimmed) ? trimmed : `(${trimmed})`;
+}
+
+function renderParagraphText(text: string, alignment?: "center" | "right"): string {
+  const paragraphProperties = alignment ? `<w:pPr><w:jc w:val="${alignment}"/></w:pPr>` : "";
+  return `<w:p xmlns:w="${WORDPROCESSINGML_NS}">${paragraphProperties}<w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+}
+
 export function countWordOoxmlMathObjects(ooxml: string): number {
   return (ooxml.match(/<m:oMath\b/gi) ?? []).length;
 }
 
-export function createWordEquationOoxml(latex: string, display: "block" | "inline" = "block"): WordEquationOoxmlResult {
+export function createWordEquationOoxml(
+  latex: string,
+  display: "block" | "inline" = "block",
+  options: WordEquationOoxmlOptions = {},
+): WordEquationOoxmlResult {
   const normalizedLatex = stripMathDelimiters(latex);
   if (!normalizedLatex) {
     throw new Error("word_equation requires non-empty LaTeX math content.");
@@ -327,14 +456,29 @@ export function createWordEquationOoxml(latex: string, display: "block" | "inlin
   const math = renderNodes(nodes);
   const displayMode = display === "inline" ? "inline" : "block";
   const oMath = `<m:oMath xmlns:m="${OFFICEMATH_NS}">${math}</m:oMath>`;
-  const ooxml = displayMode === "inline"
+  const numbering = normalizeEquationNumber(options.numbering);
+  const caption = typeof options.caption === "string" ? options.caption.trim() || undefined : undefined;
+  let ooxml = displayMode === "inline"
     ? oMath
     : `<w:p xmlns:w="${WORDPROCESSINGML_NS}" xmlns:m="${OFFICEMATH_NS}"><m:oMathPara>${oMath}</m:oMathPara></w:p>`;
+  if (displayMode === "inline" && (numbering || caption)) {
+    parser.warnings.add("Equation numbering and captions are only inserted for block equations; inline metadata was returned but not written visibly.");
+  }
+  if (displayMode === "block") {
+    if (numbering) {
+      ooxml += renderParagraphText(numbering, "right");
+    }
+    if (caption) {
+      ooxml += renderParagraphText(caption, "center");
+    }
+  }
 
   return {
     ooxml,
     normalizedLatex,
     display: displayMode,
+    numbering,
+    caption,
     warnings: Array.from(parser.warnings),
     unsupportedCommands: Array.from(parser.unsupportedCommands),
     evidence: {
@@ -342,6 +486,9 @@ export function createWordEquationOoxml(latex: string, display: "block" | "inlin
       containsFraction: /<m:f\b/.test(ooxml),
       containsRadical: /<m:rad\b/.test(ooxml),
       containsScript: /<m:s(?:Sub|Sup|SubSup)\b/.test(ooxml),
+      containsMatrix: /<m:m\b/.test(ooxml),
+      containsEquationNumber: Boolean(numbering && displayMode === "block"),
+      containsCaption: Boolean(caption && displayMode === "block"),
     },
   };
 }

@@ -373,6 +373,8 @@ export async function executeWordOfficeTool(
             latex,
             display: request.params.display,
             altText: request.params.altText,
+            numbering: request.params.numbering ?? request.params.equationNumber,
+            caption: request.params.caption,
           },
         });
         return { requestId: request.requestId, success: true, content: result };

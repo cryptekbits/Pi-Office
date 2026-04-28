@@ -801,7 +801,12 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         throw new Error("word_equation requires a non-empty latex parameter.");
       }
       const display = trimString(options.display ?? action.display) === "inline" ? "inline" : "block";
-      const equation = createWordEquationOoxml(latex, display);
+      const rawNumbering = options.numbering ?? options.equationNumber ?? action.numbering ?? action.equationNumber;
+      const numbering = typeof rawNumbering === "string" || typeof rawNumbering === "number" ? rawNumbering : undefined;
+      const equation = createWordEquationOoxml(latex, display, {
+        numbering,
+        caption: trimString(options.caption ?? action.caption),
+      });
       const beforeOoxml = body.getOoxml();
       await context.sync();
       const beforeMathCount = countWordOoxmlMathObjects(beforeOoxml.value);
@@ -841,6 +846,8 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         resolvedFormat: "omml",
         display: equation.display,
         normalizedLatex: equation.normalizedLatex,
+        numbering: equation.numbering,
+        caption: equation.caption,
         warnings: equation.warnings.length ? equation.warnings : undefined,
         unsupportedCommands: equation.unsupportedCommands.length ? equation.unsupportedCommands : undefined,
         verification: {
