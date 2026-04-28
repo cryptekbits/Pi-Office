@@ -728,3 +728,18 @@ test("investigation artifact includes PowerPoint manual checklist scenarios for 
   assert.match(investigationText, /powerpoint-notes-and-charts/);
   assert.match(investigationText, /powerpoint-taskpane-stability/);
 });
+
+test("PowerPoint smoke plan includes deck-quality asset pipeline validation", () => {
+  const smokePath = join(process.cwd(), "scripts", "run-office-smoke.mjs");
+  const smokeText = readFileSync(smokePath, "utf8");
+  assert.match(smokeText, /powerpoint-asset-pipeline-deck-quality/);
+  assert.match(smokeText, /Deck-quality icon, image, and component workflow/);
+  assert.match(smokeText, /search_icons/);
+  assert.match(smokeText, /insert_icon/);
+  assert.match(smokeText, /generate_image/);
+  assert.match(smokeText, /assetSourceId: \\"generated-image-base64\\"/);
+  assert.match(smokeText, /add_reusable_component/);
+  assert.match(smokeText, /verify_slide_visual/);
+  assert.match(smokeText, /iconAssetSourceId: \\"built-in-icon-svg\\"/);
+  assert.match(smokeText, /plain glyph text boxes unless fallback was explicitly requested/);
+});

@@ -239,6 +239,31 @@ const smokeScenarios = {
         ],
       },
       {
+        id: "powerpoint-asset-pipeline-deck-quality",
+        title: "Deck-quality icon, image, and component workflow",
+        covers: [
+          "SVG-rasterized icon insertion",
+          "generated-image asset handoff",
+          "reusable native slide components",
+          "asset previews and verification metadata",
+          "explicit glyph-fallback avoidance",
+        ],
+        setup: "Use a disposable pitch-deck slide with enough blank space for an icon, generated image, and one reusable component.",
+        steps: [
+          "Run `search_icons` for `growth revenue` and confirm the result includes icon `assetPreview` descriptors, supported asset sources, and the reusable component catalog.",
+          "Run `insert_icon` for `trend-up` on the target slide without `allowGlyphFallback`; confirm PowerPoint inserts an image shape and the result reports `iconAssetSourceId: \"built-in-icon-svg\"` with `insertionMode: \"icon-image-shape\"`.",
+          "Run `generate_image` with PowerPoint insertion enabled, or insert a generated image payload through `insert_slide_element` / `insert_inline_picture` with `assetSourceId: \"generated-image-base64\"`.",
+          "Run `insert_slide_element` with `operation: \"add_reusable_component\"` and `componentId: \"metric-card\"` or `componentId: \"quote-callout\"` using realistic slide copy.",
+          "Select the inserted icon, image, and component shapes, then run `verify_slide_visual` with `includeFormatting=true` and `maxImages=3`.",
+        ],
+        expected: [
+          "Inserted icons and generated images are native PowerPoint image shapes rather than plain glyph text boxes unless fallback was explicitly requested.",
+          "Reusable components are editable native PowerPoint shapes with Pi-Office alt-text metadata.",
+          "`assetPreview` and `verify_slide_visual` payloads report source IDs, insertion modes, shape IDs, and verification status for the selected assets.",
+          "The composed slide is presentation-ready enough for a pitch-deck review and all inserted assets remain editable in PowerPoint.",
+        ],
+      },
+      {
         id: "powerpoint-notes-and-charts",
         title: "Serialized notes and chart workflows",
         covers: [

@@ -23,3 +23,24 @@ Pi-Office treats PowerPoint visuals as native Office assets where the host APIs 
 - Reusable native components can be inserted through `insert_slide_element` / `add_reusable_component` with `componentId: "metric-card"`, `"quote-callout"`, or `"section-divider"`. Use text slots such as `metricLabel`, `metricValue`, `metricDelta`, `quote`, `attribution`, `eyebrow`, `title`, and `subtitle`.
 - `verify_slide_visual` is the non-mutating check after inserting icons, images, or reusable components. Select the inserted shape before running it when asset-level verification matters.
 - Full slideshow-frame screenshots are not claimed here; PowerPoint verification uses Office.js slide and shape snapshot paths.
+
+## Deck-Quality Validation Workflow
+
+The canonical manual validation scenario for this pipeline is `powerpoint-asset-pipeline-deck-quality` in `addin/scripts/run-office-smoke.mjs`.
+
+Use it from a source checkout with the PowerPoint taskpane sideloaded:
+
+```powershell
+npm --prefix addin run smoke:office:powerpoint -- --list
+npm run smoke:office:powerpoint
+```
+
+The scenario validates one realistic pitch-deck slide composition:
+
+- Search for a built-in icon with `search_icons` and confirm the returned `assetPreview` descriptors.
+- Insert a built-in icon with `insert_icon` without glyph fallback and confirm the result is an image shape with `iconAssetSourceId: "built-in-icon-svg"`.
+- Insert a generated image payload through `generate_image` insertion or `insert_slide_element` / `insert_inline_picture` with `assetSourceId: "generated-image-base64"`.
+- Add a reusable native component with `insert_slide_element` / `add_reusable_component`.
+- Select the inserted assets and run `verify_slide_visual` to confirm asset source IDs, insertion modes, shape IDs, and verification status.
+
+Record the dated PowerPoint host result in `backlog.md` before closing `IMPROVEMENT-004`.
