@@ -35,7 +35,7 @@ import {
   serializeOfficeRuntimeError,
 } from "./shared";
 import { matchesWordHeading, matchesWordParagraph } from "./word-navigate";
-import { countWordOoxmlMathObjects, createWordEquationOoxml } from "./word-equations";
+import { countWordOoxmlMathObjects, createWordEquationOoxml, createWordMathmlEquationOoxml } from "./word-equations";
 
 export type NormalizedWordBreakType =
   | "Page"
@@ -796,17 +796,21 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
     }
 
     if (type === "insertEquation") {
-      const latex = trimString(options.latex ?? action.latex ?? action.content);
-      if (!latex) {
-        throw new Error("word_equation requires a non-empty latex parameter.");
+      const mathml = trimString(options.mathml ?? action.mathml);
+      const latex = trimString(options.latex ?? action.latex ?? (mathml ? undefined : action.content));
+      if (!latex && !mathml) {
+        throw new Error("word_equation requires a non-empty latex or mathml parameter.");
       }
       const display = trimString(options.display ?? action.display) === "inline" ? "inline" : "block";
       const rawNumbering = options.numbering ?? options.equationNumber ?? action.numbering ?? action.equationNumber;
       const numbering = typeof rawNumbering === "string" || typeof rawNumbering === "number" ? rawNumbering : undefined;
-      const equation = createWordEquationOoxml(latex, display, {
+      const equationOptions = {
         numbering,
         caption: trimString(options.caption ?? action.caption),
-      });
+      };
+      const equation = mathml
+        ? createWordMathmlEquationOoxml(mathml, display, equationOptions)
+        : createWordEquationOoxml(latex ?? "", display, equationOptions);
       const beforeOoxml = body.getOoxml();
       await context.sync();
       const beforeMathCount = countWordOoxmlMathObjects(beforeOoxml.value);
@@ -842,10 +846,11 @@ export async function applyWordAction(action: OfficeHostAction): Promise<unknown
         action: type,
         target: action.target,
         placement: action.target?.kind === "document" ? (action.placement ?? "end") : (action.placement ?? "replace"),
-        requestedFormat: "latex",
+        requestedFormat: equation.sourceFormat,
         resolvedFormat: "omml",
         display: equation.display,
-        normalizedLatex: equation.normalizedLatex,
+        normalizedLatex: equation.normalizedLatex || undefined,
+        normalizedMathml: equation.normalizedMathml,
         numbering: equation.numbering,
         caption: equation.caption,
         warnings: equation.warnings.length ? equation.warnings : undefined,

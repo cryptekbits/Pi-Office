@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createOfficeToolExecutor } from "../../../apps/taskpane/src/lib/office-bridge.js";
-import { createWordEquationOoxml, countWordOoxmlMathObjects } from "../../../apps/taskpane/src/lib/office/word-equations.js";
+import {
+  createWordEquationOoxml,
+  createWordMathmlEquationOoxml,
+  countWordOoxmlMathObjects,
+} from "../../../apps/taskpane/src/lib/office/word-equations.js";
 import { WORD_OFFICE_TOOL_DEFINITIONS } from "../../../apps/taskpane/src/lib/office/tools/word.js";
 import { OFFICE_APPEND_SYSTEM_PROMPT } from "../../../packages/pi-office-pack/src/defaults.js";
 import { OFFICE_TOOL_NAMES, TOOL_CATEGORY_MAP, type OfficeToolRequest } from "../../../packages/pi-office-pack/src/protocol.js";
@@ -13,7 +17,11 @@ test("Word equation protocol and registry expose native OfficeMath insertion", (
   const definition = WORD_OFFICE_TOOL_DEFINITIONS.find((tool) => tool.name === "word_equation");
   assert.ok(definition);
   assert.match(definition.description, /OfficeMath/i);
+  assert.match(definition.description, /MathML/i);
   assert.ok(definition.discovery?.capabilityIds?.includes("word.equations"));
+  const schemaText = JSON.stringify(definition.parameters);
+  assert.match(schemaText, /latex/i);
+  assert.match(schemaText, /mathml/i);
 });
 
 test("Word equation bridge dispatches LaTeX as an insertEquation host action", async () => {
@@ -55,6 +63,41 @@ test("Word equation bridge dispatches LaTeX as an insertEquation host action", a
   assert.equal((calls[0]?.action.options as Record<string, unknown>).caption, "Einstein mass-energy relation");
 });
 
+test("Word equation bridge dispatches MathML as an insertEquation host action", async () => {
+  const calls: Array<{ host: string; action: Record<string, unknown> }> = [];
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({ ok: true }),
+    applyHostAction: async (host, action) => {
+      calls.push({ host, action });
+      return { ok: true, action: action.type, requestedFormat: "mathml", verification: { persisted: true, afterMathCount: 1 } };
+    },
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const mathml = "<math><mfrac><msub><mi>a</mi><mn>1</mn></msub><msup><mi>b</mi><mn>2</mn></msup></mfrac></math>";
+  const result = await executeOfficeTool({
+    requestId: "word-equation-mathml",
+    toolName: "word_equation" as OfficeToolRequest["toolName"],
+    host: "word",
+    params: {
+      mathml,
+      display: "inline",
+      placement: "replace",
+      target: { kind: "selection" },
+    },
+  } as OfficeToolRequest);
+
+  assert.equal(result.success, true);
+  assert.equal(calls[0]?.host, "word");
+  assert.equal(calls[0]?.action.type, "insertEquation");
+  assert.equal(calls[0]?.action.content, mathml);
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).mathml, mathml);
+  assert.equal((calls[0]?.action.options as Record<string, unknown>).latex, undefined);
+});
+
 test("LaTeX converter emits persisted Word OfficeMath OOXML evidence", () => {
   const equation = createWordEquationOoxml("\\frac{a_1}{b^2}+\\sqrt{x}", "block");
 
@@ -94,6 +137,53 @@ test("LaTeX converter supports matrix environments and block equation metadata",
   assert.equal(equation.unsupportedCommands.length, 0);
 });
 
+test("MathML converter emits persisted Word OfficeMath OOXML evidence", () => {
+  const equation = createWordMathmlEquationOoxml(
+    `<math>
+      <mrow>
+        <mfrac>
+          <msub><mi>a</mi><mn>1</mn></msub>
+          <msup><mi>b</mi><mn>2</mn></msup>
+        </mfrac>
+        <mo>+</mo>
+        <msqrt><mi>x</mi></msqrt>
+      </mrow>
+    </math>`,
+    "block",
+  );
+
+  assert.match(equation.ooxml, /<m:oMath\b/);
+  assert.match(equation.ooxml, /<m:f\b/);
+  assert.match(equation.ooxml, /<m:rad\b/);
+  assert.match(equation.ooxml, /<m:sSub\b/);
+  assert.match(equation.ooxml, /<m:sSup\b/);
+  assert.equal(equation.sourceFormat, "mathml");
+  assert.equal(equation.normalizedLatex, "");
+  assert.match(equation.normalizedMathml ?? "", /<math>/);
+  assert.equal(countWordOoxmlMathObjects(equation.ooxml), 1);
+  assert.equal(equation.evidence.containsOfficeMath, true);
+  assert.equal(equation.evidence.containsFraction, true);
+  assert.equal(equation.evidence.containsRadical, true);
+  assert.equal(equation.unsupportedCommands.length, 0);
+});
+
+test("MathML converter supports fenced tables and reports unsupported elements", () => {
+  const matrix = createWordMathmlEquationOoxml(
+    `<math><mfenced open="[" close="]"><mtable><mtr><mtd><mi>a</mi></mtd><mtd><mi>b</mi></mtd></mtr></mtable></mfenced></math>`,
+    "block",
+    { numbering: "4" },
+  );
+  assert.match(matrix.ooxml, /<m:m\b/);
+  assert.match(matrix.ooxml, /<m:begChr m:val="\["\/>/);
+  assert.equal(matrix.evidence.containsMatrix, true);
+  assert.equal(matrix.evidence.containsEquationNumber, true);
+
+  const unsupported = createWordMathmlEquationOoxml("<math><mover><mi>x</mi><mo>^</mo></mover></math>", "inline");
+  assert.deepEqual(unsupported.unsupportedCommands, ["mathml:mover"]);
+  assert.match(unsupported.warnings.join("\n"), /Unsupported MathML element <mover>/);
+  assert.match(unsupported.ooxml, />x\^</);
+});
+
 test("inline equation metadata is reported but not inserted visibly", () => {
   const equation = createWordEquationOoxml("x+y", "inline", { numbering: 3, caption: "Inline note" });
 
@@ -107,6 +197,7 @@ test("inline equation metadata is reported but not inserted visibly", () => {
 test("Word equation guidance prevents raw LaTeX HTML insertion claims", () => {
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bword_equation\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /matrices/i);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /MathML/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /numbering\/caption/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\$\$\.\.\.\$\$/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /m:oMath verification/i);

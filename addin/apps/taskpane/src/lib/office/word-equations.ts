@@ -57,7 +57,9 @@ const NAMED_FUNCTIONS = new Set(["sin", "cos", "tan", "log", "ln", "lim", "min",
 
 export interface WordEquationOoxmlResult {
   ooxml: string;
+  sourceFormat: "latex" | "mathml";
   normalizedLatex: string;
+  normalizedMathml?: string | undefined;
   display: "block" | "inline";
   numbering?: string | undefined;
   caption?: string | undefined;
@@ -79,6 +81,10 @@ export interface WordEquationOoxmlOptions {
   caption?: string | undefined;
 }
 
+type XmlNode =
+  | { kind: "text"; text: string }
+  | { kind: "element"; name: string; attributes: Record<string, string>; children: XmlNode[] };
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -94,6 +100,17 @@ function stripMathDelimiters(value: string): string {
     trimmed.match(/^\\\(([\s\S]*?)\\\)$/) ??
     trimmed.match(/^\$([\s\S]*?)\$$/);
   return (delimited?.[1] ?? trimmed).trim();
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#([0-9]+);/g, (_match, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
 }
 
 class LatexMathParser {
@@ -369,6 +386,210 @@ const MATRIX_DELIMITERS: Record<string, { left?: string; right?: string }> = {
   Vmatrix: { left: "‖", right: "‖" },
 };
 
+function parseXmlAttributes(value: string): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  for (const match of value.matchAll(/([:\w.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    attributes[match[1] ?? ""] = decodeXmlEntities(match[2] ?? match[3] ?? "");
+  }
+  return attributes;
+}
+
+function parseMathmlXml(input: string): XmlNode {
+  if (/<!DOCTYPE/i.test(input) || /<!ENTITY/i.test(input)) {
+    throw new Error("word_equation MathML input must not include DOCTYPE or custom entity declarations.");
+  }
+
+  const root: Extract<XmlNode, { kind: "element" }> = { kind: "element", name: "__root__", attributes: {}, children: [] };
+  const stack = [root];
+  const tokenPattern = /<!--[\s\S]*?-->|<!\[CDATA\[([\s\S]*?)\]\]>|<\?[\s\S]*?\?>|<\/?[^>]+>|[^<]+/g;
+  for (const match of input.matchAll(tokenPattern)) {
+    const token = match[0];
+    const parent = stack[stack.length - 1];
+    if (!parent) {
+      throw new Error("word_equation MathML parser reached an invalid XML state.");
+    }
+    if (token.startsWith("<!--") || token.startsWith("<?")) {
+      continue;
+    }
+    if (token.startsWith("<![CDATA[")) {
+      parent.children.push({ kind: "text", text: match[1] ?? "" });
+      continue;
+    }
+    if (!token.startsWith("<")) {
+      parent.children.push({ kind: "text", text: decodeXmlEntities(token) });
+      continue;
+    }
+    if (token.startsWith("</")) {
+      const closingName = token.replace(/^<\//, "").replace(/>$/, "").trim().split(/\s+/)[0]?.toLowerCase();
+      const current = stack.pop();
+      if (!current || current === root || current.name.toLowerCase() !== closingName) {
+        throw new Error(`word_equation MathML input has mismatched closing tag </${closingName || "unknown"}>.`);
+      }
+      continue;
+    }
+    if (/^<!/i.test(token)) {
+      throw new Error("word_equation MathML input contains unsupported XML declarations.");
+    }
+
+    const selfClosing = /\/>$/.test(token);
+    const inner = token.replace(/^</, "").replace(/\/?>$/, "").trim();
+    const tagName = inner.split(/\s+/)[0] ?? "";
+    if (!tagName) {
+      continue;
+    }
+    const attributeText = inner.slice(tagName.length);
+    const element: XmlNode = {
+      kind: "element",
+      name: tagName.replace(/^.*:/, "").toLowerCase(),
+      attributes: parseXmlAttributes(attributeText),
+      children: [],
+    };
+    parent.children.push(element);
+    if (!selfClosing) {
+      stack.push(element);
+    }
+  }
+
+  if (stack.length !== 1) {
+    const open = stack[stack.length - 1];
+    throw new Error(`word_equation MathML input has an unclosed <${open?.name ?? "unknown"}> element.`);
+  }
+
+  const elements = root.children.filter((node): node is Extract<XmlNode, { kind: "element" }> => node.kind === "element");
+  const mathElement = elements[0];
+  if (elements.length !== 1 || !mathElement || mathElement.name !== "math") {
+    throw new Error("word_equation MathML input must contain one top-level <math> element.");
+  }
+  return mathElement;
+}
+
+function compactMathml(input: string): string {
+  return input.trim().replace(/>\s+</g, "><").replace(/\s+/g, " ");
+}
+
+function textContent(node: XmlNode): string {
+  if (node.kind === "text") {
+    return node.text;
+  }
+  return node.children.map(textContent).join("");
+}
+
+function mathmlChildrenToNodes(
+  children: XmlNode[],
+  warnings: Set<string>,
+  unsupportedCommands: Set<string>,
+): MathNode[] {
+  return children.flatMap((child) => mathmlNodeToNodes(child, warnings, unsupportedCommands));
+}
+
+function firstElementChildren(node: Extract<XmlNode, { kind: "element" }>): Array<Extract<XmlNode, { kind: "element" }>> {
+  return node.children.filter((child): child is Extract<XmlNode, { kind: "element" }> => child.kind === "element");
+}
+
+function mathmlElementGroup(
+  node: Extract<XmlNode, { kind: "element" }>,
+  warnings: Set<string>,
+  unsupportedCommands: Set<string>,
+): MathNode {
+  const children = mathmlChildrenToNodes(node.children, warnings, unsupportedCommands);
+  return { kind: "group", children: children.length ? children : [{ kind: "text", text: "" }] };
+}
+
+function mathmlTableRows(
+  node: Extract<XmlNode, { kind: "element" }>,
+  warnings: Set<string>,
+  unsupportedCommands: Set<string>,
+): MathNode[][][] {
+  const rows = firstElementChildren(node)
+    .filter((row) => row.name === "mtr" || row.name === "mlabeledtr")
+    .map((row) =>
+      firstElementChildren(row)
+        .filter((cell) => cell.name === "mtd")
+        .map((cell): MathNode[] => {
+          const parsed = mathmlChildrenToNodes(cell.children, warnings, unsupportedCommands);
+          return parsed.length ? parsed : [{ kind: "text", text: "" }];
+        }),
+    )
+    .filter((row) => row.length);
+  if (!rows.length) {
+    warnings.add("MathML mtable did not include any mtr/mtd cells; inserted an empty matrix cell.");
+    return [[[{ kind: "text", text: "" }]]];
+  }
+  return rows;
+}
+
+function mathmlNodeToNodes(
+  node: XmlNode,
+  warnings: Set<string>,
+  unsupportedCommands: Set<string>,
+): MathNode[] {
+  if (node.kind === "text") {
+    return /\S/.test(node.text) ? [{ kind: "text", text: node.text.replace(/\s+/g, " ") }] : [];
+  }
+
+  switch (node.name) {
+    case "math":
+    case "mrow":
+    case "semantics":
+    case "mstyle":
+    case "mpadded":
+    case "menclose":
+      return mathmlChildrenToNodes(node.children, warnings, unsupportedCommands);
+    case "mi":
+    case "mn":
+    case "mo":
+    case "mtext": {
+      const value = node.name === "mtext" ? textContent(node) : textContent(node).trim();
+      return [{ kind: "text", text: value }];
+    }
+    case "mfrac": {
+      const children = firstElementChildren(node);
+      if (children.length < 2) {
+        warnings.add("MathML mfrac requires numerator and denominator; inserted available content as plain OfficeMath.");
+        return mathmlChildrenToNodes(node.children, warnings, unsupportedCommands);
+      }
+      return [{
+        kind: "fraction",
+        numerator: mathmlNodeToNodes(children[0] as XmlNode, warnings, unsupportedCommands),
+        denominator: mathmlNodeToNodes(children[1] as XmlNode, warnings, unsupportedCommands),
+      }];
+    }
+    case "msqrt":
+      return [{ kind: "radical", body: mathmlChildrenToNodes(node.children, warnings, unsupportedCommands) }];
+    case "msub":
+    case "msup":
+    case "msubsup": {
+      const children = firstElementChildren(node);
+      const base = children[0] ? mathmlElementGroup(children[0], warnings, unsupportedCommands) : { kind: "text" as const, text: "" };
+      const subscript = node.name === "msub" || node.name === "msubsup"
+        ? (children[1] ? mathmlNodeToNodes(children[1], warnings, unsupportedCommands) : [{ kind: "text" as const, text: "" }])
+        : undefined;
+      const superscriptChild = node.name === "msubsup" ? children[2] : node.name === "msup" ? children[1] : undefined;
+      const superscript = superscriptChild
+        ? mathmlNodeToNodes(superscriptChild, warnings, unsupportedCommands)
+        : node.name === "msup"
+          ? [{ kind: "text" as const, text: "" }]
+          : undefined;
+      return [{ kind: "script", base, subscript, superscript }];
+    }
+    case "mtable":
+      return [{ kind: "matrix", rows: mathmlTableRows(node, warnings, unsupportedCommands) }];
+    case "mfenced": {
+      const open = node.attributes.open || "(";
+      const close = node.attributes.close || ")";
+      const children = mathmlChildrenToNodes(node.children, warnings, unsupportedCommands);
+      if (children.length === 1 && children[0]?.kind === "matrix") {
+        return [{ ...children[0], leftDelimiter: open, rightDelimiter: close }];
+      }
+      return [{ kind: "text", text: open }, ...children, { kind: "text", text: close }];
+    }
+    default:
+      unsupportedCommands.add(`mathml:${node.name}`);
+      warnings.add(`Unsupported MathML element <${node.name}> was preserved as plain OfficeMath text where possible.`);
+      return textContent(node).trim() ? [{ kind: "text", text: textContent(node).trim() }] : [];
+  }
+}
+
 function renderNodes(nodes: MathNode[]): string {
   return nodes.map(renderNode).join("");
 }
@@ -453,7 +674,37 @@ export function createWordEquationOoxml(
 
   const parser = new LatexMathParser(normalizedLatex);
   const nodes = parser.parse();
-  const math = renderNodes(nodes);
+  return buildWordEquationOoxml({
+    sourceFormat: "latex",
+    normalizedLatex,
+    nodes,
+    display,
+    options,
+    warnings: parser.warnings,
+    unsupportedCommands: parser.unsupportedCommands,
+  });
+}
+
+function buildWordEquationOoxml({
+  sourceFormat,
+  normalizedLatex,
+  normalizedMathml,
+  nodes,
+  display,
+  options,
+  warnings,
+  unsupportedCommands,
+}: {
+  sourceFormat: "latex" | "mathml";
+  normalizedLatex: string;
+  normalizedMathml?: string | undefined;
+  nodes: MathNode[];
+  display: "block" | "inline";
+  options: WordEquationOoxmlOptions;
+  warnings: Set<string>;
+  unsupportedCommands: Set<string>;
+}): WordEquationOoxmlResult {
+  const math = renderNodes(nodes.length ? nodes : [{ kind: "text", text: "" }]);
   const displayMode = display === "inline" ? "inline" : "block";
   const oMath = `<m:oMath xmlns:m="${OFFICEMATH_NS}">${math}</m:oMath>`;
   const numbering = normalizeEquationNumber(options.numbering);
@@ -462,7 +713,7 @@ export function createWordEquationOoxml(
     ? oMath
     : `<w:p xmlns:w="${WORDPROCESSINGML_NS}" xmlns:m="${OFFICEMATH_NS}"><m:oMathPara>${oMath}</m:oMathPara></w:p>`;
   if (displayMode === "inline" && (numbering || caption)) {
-    parser.warnings.add("Equation numbering and captions are only inserted for block equations; inline metadata was returned but not written visibly.");
+    warnings.add("Equation numbering and captions are only inserted for block equations; inline metadata was returned but not written visibly.");
   }
   if (displayMode === "block") {
     if (numbering) {
@@ -475,12 +726,14 @@ export function createWordEquationOoxml(
 
   return {
     ooxml,
+    sourceFormat,
     normalizedLatex,
+    normalizedMathml,
     display: displayMode,
     numbering,
     caption,
-    warnings: Array.from(parser.warnings),
-    unsupportedCommands: Array.from(parser.unsupportedCommands),
+    warnings: Array.from(warnings),
+    unsupportedCommands: Array.from(unsupportedCommands),
     evidence: {
       containsOfficeMath: true,
       containsFraction: /<m:f\b/.test(ooxml),
@@ -491,4 +744,34 @@ export function createWordEquationOoxml(
       containsCaption: Boolean(caption && displayMode === "block"),
     },
   };
+}
+
+export function createWordMathmlEquationOoxml(
+  mathml: string,
+  display: "block" | "inline" = "block",
+  options: WordEquationOoxmlOptions = {},
+): WordEquationOoxmlResult {
+  const normalizedMathml = compactMathml(mathml);
+  if (!normalizedMathml) {
+    throw new Error("word_equation requires non-empty MathML content.");
+  }
+
+  const warnings = new Set<string>();
+  const unsupportedCommands = new Set<string>();
+  const root = parseMathmlXml(normalizedMathml);
+  const nodes = mathmlNodeToNodes(root, warnings, unsupportedCommands);
+  if (!nodes.length) {
+    warnings.add("MathML input did not contain supported visible equation content; inserted an empty OfficeMath object.");
+  }
+
+  return buildWordEquationOoxml({
+    sourceFormat: "mathml",
+    normalizedLatex: "",
+    normalizedMathml,
+    nodes,
+    display,
+    options,
+    warnings,
+    unsupportedCommands,
+  });
 }

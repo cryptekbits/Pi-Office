@@ -356,21 +356,23 @@ export async function executeWordOfficeTool(
             error: "word_equation is only available for Word.",
           };
         }
-        const latex = trimString(request.params.latex ?? request.params.content ?? request.params.text);
-        if (!latex) {
+        const mathml = trimString(request.params.mathml);
+        const latex = trimString(request.params.latex ?? (mathml ? undefined : request.params.content ?? request.params.text));
+        if (!latex && !mathml) {
           return {
             requestId: request.requestId,
             success: false,
-            error: "word_equation requires a non-empty latex parameter.",
+            error: "word_equation requires a non-empty latex or mathml parameter.",
           };
         }
         const result = await dependencies.applyHostAction(request.host, {
           type: "insertEquation",
           target: request.params.target as never,
-          content: latex,
+          content: mathml ?? latex,
           placement: typeof request.params.placement === "string" ? request.params.placement : undefined,
           options: {
             latex,
+            mathml,
             display: request.params.display,
             altText: request.params.altText,
             numbering: request.params.numbering ?? request.params.equationNumber,
