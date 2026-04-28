@@ -449,6 +449,24 @@ test("PowerPoint table actions stay routed through the table action domain", () 
   }
 });
 
+test("PowerPoint media actions stay routed through the media action domain", () => {
+  const powerPointActionsSource = readProjectFile("apps/taskpane/src/lib/office/powerpoint-actions.ts");
+  const mediaActionsSource = readProjectFile("apps/taskpane/src/lib/office/powerpoint-actions/media.ts");
+  const mediaActionNames = [
+    "searchIcons",
+    "insertIcon",
+    "copyImageBetweenSlides",
+    "insertInlinePicture",
+  ];
+
+  assert.match(powerPointActionsSource, /from "\.\/powerpoint-actions\/media"/);
+  assert.match(powerPointActionsSource, /isPowerPointMediaAction\(type\)/);
+  assert.match(powerPointActionsSource, /applyPowerPointMediaAction\(action, type, options\)/);
+  for (const actionName of mediaActionNames) {
+    assert.match(mediaActionsSource, new RegExp(`"${actionName}"`));
+  }
+});
+
 test("deferred Word tool bridge action types are implemented by applyWordAction", async () => {
   const wordActionsSource = readProjectFile("apps/taskpane/src/lib/office/word-actions.ts");
   const dispatchedActions: string[] = [];
