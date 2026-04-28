@@ -813,24 +813,24 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Future maintainers can find the governance and license posture in repo docs.
   - Notes/Evidence: Added `LICENSE`, `.github/CODEOWNERS`, `docs/repository-governance.md`, README license/governance links, package metadata, and contribution licensing notes. `gh api repos/cryptekbits/Pi-Office/branches/main/protection` showed classic branch protection was absent, and a classic protection attempt with named user restrictions failed with `Only organization repositories can have users and team restrictions`. The applied repository ruleset uses `RepositoryRole` actor ID `5` (`Admin`) as bypass, because GitHub personal repos cannot use `OrganizationAdmin` and rulesets do not expose named-user bypass. Verification: `gh ruleset view "Protect main" --repo cryptekbits/Pi-Office`, `gh ruleset check main --repo cryptekbits/Pi-Office`, and `git diff --check`.
 
-- [ ] FEATURE-001: Restore saved-document workspace and file tools with policy guards
+- [x] FEATURE-001: Restore saved-document workspace and file tools with policy guards
   - Category: Feature
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: `docs/TASKPANE_INDEPENDENT_TRANSITION_REMEDIATION_PLAN.md` WS3; parked/deferred by stakeholder.
   - Details: Saved-document mode should eventually expose workspace-aware filesystem/coding-agent class capabilities, but only with strict saved-folder binding and policy controls. Unsaved documents must remain without local filesystem access. Current architecture treats the optional companion as the local file/MCP capability provider, so this task must align with that direction and avoid resurrecting companion-era runtime assumptions.
   - Dependencies: SECURITY-001, BUG-003, and any final architecture decision about optional companion versus browser-only file tooling.
   - Subtasks:
-    - [ ] Confirm the intended saved-document workspace capability boundary and whether write/edit tools remain out of scope.
-    - [ ] Bind workspace root to the saved document folder, not arbitrary repo or user profile folders.
-    - [ ] Enforce root guards for read/list/search operations and reject traversal or absolute escape attempts.
-    - [ ] Wire tool permission/autonomy policy so local file actions require the intended approvals.
-    - [ ] Update context bar, composer hints, and system prompt text to reflect actual availability.
+    - [x] Confirm the intended saved-document workspace capability boundary and whether write/edit tools remain out of scope.
+    - [x] Bind workspace root to the saved document folder, not arbitrary repo or user profile folders.
+    - [x] Enforce root guards for read/list/search operations and reject traversal or absolute escape attempts.
+    - [x] Wire tool permission/autonomy policy so local file actions require the intended approvals.
+    - [x] Update context bar, composer hints, and system prompt text to reflect actual availability.
   - Acceptance Criteria:
-    - [ ] Unsaved documents cannot access local files.
-    - [ ] Saved documents can access only the allowed document-folder scope when the required local capability provider is connected.
-    - [ ] Root-guard tests cover normal paths, traversal attempts, absolute paths, symlinks/junctions if supported, and missing folders.
-  - Notes/Evidence: Transition plan marks workspace runtime restoration as parked/deferred; keep this task open until stakeholder explicitly removes or completes the feature.
+    - [x] Unsaved documents cannot access local files.
+    - [x] Saved documents can access only the allowed document-folder scope when the required local capability provider is connected.
+    - [x] Root-guard tests cover normal paths, traversal attempts, absolute paths, symlinks/junctions if supported, and missing folders.
+  - Notes/Evidence: Closed 2026-04-28. Existing companion routing binds local file capability to the saved document folder and keeps unsaved documents without local file access; `ContextBar`, composer hints, Settings copy, capability routing, and prompt inventory already expose those tools only when the companion reports the saved-document capability. This slice hardened `companion/src/file-tools.ts` with realpath-based containment checks, support for `file_path` aliases, absolute-inside normalization, and fail-closed rejection for traversal, absolute outside paths, missing roots, and symlink/junction escapes. Added `addin/scripts/office-tests/src/companion-file-tools.test.ts` covering normal reads, absolute inside paths, valid `..`-prefixed filenames, traversal attempts, absolute outside paths, unsaved/missing-root access, and symlink or junction escapes. Validation: companion typecheck, add-in typecheck, Office tests with `companion-file-tools capability-routing transition-regressions` (270 tests), root build, bundle budget, manifest validation, and whitespace checks.
 
 - [ ] FEATURE-002: Define and implement provider/auth matrix for subscription-backed and API-key-backed AI access
   - Category: Feature

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { resolve, relative, sep } from "node:path";
+import { realpath } from "node:fs/promises";
+import { isAbsolute, resolve, relative, sep } from "node:path";
 import {
   createFindTool,
   createGrepTool,
@@ -9,35 +10,55 @@ import {
 
 type FileToolName = "read" | "grep" | "find" | "ls";
 
-function normalizePathForTool(rootDir: string, candidate: unknown): string | undefined {
+function isInsideRoot(rootDir: string, candidate: string): boolean {
+  const relativePath = relative(rootDir, candidate);
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
+  );
+}
+
+async function normalizePathForTool(rootDir: string, candidate: unknown): Promise<string | undefined> {
   if (typeof candidate !== "string" || !candidate.trim()) {
     return undefined;
   }
 
   const requested = candidate.trim();
-  const resolvedRoot = resolve(rootDir);
+  const resolvedRoot = await realpath(rootDir);
   const resolvedPath = resolve(resolvedRoot, requested);
-  const relativePath = relative(resolvedRoot, resolvedPath);
-  if (
-    relativePath.startsWith("..") ||
-    relativePath.includes(`..${sep}`) ||
-    relativePath === ".." ||
-    resolve(resolvedRoot, relativePath) !== resolvedPath
-  ) {
+  if (!isInsideRoot(resolvedRoot, resolvedPath)) {
     throw new Error("Requested path must stay inside the saved document folder.");
   }
 
-  return relativePath === "" ? "." : relativePath;
+  let realTarget: string;
+  try {
+    realTarget = await realpath(resolvedPath);
+  } catch {
+    throw new Error("Requested path must exist inside the saved document folder.");
+  }
+  if (!isInsideRoot(resolvedRoot, realTarget)) {
+    throw new Error("Requested path must stay inside the saved document folder after resolving symlinks.");
+  }
+
+  const relativePath = relative(resolvedRoot, realTarget);
+  return relativePath === "" ? "." : relativePath.split(sep).join("/");
 }
 
-function sanitizeParams(rootDir: string, toolName: FileToolName, raw: Record<string, unknown>): Record<string, unknown> {
+async function sanitizeParams(
+  rootDir: string,
+  toolName: FileToolName,
+  raw: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   const next = { ...raw };
-  if ("path" in next) {
-    const normalized = normalizePathForTool(rootDir, next.path);
+  const requestedPath = "path" in next ? next.path : next.file_path;
+  if (requestedPath !== undefined) {
+    const normalized = await normalizePathForTool(rootDir, requestedPath);
     if (normalized) {
       next.path = normalized;
+      delete next.file_path;
     } else {
       delete next.path;
+      delete next.file_path;
     }
   }
 
@@ -66,5 +87,5 @@ export async function executeFileTool(
           ? createFindTool(rootDir)
           : createLsTool(rootDir);
 
-  return tool.execute(randomUUID(), sanitizeParams(rootDir, toolName, params) as never);
+  return tool.execute(randomUUID(), await sanitizeParams(rootDir, toolName, params) as never);
 }

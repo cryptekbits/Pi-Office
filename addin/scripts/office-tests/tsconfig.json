@@ -22,6 +22,7 @@
     "../../apps/taskpane/src/lib/office-refresh-policy.ts",
     "../../apps/taskpane/src/lib/runtime/**/*.ts",
     "../../../companion/src/http.ts",
+    "../../../companion/src/file-tools.ts",
     "../../../companion/src/runtime-diagnostics.ts",
     "../../../companion/src/shell-sandbox.ts",
     "./src/**/*.ts"
