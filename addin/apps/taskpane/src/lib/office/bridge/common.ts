@@ -420,11 +420,11 @@ function toPowerPointVisualVerificationPayload(payload: unknown, maxImages: numb
       selectedShapeDescriptors,
       assetVerification: {
         selectedAssetCount: verifiedAssets.length,
-          selectedAssets: verifiedAssets,
-          note:
-            verifiedAssets.length > 0
-            ? "Selected PowerPoint image assets were classified with available shape and asset-source metadata."
-            : "No selected image asset metadata was detected; select the inserted icon/image shape and rerun verify_slide_visual for asset checks.",
+        selectedAssets: verifiedAssets,
+        note:
+          verifiedAssets.length > 0
+            ? "Selected PowerPoint visual assets were classified with available shape and asset-source metadata."
+            : "No selected visual asset metadata was detected; select the inserted icon/image/component shape and rerun verify_slide_visual for asset checks.",
       },
       formatting: {
         selectedSlides: formatting.selectedSlides,
@@ -1246,6 +1246,11 @@ function toPowerPointElementInsertActionType(value: string | undefined): string 
     case "insertimage":
     case "addimage":
       return "insertInlinePicture";
+    case "addreusablecomponent":
+    case "insertreusablecomponent":
+    case "addslidecomponent":
+    case "insertslidecomponent":
+      return "addReusableComponent";
     default:
       return undefined;
   }

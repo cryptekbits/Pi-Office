@@ -224,6 +224,7 @@ export async function applyPowerPointMediaAction(
       preferredInsertionFormat: "svg-rasterized-png",
       source: "pi-office-built-in-svg-icon-catalog",
     }));
+    const { getPowerPointReusableSlideComponentCatalog } = await import("../powerpoint-components");
 
     return {
       ok: true,
@@ -235,6 +236,7 @@ export async function applyPowerPointMediaAction(
       icons,
       catalog: "pi-office-built-in-svg-icon-catalog",
       supportedAssetSources: getPowerPointAssetSourceCatalog(),
+      reusableComponents: getPowerPointReusableSlideComponentCatalog(),
       note: "Use insertIcon with iconId to place a selected icon on the target slide.",
     };
   }

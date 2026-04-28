@@ -49,10 +49,20 @@ import {
   loadPowerPointSlideContentSummaries,
   applyPowerPointTextFrameProperties,
 } from "./powerpoint-helpers";
-import { applyPowerPointMediaAction, isPowerPointMediaAction } from "./powerpoint-actions/media";
 import { applyPowerPointPackageAction, isPowerPointPackageAction } from "./powerpoint-actions/package";
 import { applyPowerPointSlideStructureAction, isPowerPointSlideStructureAction } from "./powerpoint-actions/slide-structure";
 import { applyPowerPointTableAction, isPowerPointTableAction } from "./powerpoint-actions/tables";
+
+const POWERPOINT_MEDIA_ACTIONS = new Set([
+  "searchIcons",
+  "insertIcon",
+  "copyImageBetweenSlides",
+  "insertInlinePicture",
+]);
+
+function isPowerPointMediaAction(type: string): boolean {
+  return POWERPOINT_MEDIA_ACTIONS.has(type);
+}
 
 export async function applyPowerPointAction(action: OfficeHostAction): Promise<unknown> {
   const type = trimString(action.type) ?? "insertText";
@@ -108,7 +118,13 @@ export async function applyPowerPointAction(action: OfficeHostAction): Promise<u
   }
 
   if (isPowerPointMediaAction(type)) {
+    const { applyPowerPointMediaAction } = await import("./powerpoint-actions/media");
     return applyPowerPointMediaAction(action, type, options);
+  }
+
+  if (type === "addReusableComponent") {
+    const { applyPowerPointComponentAction } = await import("./powerpoint-actions/components");
+    return PowerPoint.run((context) => applyPowerPointComponentAction(context, action, type, options));
   }
 
   return PowerPoint.run(async (context) => {

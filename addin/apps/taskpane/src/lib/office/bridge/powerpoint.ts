@@ -154,7 +154,7 @@ export async function executePowerPointOfficeTool(
             requestId: request.requestId,
             success: false,
             error:
-              "insert_slide_element requires a supported operation (add_text_box, add_geometric_shape, add_table, add_line, add_process_flow, add_simple_diagram, insert_inline_picture).",
+              "insert_slide_element requires a supported operation (add_text_box, add_geometric_shape, add_table, add_line, add_process_flow, add_simple_diagram, insert_inline_picture, add_reusable_component).",
           };
         }
 

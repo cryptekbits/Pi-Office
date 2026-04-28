@@ -488,13 +488,14 @@ const duplicateSlideParams = Type.Object({
 const insertSlideElementParams = Type.Object({
   operation: Type.String({
     description:
-      "PowerPoint element insertion operation (add_text_box, add_geometric_shape, add_table, add_line, add_process_flow, add_simple_diagram, insert_inline_picture).",
+      "PowerPoint element insertion operation (add_text_box, add_geometric_shape, add_table, add_line, add_process_flow, add_simple_diagram, insert_inline_picture, add_reusable_component).",
   }),
   slideId: Type.Optional(Type.String({ description: "Target slide ID for inserting the new element." })),
   slideIndex: Type.Optional(Type.Number({ minimum: 1, description: "One-based slide index target when slideId is not known." })),
   shapeId: Type.Optional(Type.String({ description: "Optional shape target for grouped operations." })),
   content: Type.Optional(Type.String({ description: "Primary text payload (or base64 image payload for insert_inline_picture)." })),
   text: Type.Optional(Type.String({ description: "Alias for content when inserting text." })),
+  componentId: Type.Optional(Type.String({ description: "Reusable component ID for add_reusable_component (metric-card, quote-callout, section-divider)." })),
   assetSourceId: Type.Optional(Type.String({ description: "Optional image asset source ID, such as generated-image-base64 when inserting a generated image payload." })),
   assetMimeType: Type.Optional(Type.String({ description: "Optional image MIME type for insert_inline_picture payloads. Defaults to image/png." })),
   altText: Type.Optional(Type.String({ description: "Optional accessibility alt text for inserted image payloads." })),

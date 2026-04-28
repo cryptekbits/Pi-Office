@@ -459,7 +459,7 @@ test("PowerPoint media actions stay routed through the media action domain", () 
     "insertInlinePicture",
   ];
 
-  assert.match(powerPointActionsSource, /from "\.\/powerpoint-actions\/media"/);
+  assert.match(powerPointActionsSource, /await import\("\.\/powerpoint-actions\/media"\)/);
   assert.match(powerPointActionsSource, /isPowerPointMediaAction\(type\)/);
   assert.match(powerPointActionsSource, /applyPowerPointMediaAction\(action, type, options\)/);
   for (const actionName of mediaActionNames) {

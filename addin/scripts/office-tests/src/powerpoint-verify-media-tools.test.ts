@@ -9,6 +9,7 @@ import {
   getPowerPointAssetSourceCatalog,
   inferPowerPointAssetDescriptor,
 } from "../../../apps/taskpane/src/lib/office/powerpoint-assets.js";
+import { getPowerPointReusableSlideComponentCatalog } from "../../../apps/taskpane/src/lib/office/powerpoint-components.js";
 import { buildPowerPointIconSvg, resolvePowerPointIcon, searchPowerPointIcons } from "../../../apps/taskpane/src/lib/office/powerpoint-icons.js";
 import { createOfficeExtension } from "../../../packages/pi-office-pack/src/extension.js";
 import {
@@ -133,6 +134,8 @@ test("PowerPoint icon insertion path prefers image shapes and gates glyph fallba
   assert.match(mediaSource, /iconAssetSourceId: "built-in-icon-svg"/);
   assert.match(mediaSource, /assetSourceId: "powerpoint-shape-snapshot"/);
   assert.match(mediaSource, /normalizePowerPointImageAssetSourceId/);
+  assert.match(mediaSource, /await import\("\.\.\/powerpoint-components"\)/);
+  assert.match(mediaSource, /reusableComponents: getPowerPointReusableSlideComponentCatalog\(\)/);
   assert.match(mediaSource, /Pi-Office generated image from generate_image/);
   assert.match(mediaSource, /shapes\.addImage\(`data:\$\{asset\.mimeType\};base64,\$\{asset\.data\}`\)/);
   assert.match(mediaSource, /allowGlyphFallback=true/);
@@ -146,7 +149,17 @@ test("PowerPoint asset pipeline defines source contracts and infers inserted ico
   assert.ok(sourceCatalog.some((source) => source.id === "provided-image-base64" && source.status === "available"));
   assert.ok(sourceCatalog.some((source) => source.id === "selected-image-shape" && source.status === "available"));
   assert.ok(sourceCatalog.some((source) => source.id === "generated-image-base64" && source.status === "available-through-composition"));
-  assert.ok(sourceCatalog.some((source) => source.id === "reusable-slide-component" && source.status === "planned"));
+  assert.ok(sourceCatalog.some((source) => source.id === "reusable-slide-component" && source.status === "available"));
+  assert.ok(sourceCatalog.some((source) =>
+    source.id === "reusable-slide-component" &&
+    source.inputFormats.includes("metric-card") &&
+    source.inputFormats.includes("quote-callout") &&
+    source.inputFormats.includes("section-divider"),
+  ));
+
+  const componentCatalog = getPowerPointReusableSlideComponentCatalog();
+  assert.deepEqual(componentCatalog.map((component) => component.id), ["metric-card", "quote-callout", "section-divider"]);
+  assert.ok(componentCatalog.every((component) => component.insertionPath.includes("add_reusable_component")));
 
   const inferred = inferPowerPointAssetDescriptor({
     id: "shape-icon-1",
@@ -176,6 +189,21 @@ test("PowerPoint asset pipeline defines source contracts and infers inserted ico
   assert.equal(generated?.expectedInsertionMode, "image-shape");
   assert.equal(generated?.verificationStatus, "verified-image-shape");
 
+  const component = inferPowerPointAssetDescriptor({
+    id: "shape-component-1",
+    name: "Component Metric card - Value",
+    contentKind: "text",
+    slideId: "slide-2",
+    slideIndex: 2,
+    altTextTitle: "Metric card value",
+    altTextDescription: "Pi-Office reusable slide component metric-card: value.",
+  });
+  assert.equal(component?.sourceId, "reusable-slide-component");
+  assert.equal(component?.componentId, "metric-card");
+  assert.equal(component?.componentPart, "value");
+  assert.equal(component?.expectedInsertionMode, "native-shape-component");
+  assert.equal(component?.verificationStatus, "verified-component-shape");
+
   const assetDocPath = join(process.cwd(), "..", "docs", "powerpoint-asset-pipeline.md");
   const assetDocText = readFileSync(assetDocPath, "utf8");
   assert.match(assetDocText, /Built-in SVG icon catalog/);
@@ -183,6 +211,7 @@ test("PowerPoint asset pipeline defines source contracts and infers inserted ico
   assert.match(assetDocText, /assetSourceId: "generated-image-base64"/);
   assert.match(assetDocText, /Selected PowerPoint image shape/);
   assert.match(assetDocText, /Reusable slide component/);
+  assert.match(assetDocText, /add_reusable_component/);
   assert.match(assetDocText, /verify_slide_visual/);
 });
 
@@ -204,6 +233,28 @@ test("generated image insertion carries PowerPoint asset provenance through runt
   assert.match(imageBlockSource, /assetSourceId: "generated-image-base64"/);
   assert.match(imageBlockSource, /generatedImageModel: modelName/);
   assert.match(imageBlockSource, /generatedImageWidth: width/);
+});
+
+test("reusable PowerPoint components are native-shape assets with verification metadata", () => {
+  const componentPath = join(process.cwd(), "apps", "taskpane", "src", "lib", "office", "powerpoint-actions", "components.ts");
+  const componentSource = readFileSync(componentPath, "utf8");
+  assert.match(componentSource, /POWERPOINT_COMPONENT_ACTIONS = new Set\(\["addReusableComponent"\]\)/);
+  assert.match(componentSource, /assetSourceId: "reusable-slide-component"/);
+  assert.match(componentSource, /insertionMode: "native-shape-component"/);
+  assert.match(componentSource, /Pi-Office reusable slide component/);
+  assert.match(componentSource, /metric-card/);
+  assert.match(componentSource, /quote-callout/);
+  assert.match(componentSource, /section-divider/);
+
+  const bridgePath = join(process.cwd(), "apps", "taskpane", "src", "lib", "office", "bridge", "common.ts");
+  const bridgeSource = readFileSync(bridgePath, "utf8");
+  assert.match(bridgeSource, /addreusablecomponent/);
+  assert.match(bridgeSource, /return "addReusableComponent"/);
+
+  const toolsPath = join(process.cwd(), "apps", "taskpane", "src", "lib", "office", "tools", "powerpoint.ts");
+  const toolsSource = readFileSync(toolsPath, "utf8");
+  assert.match(toolsSource, /add_reusable_component/);
+  assert.match(toolsSource, /componentId/);
 });
 
 async function loadKernelModule() {
@@ -575,6 +626,7 @@ test("PowerPoint guidance aligns chart/media/icon and verification tools with su
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bverify_slides\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /\bverify_slide_visual\b/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /generated-image-base64/);
+  assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /add_reusable_component/);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /serialized|XML|OOXML/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /does not edit slide masters/i);
   assert.match(OFFICE_APPEND_SYSTEM_PROMPT, /slide snapshot|visual verification/i);
@@ -588,6 +640,7 @@ test("PowerPoint guidance aligns chart/media/icon and verification tools with su
   assert.match(officeHostSkillText, /\bverify_slides\b/);
   assert.match(officeHostSkillText, /\bverify_slide_visual\b/);
   assert.match(officeHostSkillText, /generated-image-base64/);
+  assert.match(officeHostSkillText, /add_reusable_component/);
   assert.match(officeHostSkillText, /serialized|XML|OOXML/i);
   assert.match(officeHostSkillText, /does not edit slide masters/i);
   assert.match(officeHostSkillText, /slide snapshot|visual verification/i);

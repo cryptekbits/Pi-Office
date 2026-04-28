@@ -385,3 +385,36 @@ test("createOfficeToolExecutor dispatches first-class PowerPoint content tools a
   assert.equal(unsupportedMasterResult.success, false);
   assert.match(String(unsupportedMasterResult.error), /does not edit slide masters/i);
 });
+
+test("createOfficeToolExecutor maps reusable PowerPoint components through insert_slide_element", async () => {
+  const calls: Array<{ host: string; action: unknown }> = [];
+  const executeOfficeTool = createOfficeToolExecutor({
+    collectOfficeContext: async () => ({ ok: true }),
+    applyHostAction: async (host, action) => {
+      calls.push({ host, action });
+      return { ok: true, host, action };
+    },
+    navigateOfficeAnchor: async () => ({ ok: true }),
+    readDocumentSection: async () => ({ ok: true }),
+    executeOfficeJs: async () => ({ ok: true }),
+    proposeEdits: async () => ({ ok: true }),
+  });
+
+  const result = await executeOfficeTool({
+    requestId: "ppt-component-1",
+    toolName: "insert_slide_element" as OfficeToolRequest["toolName"],
+    host: "powerpoint",
+    params: {
+      operation: "add_reusable_component",
+      slideId: "slide-1",
+      componentId: "metric-card",
+      metricLabel: "ARR",
+      metricValue: "$12.4M",
+      metricDelta: "+18% YoY",
+    },
+  } as OfficeToolRequest);
+
+  assert.equal(result.success, true);
+  assert.equal((calls[0]?.action as { type: string }).type, "addReusableComponent");
+  assert.deepEqual((calls[0]?.action as { options: Record<string, unknown> }).options.componentId, "metric-card");
+});

@@ -21,12 +21,21 @@ export interface PowerPointVerifiedAssetDescriptor {
   sourceId: string;
   sourceLabel: string;
   assetName?: string | undefined;
+  componentId?: string | undefined;
+  componentPart?: string | undefined;
   expectedInsertionMode: string;
-  verificationStatus: "verified-image-shape" | "selected-image-shape" | "fallback-or-unknown";
+  verificationStatus: "verified-image-shape" | "selected-image-shape" | "verified-component-shape" | "fallback-or-unknown";
   fallbackStrategy?: string | undefined;
 }
 
 const GENERATED_IMAGE_ALT_PREFIX = "Pi-Office generated image from generate_image.";
+
+const POWERPOINT_REUSABLE_COMPONENT_IDS = ["metric-card", "quote-callout", "section-divider"];
+const POWERPOINT_REUSABLE_COMPONENT_LABELS: Record<string, string> = {
+  "metric-card": "Metric card",
+  "quote-callout": "Quote callout",
+  "section-divider": "Section divider",
+};
 
 export const POWERPOINT_ASSET_SOURCE_CATALOG: readonly PowerPointAssetSourceDefinition[] = [
   {
@@ -73,10 +82,10 @@ export const POWERPOINT_ASSET_SOURCE_CATALOG: readonly PowerPointAssetSourceDefi
   {
     id: "reusable-slide-component",
     label: "Reusable slide component",
-    status: "planned",
-    inputFormats: ["future Pi-Office component package"],
-    insertionPath: "Planned; use native shapes, tables, charts, icons, or images for now.",
-    verificationPath: "Planned; current verification remains slide/shape snapshots plus structure metadata.",
+    status: "available",
+    inputFormats: [...POWERPOINT_REUSABLE_COMPONENT_IDS],
+    insertionPath: "Native shape components inserted through insert_slide_element operation add_reusable_component.",
+    verificationPath: "verify_slide_visual can classify selected component shapes from Pi-Office alt text metadata.",
   },
 ];
 
@@ -107,6 +116,7 @@ export function inferPowerPointAssetDescriptor(shape: unknown): PowerPointVerifi
   const iconMatch = altTextDescription?.match(/^Pi-Office built-in (.+) icon from the SVG icon catalog\.$/i);
   const iconNameMatch = shapeName?.match(/^Icon\s+(.+)$/i);
   const generatedImageMatch = altTextDescription?.startsWith(GENERATED_IMAGE_ALT_PREFIX);
+  const reusableComponentMatch = altTextDescription?.match(/^Pi-Office reusable slide component ([a-z0-9-]+)(?:: (.+))?\.$/i);
 
   if (iconMatch) {
     const assetName = iconMatch[1] ?? altTextTitle ?? iconNameMatch?.[1];
@@ -154,6 +164,25 @@ export function inferPowerPointAssetDescriptor(shape: unknown): PowerPointVerifi
       expectedInsertionMode: "image-shape",
       verificationStatus: contentKind === "image" ? "verified-image-shape" : "fallback-or-unknown",
       fallbackStrategy: contentKind === "image" ? undefined : "generated-image-metadata-on-non-image-shape",
+    };
+  }
+
+  if (reusableComponentMatch) {
+    const componentId = reusableComponentMatch[1] ?? "";
+    const componentPart = reusableComponentMatch[2];
+    return {
+      shapeId,
+      shapeName,
+      slideId,
+      slideIndex,
+      contentKind,
+      sourceId: "reusable-slide-component",
+      sourceLabel: sourceLabel("reusable-slide-component"),
+      assetName: POWERPOINT_REUSABLE_COMPONENT_LABELS[componentId] ?? altTextTitle ?? shapeName,
+      componentId,
+      componentPart,
+      expectedInsertionMode: "native-shape-component",
+      verificationStatus: "verified-component-shape",
     };
   }
 
