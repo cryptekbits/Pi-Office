@@ -47,6 +47,7 @@ import type {
   AskUserQuestionAnswer,
   CompanionConnectorOAuthStatusRequest,
   CompanionConnectorOAuthStatusResponse,
+  CompanionProviderAuthStatusResponse,
   ProviderDescriptor,
   SessionStatsResponse,
 } from "@pi-office/pi-office-pack/protocol";
@@ -327,6 +328,7 @@ export function App() {
   const [companion, setCompanion] = useState<CompanionState>(() => createDefaultCompanionState());
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse>();
+  const [companionProviderAuthStatus, setCompanionProviderAuthStatus] = useState<CompanionProviderAuthStatusResponse>();
   const [connectors, setConnectors] = useState<ConnectorCatalogItem[]>([]);
   const [connectorStatuses, setConnectorStatuses] = useState<ConnectorStatus[]>([]);
   const [connectorDiagnostics, setConnectorDiagnostics] = useState<ConnectorDiagnosticsResponse>();
@@ -567,6 +569,17 @@ export function App() {
     setAuthStatus(nextAuth);
   }, []);
 
+  const refreshCompanionProviderAuthState = useCallback(async () => {
+    try {
+      const status = await fetchJson<CompanionProviderAuthStatusResponse>("/v1/companion/provider-auth/status");
+      setCompanionProviderAuthStatus(status);
+      return status;
+    } catch {
+      setCompanionProviderAuthStatus(undefined);
+      return undefined;
+    }
+  }, []);
+
   const applySessionState = useCallback((state: {
     documentState: OfficeDocumentState;
     companion: CompanionState;
@@ -596,8 +609,9 @@ export function App() {
       ? await postJson<CompanionState>("/v1/companion/discover", {})
       : await fetchJson<CompanionState>("/v1/companion/state");
     setCompanion(next);
+    await refreshCompanionProviderAuthState();
     return next;
-  }, []);
+  }, [refreshCompanionProviderAuthState]);
 
   const syncCurrentSessionState = useCallback(async (stateOverride?: OfficeStateUpdate) => {
     const sid = sessionIdRef.current;
@@ -1636,13 +1650,49 @@ export function App() {
   const handleClearAllProviderAuth = useCallback(async () => {
     try {
       await deleteJson<{ ok: true }>("/v1/auth");
+      const companionStatus = await fetchJson<CompanionProviderAuthStatusResponse>("/v1/companion/provider-auth", {
+        method: "DELETE",
+        body: JSON.stringify({}),
+      });
+      setCompanionProviderAuthStatus(companionStatus);
       await refreshProviderState();
-      pushSystemMessage("Cleared all stored provider credentials from this taskpane.");
+      await refreshCompanionState();
+      pushSystemMessage("Cleared all stored provider credentials from this taskpane and any reachable companion.");
     } catch (error) {
       pushErrorMessage(`Provider credential cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
-  }, [pushErrorMessage, pushSystemMessage, refreshProviderState]);
+  }, [pushErrorMessage, pushSystemMessage, refreshCompanionState, refreshProviderState]);
+
+  const handleCopyProviderAuthToCompanion = useCallback(async (provider: string) => {
+    try {
+      const status = await postJson<CompanionProviderAuthStatusResponse>("/v1/companion/provider-auth/copy-api-key", {
+        provider,
+        explicitUserAction: true,
+      });
+      setCompanionProviderAuthStatus(status);
+      await refreshCompanionState();
+      pushSystemMessage(`Copied ${provider} API-key auth to companion secure storage. The taskpane copy remains until you clear it.`);
+    } catch (error) {
+      pushErrorMessage(`Companion provider auth copy failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }, [pushErrorMessage, pushSystemMessage, refreshCompanionState]);
+
+  const handleClearCompanionProviderAuth = useCallback(async (provider: string) => {
+    try {
+      const status = await fetchJson<CompanionProviderAuthStatusResponse>("/v1/companion/provider-auth", {
+        method: "DELETE",
+        body: JSON.stringify({ provider }),
+      });
+      setCompanionProviderAuthStatus(status);
+      await refreshCompanionState();
+      pushSystemMessage(`Cleared companion-held auth for ${provider}.`);
+    } catch (error) {
+      pushErrorMessage(`Companion provider auth cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }, [pushErrorMessage, pushSystemMessage, refreshCompanionState]);
 
   const handleStartOAuth = useCallback(async (provider: string) => {
     try {
@@ -2083,6 +2133,7 @@ export function App() {
             companion={companion}
             providers={providers}
             authStatus={authStatus}
+            companionProviderAuthStatus={companionProviderAuthStatus}
             connectors={connectors}
             connectorStatuses={connectorStatuses}
             connectorDiagnostics={connectorDiagnostics}
@@ -2100,6 +2151,8 @@ export function App() {
             onSaveApiKey={handleSaveApiKey}
             onStartOAuth={handleStartOAuth}
             onClearAuth={handleClearAuth}
+            onCopyProviderAuthToCompanion={handleCopyProviderAuthToCompanion}
+            onClearCompanionProviderAuth={handleClearCompanionProviderAuth}
             onPrepareConnector={handlePrepareConnector}
             onConnectConnector={handleConnectConnector}
             onTestConnector={handleTestConnector}

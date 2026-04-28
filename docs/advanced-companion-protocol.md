@@ -17,12 +17,13 @@ The runtime preference lives in `UserPreferences.companionRuntimeMode` (`basic`,
 | Chat streaming | Reserved | Companion | `POST /v1/sessions/:sessionId/agent/prompt` exists as an unavailable stub until companion-owned Pi agent sessions land. |
 | Tool requests | Available | Companion | File, MCP, MCP result, shell, and native-capture session routes execute non-Office work under capability gates. |
 | Office tool execution | Reserved | Taskpane | `POST /v1/sessions/:sessionId/agent/office-tool-result` is reserved for future companion-agent Office tool result handoff. Office.js execution stays in the taskpane. |
-| Companion provider auth setup | Available | Shared | `GET /v1/provider-auth/status`, `POST /v1/provider-auth/api-key`, and `DELETE /v1/provider-auth` expose explicit API-key setup/clear through secure companion storage. Broader OAuth/cloud migration remains planned. |
+| Companion provider auth setup | Available | Shared | `GET /v1/provider-auth/status`, `POST /v1/provider-auth/api-key`, and `DELETE /v1/provider-auth` expose explicit API-key setup/clear through secure companion storage. The taskpane Settings provider cards can copy an already stored taskpane API key into companion storage only after a user click and confirmation. Broader OAuth/cloud migration remains planned. |
 
 ## Non-Negotiables
 
 - Office document reads/writes, selection-sensitive actions, and Office permission prompts remain taskpane-owned because only the Office host can safely run Office.js against the active document.
 - Taskpane provider secrets must never silently migrate into the companion. Any move to companion provider auth needs explicit user action, clear storage disclosure, and a secure backend.
+- The taskpane copy-to-companion bridge reads the existing taskpane API key inside the in-process kernel and sends it only to the local companion provider-auth route with `explicitUserAction=true`; React state and settings-sync payloads remain redacted.
 - Settings sync is for non-secret state only: preferences, runtime mode, enabled providers/models, defaults, and connector counts. API keys, OAuth tokens, and manual connector secrets are excluded from this route.
 - Companion provider API-key setup requires `explicitUserAction=true`, returns only redacted provider state, and fails closed when secure companion storage is unavailable.
 - Basic mode must stay usable when the companion is absent, stopped, unhealthy, or disconnected.

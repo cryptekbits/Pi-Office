@@ -9,6 +9,9 @@ import type {
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
   CompanionNativeCaptureResponse,
+  CompanionProviderApiKeyRequest,
+  CompanionProviderAuthClearRequest,
+  CompanionProviderAuthStatusResponse,
   CompanionSettingsSyncRequest,
   CompanionSettingsSyncResponse,
   CompanionShellCapability,
@@ -457,6 +460,76 @@ export class CompanionClient {
       method: "DELETE",
       body: JSON.stringify(request),
     });
+  }
+
+  private applyProviderAuthStatus(status: CompanionProviderAuthStatusResponse): void {
+    this.state = {
+      ...this.state,
+      capabilities: {
+        ...this.state.capabilities,
+        providerAuth: {
+          ...(this.state.capabilities.providerAuth ?? {
+            state: "available",
+            available: true,
+            explicitMigrationRequired: true,
+          }),
+          state: status.secureStorage ? "available" : "unavailable",
+          available: status.secureStorage,
+          secureStorage: status.secureStorage,
+          storageKind: status.storageKind,
+          supportedAuthMethods: status.supportedAuthMethods,
+          configuredProviderCount: status.storedProviders.length,
+          explicitMigrationRequired: true,
+        },
+      },
+    };
+  }
+
+  async getProviderAuthStatus(): Promise<CompanionProviderAuthStatusResponse | undefined> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      return undefined;
+    }
+
+    const status = await fetchJsonWithTimeout<CompanionProviderAuthStatusResponse>(
+      `${this.state.endpoint}/v1/provider-auth/status`,
+    );
+    this.applyProviderAuthStatus(status);
+    return status;
+  }
+
+  async setProviderApiKey(request: CompanionProviderApiKeyRequest): Promise<CompanionProviderAuthStatusResponse> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      throw new Error("Optional companion is not connected for provider auth setup.");
+    }
+
+    const status = await fetchJsonWithTimeout<CompanionProviderAuthStatusResponse>(
+      `${this.state.endpoint}/v1/provider-auth/api-key`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    );
+    this.applyProviderAuthStatus(status);
+    return status;
+  }
+
+  async clearProviderAuth(request: CompanionProviderAuthClearRequest = {}): Promise<CompanionProviderAuthStatusResponse | undefined> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      return undefined;
+    }
+
+    const status = await fetchJsonWithTimeout<CompanionProviderAuthStatusResponse>(
+      `${this.state.endpoint}/v1/provider-auth`,
+      {
+        method: "DELETE",
+        body: JSON.stringify(request),
+      },
+    );
+    this.applyProviderAuthStatus(status);
+    return status;
   }
 
   async getConnectorDiagnostics(): Promise<ConnectorDiagnosticsResponse | undefined> {

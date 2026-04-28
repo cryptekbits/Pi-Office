@@ -1748,6 +1748,7 @@ select:focus, input:focus, textarea:focus {
 .provider-card-meta { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
 .provider-card-body { padding: 0 12px 12px; display: grid; gap: 8px; }
 .provider-auth-status { font-size: 0.8rem; color: var(--muted); }
+.provider-auth-companion-status { font-weight: 600; color: var(--ink-soft); }
 .provider-capability-row { display: flex; flex-wrap: wrap; gap: 4px; }
 
 /* ------------------------------------------------------------------ */

@@ -43,6 +43,7 @@ import {
   type CompanionConnectorDefinition,
   type CompanionNativeCaptureRequest,
   type CompanionNativeCaptureResponse,
+  type CompanionProviderAuthStatusResponse,
   type CompanionRuntimeMode,
   type CompanionSettingsSyncRequest,
   type CompanionShellExecuteRequest,
@@ -574,6 +575,32 @@ function disconnectedCompanionState(lastKnown?: Partial<CompanionState>): Compan
     sessionId: undefined,
     connectorToolNames: [],
     capabilities: disconnectedCompanionCapabilities(lastKnown?.capabilities?.endpoint ?? lastKnown?.endpoint),
+  };
+}
+
+function unavailableCompanionProviderAuthStatus(providerIds: string[] = []): CompanionProviderAuthStatusResponse {
+  const providerStates = providerIds
+    .map((provider) => provider.trim())
+    .filter(Boolean)
+    .sort()
+    .map((provider): ProviderAuthDescriptor => ({
+      provider,
+      state: "not_configured",
+      credentialStored: false,
+      verifiedUsable: false,
+    }));
+  return {
+    ok: true,
+    storageKind: "unavailable",
+    secureStorage: false,
+    explicitMigrationRequired: true,
+    supportedAuthMethods: ["api_key"],
+    storedProviders: [],
+    configuredProviders: [],
+    verifiedProviders: [],
+    unverifiedProviders: [],
+    verificationFailedProviders: [],
+    providerStates,
   };
 }
 
@@ -3448,6 +3475,44 @@ class InProcessKernel {
       return (await this.companionClient.setManualEndpoint(
         typeof request?.endpoint === "string" ? request.endpoint : undefined,
       )) as T;
+    }
+    if (method === "GET" && path === "/v1/companion/provider-auth/status") {
+      const companion = await this.getCompanionState();
+      if (companion.status !== "connected") {
+        return unavailableCompanionProviderAuthStatus() as T;
+      }
+      return ((await this.companionClient.getProviderAuthStatus()) ?? unavailableCompanionProviderAuthStatus()) as T;
+    }
+    if (method === "POST" && path === "/v1/companion/provider-auth/copy-api-key") {
+      const request = body as { provider?: string; explicitUserAction?: boolean } | undefined;
+      const provider = typeof request?.provider === "string" ? request.provider.trim() : "";
+      if (!provider) {
+        throw new Error("provider is required.");
+      }
+      if (request?.explicitUserAction !== true) {
+        throw new Error("explicitUserAction=true is required before copying taskpane provider credentials to the companion.");
+      }
+      const capability = getProviderCapability(provider);
+      if (!capability.authMethods.includes("api_key")) {
+        throw new Error(`${titleCase(provider)} does not support API-key companion storage yet.`);
+      }
+      const apiKey = this.modelRegistry.getApiKey(provider);
+      if (!apiKey) {
+        throw new Error(`No taskpane API key is stored for ${titleCase(provider)}.`);
+      }
+      return (await this.companionClient.setProviderApiKey({
+        provider,
+        apiKey,
+        explicitUserAction: true,
+      })) as T;
+    }
+    if (method === "DELETE" && path === "/v1/companion/provider-auth") {
+      const request = body as { provider?: string } | undefined;
+      return ((await this.companionClient.clearProviderAuth({
+        provider: typeof request?.provider === "string" && request.provider.trim()
+          ? request.provider.trim()
+          : undefined,
+      })) ?? unavailableCompanionProviderAuthStatus(request?.provider ? [request.provider] : [])) as T;
     }
 
     const connectorRuntime = path.startsWith("/v1/connectors")

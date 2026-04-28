@@ -24,8 +24,10 @@ import type {
   ConnectorStatus,
   ConnectorTestResponse,
   CompanionState,
+  CompanionProviderAuthStatusResponse,
   OfficeDocumentState,
   OfficeStateUpdate,
+  ProviderAuthDescriptor,
   ProviderAuthMethod,
   ProviderDescriptor,
   SessionStatsResponse,
@@ -117,6 +119,7 @@ interface SettingsPageProps {
   companion: CompanionState;
   providers: ProviderDescriptor[];
   authStatus: AuthStatusResponse | undefined;
+  companionProviderAuthStatus: CompanionProviderAuthStatusResponse | undefined;
   connectors: ConnectorCatalogItem[];
   connectorStatuses: ConnectorStatus[];
   connectorDiagnostics: ConnectorDiagnosticsResponse | undefined;
@@ -134,6 +137,8 @@ interface SettingsPageProps {
   onSaveApiKey: (provider: string, key: string) => void;
   onStartOAuth: (provider: string) => void;
   onClearAuth: (provider: string) => void;
+  onCopyProviderAuthToCompanion: (provider: string) => Promise<void>;
+  onClearCompanionProviderAuth: (provider: string) => Promise<void>;
   onPrepareConnector: (connectorId: string, scopeContext?: ConnectorScopeContext) => Promise<ConnectorPrepareResponse>;
   onConnectConnector: (request: ConnectorSetupRequest) => Promise<ConnectorSetupResponse>;
   onTestConnector: (request: ConnectorSetupRequest) => Promise<ConnectorTestResponse>;
@@ -163,6 +168,7 @@ export function SettingsPage({
   companion,
   providers,
   authStatus,
+  companionProviderAuthStatus,
   connectors,
   connectorStatuses,
   connectorDiagnostics,
@@ -180,6 +186,8 @@ export function SettingsPage({
   onSaveApiKey,
   onStartOAuth,
   onClearAuth,
+  onCopyProviderAuthToCompanion,
+  onClearCompanionProviderAuth,
   onPrepareConnector,
   onConnectConnector,
   onTestConnector,
@@ -286,6 +294,8 @@ export function SettingsPage({
             <ProvidersSection
               providers={providers}
               authStatus={authStatus}
+              companion={companion}
+              companionProviderAuthStatus={companionProviderAuthStatus}
               enabledProviders={enabledProviders}
               detailLevel={settingsDetailLevel}
               onDetailLevelChange={setSettingsDetailLevel}
@@ -293,6 +303,8 @@ export function SettingsPage({
               onSaveApiKey={onSaveApiKey}
               onStartOAuth={onStartOAuth}
               onClearAuth={onClearAuth}
+              onCopyProviderAuthToCompanion={onCopyProviderAuthToCompanion}
+              onClearCompanionProviderAuth={onClearCompanionProviderAuth}
             />
           )}
           {activeTab === "models" && (
@@ -423,7 +435,7 @@ function PrivacySection({
         <article className="privacy-disclosure-row">
           <div>
             <strong>Provider calls</strong>
-            <p>Prompts, selected Office context, generated images, and tool results are sent to the selected AI provider when a request runs. Provider credentials are stored in this browser origin.</p>
+            <p>Prompts, selected Office context, generated images, and tool results are sent to the selected AI provider when a request runs. Provider credentials can be stored in this browser origin and, after explicit setup, in the optional companion.</p>
           </div>
           <button
             type="button"
@@ -617,6 +629,10 @@ function CompanionSection({
             <br />
             Agent: {companion.capabilities.agent?.state === "available" ? "Companion owned" : "Taskpane fallback"}
             <br />
+            Provider auth: {companion.capabilities.providerAuth?.state === "available"
+              ? `${companion.capabilities.providerAuth.configuredProviderCount ?? 0} stored`
+              : "Unavailable"}
+            <br />
             Shell: {companion.capabilities.shell?.state === "available"
               ? "Sandbox ready"
               : companion.capabilities.shell?.state === "degraded"
@@ -630,6 +646,13 @@ function CompanionSection({
         <div className="settings-card">
           <span className="label">Shell sandbox</span>
           <p>{companion.capabilities.shell.reason}</p>
+        </div>
+      )}
+
+      {companion.capabilities.providerAuth?.reason && (
+        <div className="settings-card">
+          <span className="label">Provider auth</span>
+          <p>{companion.capabilities.providerAuth.reason}</p>
         </div>
       )}
 
@@ -825,6 +848,8 @@ function ProfileSection({
 function ProvidersSection({
   providers,
   authStatus,
+  companion,
+  companionProviderAuthStatus,
   enabledProviders,
   detailLevel,
   onDetailLevelChange,
@@ -832,9 +857,13 @@ function ProvidersSection({
   onSaveApiKey,
   onStartOAuth,
   onClearAuth,
+  onCopyProviderAuthToCompanion,
+  onClearCompanionProviderAuth,
 }: {
   providers: ProviderDescriptor[];
   authStatus: AuthStatusResponse | undefined;
+  companion: CompanionState;
+  companionProviderAuthStatus: CompanionProviderAuthStatusResponse | undefined;
   enabledProviders: Set<string>;
   detailLevel: SettingsDetailLevel;
   onDetailLevelChange: (value: SettingsDetailLevel) => void;
@@ -842,9 +871,13 @@ function ProvidersSection({
   onSaveApiKey: (provider: string, key: string) => void;
   onStartOAuth: (provider: string) => void;
   onClearAuth: (provider: string) => void;
+  onCopyProviderAuthToCompanion: (provider: string) => Promise<void>;
+  onClearCompanionProviderAuth: (provider: string) => Promise<void>;
 }) {
   const stored = authStatus?.storedProviders ?? [];
   const providerStates = new Map((authStatus?.providerStates ?? []).map((entry) => [entry.provider, entry]));
+  const companionStored = companionProviderAuthStatus?.storedProviders ?? [];
+  const companionProviderStates = new Map((companionProviderAuthStatus?.providerStates ?? []).map((entry) => [entry.provider, entry]));
   const visibleProviders = providers.filter((provider) =>
     detailLevel === "advanced" || provider.settingsVisibility === "simple",
   );
@@ -864,9 +897,15 @@ function ProvidersSection({
             provider={provider}
             hasAuth={stored.includes(provider.provider)}
             lastVerificationError={providerStates.get(provider.provider)?.lastVerificationError}
+            companion={companion}
+            companionHasAuth={companionStored.includes(provider.provider)}
+            companionAuthState={companionProviderStates.get(provider.provider)}
+            companionProviderAuthStatus={companionProviderAuthStatus}
             onSaveApiKey={(key) => onSaveApiKey(provider.provider, key)}
             onStartOAuth={() => onStartOAuth(provider.provider)}
             onClearAuth={() => onClearAuth(provider.provider)}
+            onCopyAuthToCompanion={() => onCopyProviderAuthToCompanion(provider.provider)}
+            onClearCompanionAuth={() => onClearCompanionProviderAuth(provider.provider)}
           />
         ))}
         {visibleProviders.length === 0 && (
@@ -881,25 +920,52 @@ function ProviderCard({
   provider,
   hasAuth,
   lastVerificationError,
+  companion,
+  companionHasAuth,
+  companionAuthState,
+  companionProviderAuthStatus,
   isEnabled,
   onToggleEnabled,
   onSaveApiKey,
   onStartOAuth,
   onClearAuth,
+  onCopyAuthToCompanion,
+  onClearCompanionAuth,
 }: {
   provider: ProviderDescriptor;
   hasAuth: boolean;
   lastVerificationError?: string | undefined;
+  companion: CompanionState;
+  companionHasAuth: boolean;
+  companionAuthState?: ProviderAuthDescriptor | undefined;
+  companionProviderAuthStatus: CompanionProviderAuthStatusResponse | undefined;
   isEnabled: boolean;
   onToggleEnabled: () => void;
   onSaveApiKey: (key: string) => void;
   onStartOAuth: () => void;
   onClearAuth: () => void;
+  onCopyAuthToCompanion: () => Promise<void>;
+  onClearCompanionAuth: () => Promise<void>;
 }) {
   const [apiKey, setApiKey] = useState("");
   const [expanded, setExpanded] = useState(false);
   const verifiedCount = provider.models.filter((m) => m.verifiedUsable).length;
   const providerCallable = provider.browserCallable;
+  const companionProviderAuthAvailable =
+    companion.status === "connected" &&
+    companion.capabilities.providerAuth?.state === "available" &&
+    companionProviderAuthStatus?.secureStorage === true;
+  const companionAuthLabel = companionHasAuth
+    ? companionAuthState?.verifiedUsable
+      ? "Companion verified"
+      : companionAuthState?.state === "verification_failed"
+        ? "Companion auth failed"
+        : "Companion stored"
+    : companionProviderAuthAvailable && hasAuth && provider.apiKeySupported
+      ? "Ready to copy to companion"
+      : companion.status === "connected" && companion.capabilities.providerAuth?.state !== "available"
+        ? "Companion auth unavailable"
+        : "Companion not configured";
   const statusLabel = !providerCallable
     ? providerSupportLabel(provider)
     : provider.verifiedUsable
@@ -945,6 +1011,18 @@ function ProviderCard({
     }
   }, [apiKey, onSaveApiKey, provider.apiKeySupported]);
 
+  const handleCopyToCompanion = useCallback(() => {
+    if (window.confirm("Copy this taskpane-stored provider API key into companion secure storage? The taskpane copy remains until you clear it.")) {
+      void onCopyAuthToCompanion();
+    }
+  }, [onCopyAuthToCompanion]);
+
+  const handleClearCompanion = useCallback(() => {
+    if (window.confirm("Clear this provider credential from companion secure storage?")) {
+      void onClearCompanionAuth();
+    }
+  }, [onClearCompanionAuth]);
+
   return (
     <div className={`provider-card ${!isEnabled ? "provider-card-disabled" : ""}`}>
       <div className="provider-card-header">
@@ -982,12 +1060,16 @@ function ProviderCard({
           <div className="provider-auth-status">
             {authStatusText}
           </div>
+          <div className="provider-auth-status provider-auth-companion-status">
+            {companionAuthLabel}
+          </div>
 
           <div className="provider-capability-row">
             <span className="settings-model-tag">{providerCallable ? "Browser callable" : providerSupportLabel(provider)}</span>
             {provider.companionRequired && <span className="settings-model-tag">Companion</span>}
             {provider.subscriptionBacked && <span className="settings-model-tag">Subscription</span>}
             <span className="settings-model-tag">{authMethodSummary}</span>
+            {companionHasAuth && <span className="settings-model-tag">Companion stored</span>}
             {provider.imageGenerationSupported && <span className="settings-model-tag">Images</span>}
           </div>
 
@@ -1013,6 +1095,19 @@ function ProviderCard({
             <button type="button" className="button button-solid" onClick={handleSave} disabled={!provider.apiKeySupported}>
               Save Key
             </button>
+            <button
+              type="button"
+              className="button"
+              onClick={handleCopyToCompanion}
+              disabled={!provider.apiKeySupported || !hasAuth || !companionProviderAuthAvailable}
+            >
+              {companionHasAuth ? "Update companion" : "Copy to companion"}
+            </button>
+            {companionHasAuth && (
+              <button type="button" className="button" onClick={handleClearCompanion}>
+                Clear companion
+              </button>
+            )}
             {provider.oauthSupported && (
               <button type="button" className="button" onClick={onStartOAuth}>
                 Start OAuth

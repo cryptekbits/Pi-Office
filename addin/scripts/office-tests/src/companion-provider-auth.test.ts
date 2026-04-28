@@ -139,3 +139,29 @@ test("companion provider auth protocol routes are declared and implemented", () 
     assert.match(serverSource, new RegExp(route.path.replaceAll("/", "\\/")));
   }
 });
+
+test("taskpane companion provider auth setup is visible and explicit", () => {
+  const clientSource = readFileSync(join(process.cwd(), "apps", "taskpane", "src", "lib", "runtime", "companion-client.ts"), "utf8");
+  const kernelSource = readFileSync(join(process.cwd(), "apps", "taskpane", "src", "lib", "runtime", "inprocess-kernel.ts"), "utf8");
+  const appSource = readFileSync(join(process.cwd(), "apps", "taskpane", "src", "app", "App.tsx"), "utf8");
+  const settingsSource = readFileSync(join(process.cwd(), "apps", "taskpane", "src", "app", "components", "SettingsPage.tsx"), "utf8");
+  const syncStart = kernelSource.indexOf("private buildCompanionSettingsSyncRequest");
+  const syncBody = kernelSource.slice(syncStart, syncStart + 900);
+
+  assert.match(clientSource, /\/v1\/provider-auth\/status/);
+  assert.match(clientSource, /\/v1\/provider-auth\/api-key/);
+  assert.match(clientSource, /\/v1\/provider-auth/);
+  assert.match(kernelSource, /\/v1\/companion\/provider-auth\/copy-api-key/);
+  assert.match(kernelSource, /explicitUserAction=true is required before copying/);
+  assert.match(kernelSource, /this\.modelRegistry\.getApiKey\(provider\)/);
+  assert.match(
+    kernelSource,
+    /this\.companionClient\.setProviderApiKey\(\{[\s\S]*provider,[\s\S]*apiKey,[\s\S]*explicitUserAction: true/,
+  );
+  assert.match(settingsSource, /onCopyProviderAuthToCompanion/);
+  assert.match(settingsSource, /Copy to companion/);
+  assert.match(settingsSource, /window\.confirm/);
+  assert.match(appSource, /Cleared all stored provider credentials from this taskpane and any reachable companion/);
+  assert.match(syncBody, /secretsIncluded: false/);
+  assert.doesNotMatch(syncBody, /apiKey|oauth|manualCredential/i);
+});
