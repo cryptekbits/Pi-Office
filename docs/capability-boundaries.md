@@ -18,6 +18,8 @@ Every resolved capability is described with these fields:
 
 The shared registry lives in `addin/packages/pi-office-pack/src/capabilities.ts` and is consumed by the taskpane runtime and Settings UI. The companion reports its machine-side capability facts through `CompanionCapabilities`.
 
+The broader Basic/Advanced handoff contract lives in `TASKPANE_COMPANION_PROTOCOL` in `addin/packages/pi-office-pack/src/protocol.ts` and is documented in [`advanced-companion-protocol.md`](advanced-companion-protocol.md). The companion advertises this descriptor through `CompanionCapabilities.protocol` so the taskpane can distinguish available companion routes from reserved advanced-mode routes.
+
 ## Ownership Classes
 
 | Class | Capabilities | Runtime rule |

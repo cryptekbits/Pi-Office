@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { createServer as createHttpsServer } from "node:https";
 import { dirname } from "node:path";
 import express from "express";
+import { TASKPANE_COMPANION_PROTOCOL } from "@pi-office/pi-office-pack/protocol";
 import type {
   CompanionConnectorOAuthClearRequest,
   CompanionConnectorOAuthStartRequest,
@@ -67,6 +68,7 @@ function createCompanionState(
       fileRead: true,
       localMcp: true,
       endpoint: config.endpoint,
+      protocol: TASKPANE_COMPANION_PROTOCOL,
       shell,
       version: "companion-capabilities-v1",
       agent: {

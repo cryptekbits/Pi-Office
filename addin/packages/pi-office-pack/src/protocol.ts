@@ -13,10 +13,195 @@ export type CompanionStatus = (typeof COMPANION_STATUSES)[number];
 export const CONNECTOR_EXECUTION_ENVIRONMENTS = ["browser", "companion"] as const;
 export type ConnectorExecutionEnvironment = (typeof CONNECTOR_EXECUTION_ENVIRONMENTS)[number];
 
+export const COMPANION_PROTOCOL_VERSION = "taskpane-companion-v1";
+
+export const COMPANION_PROTOCOL_FEATURE_IDS = [
+  "capability_discovery",
+  "settings_sync",
+  "chat_streaming",
+  "tool_requests",
+  "office_tool_execution",
+  "auth_migration",
+] as const;
+export type CompanionProtocolFeatureId = (typeof COMPANION_PROTOCOL_FEATURE_IDS)[number];
+
+export const COMPANION_PROTOCOL_FEATURE_STATES = ["available", "reserved", "planned"] as const;
+export type CompanionProtocolFeatureState = (typeof COMPANION_PROTOCOL_FEATURE_STATES)[number];
+
+export const COMPANION_PROTOCOL_OWNERS = ["taskpane", "companion", "shared"] as const;
+export type CompanionProtocolOwner = (typeof COMPANION_PROTOCOL_OWNERS)[number];
+
+export interface CompanionProtocolRoute {
+  method: "GET" | "POST" | "DELETE";
+  path: string;
+  state: CompanionProtocolFeatureState;
+  description: string;
+}
+
+export interface CompanionProtocolFeature {
+  id: CompanionProtocolFeatureId;
+  label: string;
+  state: CompanionProtocolFeatureState;
+  owner: CompanionProtocolOwner;
+  version: string;
+  summary: string;
+  routes: CompanionProtocolRoute[];
+}
+
+export interface CompanionAdvancedModeContract {
+  taskpaneRole: string[];
+  companionRole: string[];
+  officeJsExecutor: "taskpane";
+  secretMigration: "explicit_user_action";
+  fallback: "taskpane_basic_mode";
+}
+
+export interface CompanionProtocolDescriptor {
+  version: string;
+  advancedMode: CompanionAdvancedModeContract;
+  features: CompanionProtocolFeature[];
+}
+
+export const TASKPANE_COMPANION_PROTOCOL: CompanionProtocolDescriptor = {
+  version: COMPANION_PROTOCOL_VERSION,
+  advancedMode: {
+    taskpaneRole: [
+      "presentation layer",
+      "Office.js executor",
+      "Office tool permission surface",
+      "reviewable edit UI",
+    ],
+    companionRole: [
+      "provider auth and session state",
+      "model inference",
+      "MCP and non-Office tool execution",
+      "memory and local workspace context",
+    ],
+    officeJsExecutor: "taskpane",
+    secretMigration: "explicit_user_action",
+    fallback: "taskpane_basic_mode",
+  },
+  features: [
+    {
+      id: "capability_discovery",
+      label: "Capability discovery",
+      state: "available",
+      owner: "shared",
+      version: "companion-capabilities-v1",
+      summary: "The taskpane discovers companion health, session binding, and capability facts before publishing companion-only tools.",
+      routes: [
+        {
+          method: "GET",
+          path: "/v1/health",
+          state: "available",
+          description: "Returns companion identity, endpoint, capabilities, and this protocol descriptor.",
+        },
+        {
+          method: "POST",
+          path: "/v1/sessions/open",
+          state: "available",
+          description: "Binds a taskpane session to the companion and returns session-scoped connector/capability state.",
+        },
+      ],
+    },
+    {
+      id: "settings_sync",
+      label: "Settings sync",
+      state: "planned",
+      owner: "shared",
+      version: "companion-settings-sync-v1",
+      summary: "Non-secret preferences and connector configuration should sync explicitly; taskpane provider secrets are not silently moved.",
+      routes: [],
+    },
+    {
+      id: "chat_streaming",
+      label: "Companion-owned chat streaming",
+      state: "reserved",
+      owner: "companion",
+      version: "companion-agent-v1",
+      summary: "Reserved for companion-owned Pi agent sessions after companion provider auth/session storage exists.",
+      routes: [
+        {
+          method: "POST",
+          path: "/v1/sessions/:sessionId/agent/prompt",
+          state: "reserved",
+          description: "Reserved prompt/stream entrypoint; current companion returns unavailable until advanced agent mode lands.",
+        },
+      ],
+    },
+    {
+      id: "tool_requests",
+      label: "Companion tool requests",
+      state: "available",
+      owner: "companion",
+      version: "companion-tool-requests-v1",
+      summary: "Session-scoped companion file, MCP, shell, native capture, and MCP result-handle routes execute non-Office work.",
+      routes: [
+        {
+          method: "POST",
+          path: "/v1/sessions/:sessionId/files/:toolName",
+          state: "available",
+          description: "Executes saved-document read/list/search tools inside the companion's guarded workspace scope.",
+        },
+        {
+          method: "POST",
+          path: "/v1/sessions/:sessionId/mcp/execute",
+          state: "available",
+          description: "Executes verified MCP tools through browser/companion connector policy gates.",
+        },
+        {
+          method: "POST",
+          path: "/v1/sessions/:sessionId/mcp/search",
+          state: "available",
+          description: "Searches session-visible MCP tools without sending full connector schemas up front.",
+        },
+        {
+          method: "POST",
+          path: "/v1/sessions/:sessionId/shell/execute",
+          state: "available",
+          description: "Executes only when the companion shell sandbox capability reports available.",
+        },
+        {
+          method: "POST",
+          path: "/v1/sessions/:sessionId/native-capture/viewport",
+          state: "available",
+          description: "Captures native viewport imagery only when the companion capture backend supports the active host.",
+        },
+      ],
+    },
+    {
+      id: "office_tool_execution",
+      label: "Office tool execution proxy",
+      state: "reserved",
+      owner: "taskpane",
+      version: "companion-office-proxy-v1",
+      summary: "A future companion-owned agent may request Office tools, but the taskpane remains the only Office.js executor.",
+      routes: [
+        {
+          method: "POST",
+          path: "/v1/sessions/:sessionId/agent/office-tool-result",
+          state: "reserved",
+          description: "Reserved return path for Office tool results produced by the taskpane on behalf of a companion agent.",
+        },
+      ],
+    },
+    {
+      id: "auth_migration",
+      label: "Auth migration",
+      state: "planned",
+      owner: "shared",
+      version: "companion-auth-migration-v1",
+      summary: "Provider secrets require explicit user action and secure companion storage; no silent taskpane-to-companion migration is allowed.",
+      routes: [],
+    },
+  ],
+};
+
 export interface CompanionCapabilities {
   fileRead: boolean;
   localMcp: boolean;
   endpoint?: string | undefined;
+  protocol?: CompanionProtocolDescriptor | undefined;
   shell?: CompanionShellCapability | undefined;
   version?: string | undefined;
   agent?: CompanionAgentCapability | undefined;

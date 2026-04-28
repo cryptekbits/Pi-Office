@@ -123,6 +123,7 @@ If Word launches with a blank document during debugging, open the target saved d
 - Shell/bash access is hidden unless the companion shell sandbox reports an available isolation backend and passing destructive probes; there is no raw host shell fallback
 - Companion-owned provider auth, inference, memory, and agent sessions are capability-gated advanced-mode work. Browser API-key providers remain taskpane-local unless the user explicitly moves auth to the companion.
 - Browser-direct hosted HTTP connectors can run from the taskpane when supported; companion-brokered connectors such as Granola use the companion for system-browser sign-in and MCP execution
+- The versioned Basic/Advanced taskpane-companion contract is documented in [`docs/advanced-companion-protocol.md`](docs/advanced-companion-protocol.md)
 - Packaging for `dist/binaries`, zip, and npm distribution is planned later
 - Runtime capability boundaries are documented in [`docs/capability-boundaries.md`](docs/capability-boundaries.md)
 

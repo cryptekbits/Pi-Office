@@ -9,6 +9,7 @@ import {
 import { isAllowedCompanionOrigin } from "../../../../companion/src/http.js";
 import { captureNativeViewport, createNativeCaptureCapability } from "../../../../companion/src/native-capture.js";
 import { createCompanionRuntimeDiagnostics } from "../../../../companion/src/runtime-diagnostics.js";
+import { TASKPANE_COMPANION_PROTOCOL } from "@pi-office/pi-office-pack/protocol";
 
 test("companion CORS allows loopback taskpane origins and rejects non-loopback origins", () => {
   assert.equal(isAllowedCompanionOrigin("https://localhost:3443"), true);
@@ -85,7 +86,7 @@ test("companion discovery validates the health response shape before connecting"
     ok: true,
     endpoint: "https://localhost:3444",
     identity: "pi-office-companion@localhost:3444",
-    capabilities: { fileRead: true, localMcp: true },
+    capabilities: { fileRead: true, localMcp: true, protocol: TASKPANE_COMPANION_PROTOCOL },
   }), true);
 
   assert.equal(isCompanionHealthResponse({

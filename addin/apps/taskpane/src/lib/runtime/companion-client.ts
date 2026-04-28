@@ -28,6 +28,7 @@ import type {
   McpToolSearchResponse,
   OfficeStateUpdate,
 } from "@pi-office/pi-office-pack/protocol";
+import { TASKPANE_COMPANION_PROTOCOL } from "@pi-office/pi-office-pack/protocol";
 import { DEFAULT_COMPANION_HOST, DEFAULT_COMPANION_PORT } from "@pi-office/pi-office-pack/defaults";
 
 const MANUAL_ENDPOINT_KEY = "pi-office-companion-manual-endpoint";
@@ -138,6 +139,7 @@ function defaultCompanionState(): CompanionState {
       fileRead: false,
       localMcp: false,
       version: "companion-capabilities-v1",
+      protocol: TASKPANE_COMPANION_PROTOCOL,
       agent: {
         state: "unavailable",
         available: false,
@@ -334,6 +336,7 @@ export class CompanionClient {
           fileRead: false,
           localMcp: false,
           endpoint: this.state.capabilities.endpoint ?? this.state.endpoint,
+          protocol: this.state.capabilities.protocol ?? TASKPANE_COMPANION_PROTOCOL,
           agent: defaultCompanionState().capabilities.agent,
           providerAuth: defaultCompanionState().capabilities.providerAuth,
           nativeCapture: defaultCompanionState().capabilities.nativeCapture,

@@ -30,6 +30,7 @@ import {
   ARTIFACT_CLARIFICATION_MODES,
   EDIT_REJECT_REASON_LABELS,
   OFFICE_TOOL_NAMES,
+  TASKPANE_COMPANION_PROTOCOL,
   TOOL_CATEGORY_MAP,
   type AskUserQuestion,
   type AskUserRequest,
@@ -510,6 +511,7 @@ function disconnectedCompanionCapabilities(endpoint?: string): CompanionState["c
     localMcp: false,
     endpoint,
     version: "companion-capabilities-v1",
+    protocol: TASKPANE_COMPANION_PROTOCOL,
     agent: {
       state: "unavailable",
       available: false,
@@ -569,6 +571,9 @@ function summarizeCompanionForPrompt(companion: CompanionState, documentSaved: b
 
   if (companion.endpoint) {
     lines.push(`Companion endpoint: ${companion.endpoint}`);
+  }
+  if (companion.capabilities.protocol?.version) {
+    lines.push(`Companion protocol: ${companion.capabilities.protocol.version}; Office.js execution remains ${companion.capabilities.protocol.advancedMode.officeJsExecutor}-owned.`);
   }
 
   if (documentSaved) {
