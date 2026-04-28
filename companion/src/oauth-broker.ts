@@ -1,13 +1,17 @@
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import type {
   CompanionConnectorDefinition,
+  CompanionConnectorOAuthClearRequest,
+  CompanionConnectorOAuthClearResponse,
   CompanionConnectorOAuthStatusRequest,
   CompanionConnectorOAuthStatusResponse,
   ConnectorOAuthStartResponse,
 } from "@pi-office/pi-office-pack/protocol";
 import type { CompanionConfig } from "./config.js";
+import {
+  createCompanionOAuthTokenStore,
+  type OAuthTokenPersistence,
+} from "./oauth-token-store.js";
 
 interface OAuthServerMetadata {
   authorization_endpoint?: string;
@@ -60,6 +64,10 @@ interface OAuthTokenRecord {
 interface OAuthTokenStore {
   version: 1;
   tokens: OAuthTokenRecord[];
+}
+
+export interface CompanionOAuthBrokerOptions {
+  tokenStore?: OAuthTokenPersistence | undefined;
 }
 
 function trimString(value: unknown): string | undefined {
@@ -120,12 +128,12 @@ function htmlPage(title: string, message: string): string {
 }
 
 export class CompanionOAuthBroker {
-  private readonly storagePath: string;
+  private readonly tokenStore: OAuthTokenPersistence;
   private readonly flows = new Map<string, OAuthFlowRecord>();
   private tokens: OAuthTokenRecord[] = [];
 
-  constructor(private readonly config: CompanionConfig) {
-    this.storagePath = join(config.dataDir, "connector-oauth-tokens.json");
+  constructor(private readonly config: CompanionConfig, options: CompanionOAuthBrokerOptions = {}) {
+    this.tokenStore = options.tokenStore ?? createCompanionOAuthTokenStore(config);
     this.load();
   }
 
@@ -307,12 +315,43 @@ export class CompanionOAuthBroker {
     try {
       const refreshed = await this.refreshToken(token);
       const updated = this.mergeToken(token, refreshed);
-      this.tokens = this.tokens.map((entry) => entry === token ? updated : entry);
-      this.persist();
+      const nextTokens = this.tokens.map((entry) => entry === token ? updated : entry);
+      this.persist(nextTokens);
+      this.tokens = nextTokens;
       return updated.accessToken;
     } catch {
       return undefined;
     }
+  }
+
+  clearTokens(request: CompanionConnectorOAuthClearRequest = {}): CompanionConnectorOAuthClearResponse {
+    const connectorId = trimString(request.connectorId);
+    const before = this.tokens.length;
+    if (!connectorId) {
+      this.tokenStore.clear();
+      this.tokens = [];
+      return {
+        ok: true,
+        cleared: before,
+        storageKind: this.tokenStore.storageKind,
+        secure: this.tokenStore.secure,
+      };
+    }
+
+    const nextTokens = this.tokens.filter((entry) => entry.connectorId !== connectorId);
+    const cleared = before - nextTokens.length;
+    if (nextTokens.length === 0) {
+      this.tokenStore.clear();
+    } else if (cleared > 0) {
+      this.persist(nextTokens);
+    }
+    this.tokens = nextTokens;
+    return {
+      ok: true,
+      cleared,
+      storageKind: this.tokenStore.storageKind,
+      secure: this.tokenStore.secure,
+    };
   }
 
   private async fetchMetadata(metadataUrl: string): Promise<OAuthServerMetadata> {
@@ -399,11 +438,12 @@ export class CompanionOAuthBroker {
       clientSecret: flow.clientSecret,
       updatedAt: new Date().toISOString(),
     }, token);
-    this.tokens = [
+    const nextTokens = [
       ...this.tokens.filter((entry) => entry.connectorId !== flow.connectorId),
       record,
     ];
-    this.persist();
+    this.persist(nextTokens);
+    this.tokens = nextTokens;
   }
 
   private mergeToken(base: OAuthTokenRecord, token: OAuthTokenResponse): OAuthTokenRecord {
@@ -421,8 +461,9 @@ export class CompanionOAuthBroker {
 
   private load(): void {
     try {
-      if (!existsSync(this.storagePath)) return;
-      const parsed = JSON.parse(readFileSync(this.storagePath, "utf8")) as Partial<OAuthTokenStore>;
+      const stored = this.tokenStore.load();
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as Partial<OAuthTokenStore>;
       this.tokens = Array.isArray(parsed.tokens)
         ? parsed.tokens.filter((entry): entry is OAuthTokenRecord => Boolean(entry?.connectorId && entry.accessToken))
         : [];
@@ -431,9 +472,8 @@ export class CompanionOAuthBroker {
     }
   }
 
-  private persist(): void {
-    mkdirSync(this.config.dataDir, { recursive: true });
-    const body: OAuthTokenStore = { version: 1, tokens: this.tokens };
-    writeFileSync(this.storagePath, `${JSON.stringify(body, null, 2)}\n`, { mode: 0o600 });
+  private persist(tokens = this.tokens): void {
+    const body: OAuthTokenStore = { version: 1, tokens };
+    this.tokenStore.save(`${JSON.stringify(body, null, 2)}\n`);
   }
 }

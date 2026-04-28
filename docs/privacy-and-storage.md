@@ -21,20 +21,21 @@ The AES-GCM envelopes are local obfuscation only. The crypto keys are also store
 
 ## What Stays In Companion Storage
 
-- Companion-brokered connector OAuth tokens are stored under `.pi-office/companion/connector-oauth-tokens.json` on the companion machine in the first implementation. This keeps provider tokens out of the Office taskpane, but it is not yet OS-keychain-backed storage.
+- On Windows companion hosts, companion-brokered connector OAuth tokens are stored under `.pi-office/companion/connector-oauth-tokens.dpapi.json` in a DPAPI `CurrentUser` encrypted envelope. Existing plain `.pi-office/companion/connector-oauth-tokens.json` files are migrated into that encrypted envelope and renamed with a `.migrated` suffix.
+- On platforms without an implemented secure backend, companion-brokered connector OAuth tokens still fall back to `.pi-office/companion/connector-oauth-tokens.json` with local file permissions. This keeps provider tokens out of the Office taskpane, but it is not yet OS-keychain-backed storage on those platforms.
 - The companion uses those stored tokens to add bearer authentication when verifying or executing the matching MCP connector. Tokens are not exported in connector bundles and are not copied back into taskpane `localStorage`.
 
-`SECURITY-008` tracks the follow-up to move companion OAuth tokens behind platform encryption or an OS keychain, plus clear/revoke controls.
+`SECURITY-008` tracks the remaining follow-up to add secure macOS/Linux keychain backends and provider revoke controls.
 
 ## Clear Data Controls
 
 The taskpane Settings -> Privacy tab can clear:
 
 - All provider credentials and the provider credential encryption key.
-- All connector configuration, connector secrets, OAuth state, connector scopes, connector logs, and the connector encryption key.
+- All connector configuration, connector secrets, OAuth state, connector scopes, connector logs, and the connector encryption key. When the optional companion is connected, this also clears companion-held connector OAuth tokens.
 - Saved local chat history.
 
-Per-provider auth removal remains available from Settings -> AI Providers, and per-connector removal remains available from Settings -> Integrations.
+Per-provider auth removal remains available from Settings -> AI Providers, and per-connector removal remains available from Settings -> Integrations. When the optional companion is connected, per-connector removal also clears any companion-held OAuth token for that connector.
 
 Connector records also store the selected setup profile, redacted config metadata, per-tool enablement overrides, and whether the user suppressed the advanced-tool warning for that connector. Exported connector bundles include profile and tool-policy metadata so teams can reproduce safe defaults, but secrets and OAuth tokens are still omitted and imported OAuth connectors must sign in again.
 

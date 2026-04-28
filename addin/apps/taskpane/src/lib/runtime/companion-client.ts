@@ -1,6 +1,8 @@
 import type {
   CompanionConnectorDefinition,
   CompanionDiscoveryAttempt,
+  CompanionConnectorOAuthClearRequest,
+  CompanionConnectorOAuthClearResponse,
   CompanionConnectorOAuthStartRequest,
   CompanionConnectorOAuthStatusRequest,
   CompanionConnectorOAuthStatusResponse,
@@ -384,6 +386,18 @@ export class CompanionClient {
 
     return fetchJsonWithTimeout(`${this.state.endpoint}/v1/connectors/oauth/status`, {
       method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  async clearConnectorOAuthTokens(request: CompanionConnectorOAuthClearRequest = {}): Promise<CompanionConnectorOAuthClearResponse | undefined> {
+    await this.ensureInitialized();
+    if (this.state.status !== "connected" || !this.state.endpoint) {
+      return undefined;
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/connectors/oauth/tokens`, {
+      method: "DELETE",
       body: JSON.stringify(request),
     });
   }

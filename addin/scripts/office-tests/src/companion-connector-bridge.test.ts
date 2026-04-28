@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,6 +12,7 @@ import {
   resolveLocalStdioProcessEnvironment,
 } from "../../../../companion/src/connector-bridge.js";
 import { CompanionOAuthBroker } from "../../../../companion/src/oauth-broker.js";
+import { createCompanionOAuthTokenStore } from "../../../../companion/src/oauth-token-store.js";
 import type { CompanionConfig } from "../../../../companion/src/config.js";
 
 const READ_POLICY: CompanionConnectorDefinition["readPolicy"] = {
@@ -60,6 +61,61 @@ function companionConfig(dataDir: string): CompanionConfig {
       passphrase: "",
     },
   };
+}
+
+function granolaOAuthConnector(): CompanionConnectorDefinition {
+  return connector({
+    id: "granola",
+    connectorId: "granola",
+    name: "Granola",
+    source: "library",
+    category: "knowledge",
+    maturity: "beta",
+    setupKind: "remote_oauth",
+    authMethod: "oauth",
+    transport: "remote_http",
+    credentialSource: "oauth",
+    url: "https://mcp.granola.ai/mcp",
+    command: undefined,
+    args: undefined,
+    setupProfileId: "granola-hosted-oauth",
+    oauth: {
+      broker: "companion",
+      launchMode: "system_browser",
+      metadataUrl: "https://mcp.granola.ai/.well-known/oauth-authorization-server",
+      redirectPath: "/v1/connectors/oauth/callback",
+      clientName: "Pi-Office",
+    },
+  });
+}
+
+function mockGranolaOAuthFetch(): typeof fetch {
+  return (async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    if (url === "https://mcp.granola.ai/.well-known/oauth-authorization-server") {
+      return Response.json({
+        authorization_endpoint: "https://mcp-auth.granola.ai/oauth2/authorize",
+        token_endpoint: "https://mcp-auth.granola.ai/oauth2/token",
+        registration_endpoint: "https://mcp-auth.granola.ai/oauth2/register",
+      });
+    }
+    if (url === "https://mcp-auth.granola.ai/oauth2/register" && method === "POST") {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { redirect_uris?: string[] };
+      assert.deepEqual(body.redirect_uris, ["https://localhost:3444/v1/connectors/oauth/callback"]);
+      return Response.json({ client_id: "pi-office-test-client" }, { status: 201 });
+    }
+    if (url === "https://mcp-auth.granola.ai/oauth2/token" && method === "POST") {
+      assert.match(String(init?.body ?? ""), /code_verifier=/);
+      return Response.json({
+        access_token: "granola-access-token",
+        refresh_token: "granola-refresh-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+      });
+    }
+    return new Response(`Unexpected ${method} ${url}`, { status: 500 });
+  }) as typeof fetch;
 }
 
 test("local stdio env merges safe inherited variables, connector env, and manual credential target", () => {
@@ -246,61 +302,61 @@ test("connector tool classification uses annotations before conservative name ru
   assert.equal(unknown.defaultEnabled, false);
 });
 
+test("Windows companion OAuth token store persists encrypted DPAPI envelopes without raw tokens", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "pi-office-oauth-store-"));
+  try {
+    const config = companionConfig(dataDir);
+    const store = createCompanionOAuthTokenStore(config, {
+      platform: "win32",
+      protect: (value) => Buffer.from(`protected:${value}`, "utf8").toString("base64"),
+      unprotect: (payload) => Buffer.from(payload, "base64").toString("utf8").replace(/^protected:/, ""),
+    });
+    const raw = JSON.stringify({ version: 1, tokens: [{ connectorId: "granola", accessToken: "secret-access-token" }] });
+
+    store.save(raw);
+
+    assert.equal(store.storageKind, "windows-dpapi");
+    assert.equal(store.secure, true);
+    const stored = readFileSync(store.storagePath, "utf8");
+    assert.match(stored, /windows-dpapi-current-user/);
+    assert.doesNotMatch(stored, /secret-access-token/);
+    assert.equal(store.load(), raw);
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("Windows companion OAuth token store migrates legacy plain JSON into encrypted storage", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "pi-office-oauth-migrate-"));
+  try {
+    const legacyPath = join(dataDir, "connector-oauth-tokens.json");
+    const raw = JSON.stringify({ version: 1, tokens: [{ connectorId: "granola", accessToken: "legacy-token" }] });
+    writeFileSync(legacyPath, raw);
+
+    const store = createCompanionOAuthTokenStore(companionConfig(dataDir), {
+      platform: "win32",
+      protect: (value) => Buffer.from(`protected:${value}`, "utf8").toString("base64"),
+      unprotect: (payload) => Buffer.from(payload, "base64").toString("utf8").replace(/^protected:/, ""),
+    });
+
+    assert.equal(store.load(), raw);
+    assert.equal(existsSync(store.storagePath), true);
+    assert.equal(existsSync(legacyPath), false);
+    assert.equal(existsSync(`${legacyPath}.migrated`), true);
+    assert.doesNotMatch(readFileSync(store.storagePath, "utf8"), /legacy-token/);
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("companion OAuth broker performs DCR, callback exchange, and token persistence", async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "pi-office-oauth-"));
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = (async (input, init) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      if (url === "https://mcp.granola.ai/.well-known/oauth-authorization-server") {
-        return Response.json({
-          authorization_endpoint: "https://mcp-auth.granola.ai/oauth2/authorize",
-          token_endpoint: "https://mcp-auth.granola.ai/oauth2/token",
-          registration_endpoint: "https://mcp-auth.granola.ai/oauth2/register",
-        });
-      }
-      if (url === "https://mcp-auth.granola.ai/oauth2/register" && method === "POST") {
-        const body = JSON.parse(String(init?.body ?? "{}")) as { redirect_uris?: string[] };
-        assert.deepEqual(body.redirect_uris, ["https://localhost:3444/v1/connectors/oauth/callback"]);
-        return Response.json({ client_id: "pi-office-test-client" }, { status: 201 });
-      }
-      if (url === "https://mcp-auth.granola.ai/oauth2/token" && method === "POST") {
-        assert.match(String(init?.body ?? ""), /code_verifier=/);
-        return Response.json({
-          access_token: "granola-access-token",
-          refresh_token: "granola-refresh-token",
-          token_type: "Bearer",
-          expires_in: 3600,
-        });
-      }
-      return new Response(`Unexpected ${method} ${url}`, { status: 500 });
-    }) as typeof fetch;
+    globalThis.fetch = mockGranolaOAuthFetch();
 
     const broker = new CompanionOAuthBroker(companionConfig(dataDir));
-    const definition = connector({
-      id: "granola",
-      connectorId: "granola",
-      name: "Granola",
-      source: "library",
-      category: "knowledge",
-      maturity: "beta",
-      setupKind: "remote_oauth",
-      authMethod: "oauth",
-      transport: "remote_http",
-      credentialSource: "oauth",
-      url: "https://mcp.granola.ai/mcp",
-      command: undefined,
-      args: undefined,
-      setupProfileId: "granola-hosted-oauth",
-      oauth: {
-        broker: "companion",
-        launchMode: "system_browser",
-        metadataUrl: "https://mcp.granola.ai/.well-known/oauth-authorization-server",
-        redirectPath: "/v1/connectors/oauth/callback",
-        clientName: "Pi-Office",
-      },
-    });
+    const definition = granolaOAuthConnector();
 
     const started = await broker.start(definition);
     assert.equal(started.callbackUrl, "https://localhost:3444/v1/connectors/oauth/callback");
@@ -314,6 +370,42 @@ test("companion OAuth broker performs DCR, callback exchange, and token persiste
 
     const restoredBroker = new CompanionOAuthBroker(companionConfig(dataDir));
     assert.equal(await restoredBroker.getAccessToken(definition), "granola-access-token");
+
+    const cleared = restoredBroker.clearTokens();
+    assert.equal(cleared.ok, true);
+    assert.equal(cleared.cleared, 1);
+    const clearedBroker = new CompanionOAuthBroker(companionConfig(dataDir));
+    assert.equal(await clearedBroker.getAccessToken(definition), undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("companion OAuth broker fails closed when secure token persistence is unavailable", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "pi-office-oauth-failclosed-"));
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = mockGranolaOAuthFetch();
+    const definition = granolaOAuthConnector();
+    const broker = new CompanionOAuthBroker(companionConfig(dataDir), {
+      tokenStore: {
+        storageKind: "windows-dpapi",
+        secure: true,
+        storagePath: join(dataDir, "connector-oauth-tokens.dpapi.json"),
+        load: () => undefined,
+        save: () => {
+          throw new Error("secure storage unavailable");
+        },
+        clear: () => undefined,
+      },
+    });
+
+    const started = await broker.start(definition);
+    const callback = await broker.completeCallback({ state: started.state, code: "auth-code" });
+
+    assert.equal(callback.statusCode, 400);
+    assert.equal(await broker.getAccessToken(definition), undefined);
   } finally {
     globalThis.fetch = originalFetch;
     rmSync(dataDir, { recursive: true, force: true });

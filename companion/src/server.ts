@@ -4,6 +4,7 @@ import { createServer as createHttpsServer } from "node:https";
 import { dirname } from "node:path";
 import express from "express";
 import type {
+  CompanionConnectorOAuthClearRequest,
   CompanionConnectorOAuthStartRequest,
   CompanionConnectorOAuthStatusRequest,
   CompanionHealthResponse,
@@ -175,6 +176,16 @@ export class CompanionServer {
     app.post("/v1/connectors/oauth/status", (request, response) => {
       try {
         response.json(this.oauthBroker.status(request.body as CompanionConnectorOAuthStatusRequest));
+      } catch (error) {
+        response.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    app.delete("/v1/connectors/oauth/tokens", (request, response) => {
+      try {
+        response.json(this.oauthBroker.clearTokens(request.body as CompanionConnectorOAuthClearRequest | undefined));
       } catch (error) {
         response.status(400).json({
           error: error instanceof Error ? error.message : String(error),

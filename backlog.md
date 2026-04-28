@@ -758,23 +758,41 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Providers that require confidential clients or registered apps remain planned/disabled until their broker configuration exists.
   - Notes/Evidence: Microsoft Office Add-ins guidance says `openBrowserWindow` opens external URLs in a separate browser window and is not for authentication/data exchange with the add-in; this is why system-browser sign-in needs a broker instead of only replacing `window.open`. Closed 2026-04-27 by adding YAML-driven `oauth` profile settings, marking Granola as `oauth.broker=companion` with system-browser launch and callback path, adding `CompanionOAuthBroker` for metadata discovery, DCR, PKCE, loopback callback, token exchange, refresh, and companion-side token persistence, routing taskpane connector OAuth start through the companion when the selected profile requires it, and passing broker metadata into the companion connector definition so verification/execution can inject the companion-held bearer token. Regression coverage added for catalog metadata, browser DCR fail-closed behavior, companion DCR/callback/token persistence, and bridge token use.
 
-- [ ] SECURITY-008: Harden companion OAuth token storage with OS keychain or platform encryption
+- [x] SECURITY-008: Harden companion OAuth token storage with OS keychain or platform encryption
   - Category: Security
-  - Status: open
+  - Status: done
   - Priority: P2
   - Source: `FEATURE-019` implemented companion-side OAuth token storage using a local companion data file as the first broker slice.
-  - Details: Companion-brokered connector OAuth now keeps access and refresh tokens out of the Office taskpane, but the first implementation persists them in `.pi-office/companion/connector-oauth-tokens.json` with local file permissions rather than a platform keychain, DPAPI, or other OS-backed secret store. Before public release or team distribution, companion token storage should move behind a storage abstraction with platform encryption/keychain support, migration, clear/revoke controls, and explicit privacy copy.
+  - Details: Companion-brokered connector OAuth now keeps access and refresh tokens out of the Office taskpane and, on Windows companion hosts, stores them behind a DPAPI `CurrentUser` encrypted envelope at `.pi-office/companion/connector-oauth-tokens.dpapi.json`. Existing plain `.pi-office/companion/connector-oauth-tokens.json` files migrate into the encrypted envelope and are renamed with a `.migrated` suffix. Non-Windows secure keychain backends and provider-side revocation are tracked separately in `SECURITY-010`.
   - Dependencies: FEATURE-019, SECURITY-004.
   - Subtasks:
-    - [ ] Add a companion secret-store abstraction with Windows DPAPI/Credential Manager or cross-platform keychain support.
-    - [ ] Migrate existing companion OAuth token files safely or invalidate them with clear user guidance.
-    - [ ] Add clear/revoke controls for companion-held connector OAuth tokens.
-    - [ ] Add tests for storage failure, migration, clear, revoke, and refresh-token expiry.
+    - [x] Add a companion secret-store abstraction with Windows DPAPI-backed storage for supported Windows companion hosts.
+    - [x] Migrate existing companion OAuth token files safely into the encrypted Windows envelope.
+    - [x] Add clear controls for companion-held connector OAuth tokens from all-connector and per-connector taskpane cleanup paths.
+    - [x] Add tests for encrypted storage, migration, clear, and fail-closed storage failure.
   - Acceptance Criteria:
-    - [ ] Connector OAuth tokens are not stored as plain JSON in the companion data directory for supported platforms.
-    - [ ] Users can clear companion-held connector OAuth state from the UI.
-    - [ ] Failed migration or unavailable secure storage fails closed without silently exposing connector tools.
-  - Notes/Evidence: `FEATURE-019` deliberately kept the first broker generic and local; this task tracks the stronger storage hardening that should follow.
+    - [x] Connector OAuth tokens are not stored as plain JSON in the companion data directory for supported Windows companion hosts.
+    - [x] Users can clear companion-held connector OAuth state from the UI when the companion is connected.
+    - [x] Failed migration or unavailable secure storage fails closed without silently exposing connector tools.
+  - Notes/Evidence: Closed 2026-04-28 by adding `companion/src/oauth-token-store.ts`, routing `CompanionOAuthBroker` persistence through the token store, adding a companion `DELETE /v1/connectors/oauth/tokens` endpoint, and calling it from taskpane connector cleanup/removal. Windows storage uses PowerShell DPAPI-backed `ConvertFrom-SecureString`/`ConvertTo-SecureString` with stdin secret passing, migrates legacy JSON to `.migrated`, and keeps token assignment after successful persistence so storage failures do not leave tokens usable in memory. Regression coverage in `addin/scripts/office-tests/src/companion-connector-bridge.test.ts` covers encrypted envelope content, migration, broker clear, and secure-storage failure. Validation: `npm run typecheck:addin`, `npm --prefix companion run typecheck`, and `npm run test:office -- companion-connector-bridge` passed.
+
+- [ ] SECURITY-010: Add non-Windows keychain and provider revoke support for companion OAuth tokens
+  - Category: Security
+  - Status: open
+  - Priority: P3
+  - Source: `SECURITY-008` closed the Windows DPAPI-backed storage path but intentionally left cross-platform secure stores and provider-side revocation for a smaller follow-up.
+  - Details: The companion should eventually use macOS Keychain and Linux Secret Service/libsecret or another explicit secure-store backend instead of the unsupported local JSON fallback on non-Windows hosts. Connector cleanup should also revoke provider OAuth tokens when a connector profile exposes a supported revocation endpoint.
+  - Dependencies: SECURITY-008, FEATURE-019.
+  - Subtasks:
+    - [ ] Add macOS keychain-backed token storage or mark macOS companion OAuth unavailable until secure storage is configured.
+    - [ ] Add Linux secure storage or mark Linux companion OAuth unavailable until secure storage is configured.
+    - [ ] Add optional OAuth token revocation metadata and best-effort revoke calls during clear/remove flows.
+    - [ ] Add tests for non-Windows fail-closed behavior and revocation endpoint handling.
+  - Acceptance Criteria:
+    - [ ] Companion OAuth tokens are not persisted in plain JSON on any platform marked as supported for companion-brokered OAuth.
+    - [ ] Connector removal can revoke provider tokens when the provider exposes a compatible revocation endpoint.
+    - [ ] Unsupported secure-storage platforms surface honest guidance and do not silently expose connector tools.
+  - Notes/Evidence: Windows DPAPI storage is the current supported secure backend; non-Windows fallback remains explicitly labeled `local-json-unsupported`.
 
 - [x] SECURITY-009: Protect public repository main branch and add non-commercial license
   - Category: Security

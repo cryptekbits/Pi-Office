@@ -952,6 +952,17 @@ export interface CompanionConnectorOAuthStatusResponse {
   diagnostics?: ConnectorDiagnostic[] | undefined;
 }
 
+export interface CompanionConnectorOAuthClearRequest {
+  connectorId?: string | undefined;
+}
+
+export interface CompanionConnectorOAuthClearResponse {
+  ok: true;
+  cleared: number;
+  storageKind: "windows-dpapi" | "local-json-unsupported";
+  secure: boolean;
+}
+
 export interface ConnectorOAuthCredentialHandoff {
   accessToken: string;
   refreshToken?: string | undefined;

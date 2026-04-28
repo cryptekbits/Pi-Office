@@ -3388,6 +3388,7 @@ class InProcessKernel {
       return (await connectorRuntime.setAuditPreference(body as ConnectorAuditPreference)) as T;
     }
     if (method === "DELETE" && path === "/v1/connectors") {
+      await this.companionClient.clearConnectorOAuthTokens();
       return (await connectorRuntime.clearAll()) as T;
     }
     if (method === "GET" && path === "/v1/connectors/export") {
@@ -3585,7 +3586,9 @@ class InProcessKernel {
     }
     const connectorDeleteMatch = method === "DELETE" ? path.match(/^\/v1\/connectors\/([^/]+)$/) : null;
     if (connectorDeleteMatch) {
-      return (await connectorRuntime.removeConnector(decodeURIComponent(connectorDeleteMatch[1] ?? ""))) as T;
+      const connectorId = decodeURIComponent(connectorDeleteMatch[1] ?? "");
+      await this.companionClient.clearConnectorOAuthTokens({ connectorId });
+      return (await connectorRuntime.removeConnector(connectorId)) as T;
     }
     const connectorLogsMatch = method === "GET" ? path.match(/^\/v1\/connectors\/([^/]+)\/logs$/) : null;
     if (connectorLogsMatch) {

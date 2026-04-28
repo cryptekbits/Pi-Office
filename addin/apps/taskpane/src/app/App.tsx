@@ -1784,7 +1784,7 @@ export function App() {
       await deleteJson<{ ok: true }>("/v1/connectors");
       await refreshConnectorState(connectorScopeContext);
       await syncCurrentSessionState();
-      pushSystemMessage("Cleared connector configuration, secrets, scopes, OAuth state, and logs.");
+      pushSystemMessage("Cleared connector configuration, secrets, scopes, OAuth state, companion-held OAuth tokens when connected, and logs.");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushErrorMessage(`Connector cleanup failed: ${message}`);
