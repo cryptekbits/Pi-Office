@@ -422,6 +422,33 @@ test("taskpane bridge dispatch cases stay in sync with supported Office tools", 
   assert.match(String(unsupported.error), /not supported by the taskpane bridge/);
 });
 
+test("PowerPoint table actions stay routed through the table action domain", () => {
+  const powerPointActionsSource = readProjectFile("apps/taskpane/src/lib/office/powerpoint-actions.ts");
+  const tableActionsSource = readProjectFile("apps/taskpane/src/lib/office/powerpoint-actions/tables.ts");
+  const tableActionNames = [
+    "addTable",
+    "setTableValues",
+    "updateTable",
+    "setTableCell",
+    "updateTableCell",
+    "addTableRows",
+    "deleteTableRows",
+    "addTableColumns",
+    "deleteTableColumns",
+    "clearTable",
+    "mergeTableCells",
+    "resizeTableCell",
+    "splitTableCell",
+  ];
+
+  assert.match(powerPointActionsSource, /from "\.\/powerpoint-actions\/tables"/);
+  assert.match(powerPointActionsSource, /isPowerPointTableAction\(type\)/);
+  assert.match(powerPointActionsSource, /applyPowerPointTableAction\(context, action, type, options, actionOptions\)/);
+  for (const actionName of tableActionNames) {
+    assert.match(tableActionsSource, new RegExp(`"${actionName}"`));
+  }
+});
+
 test("deferred Word tool bridge action types are implemented by applyWordAction", async () => {
   const wordActionsSource = readProjectFile("apps/taskpane/src/lib/office/word-actions.ts");
   const dispatchedActions: string[] = [];
