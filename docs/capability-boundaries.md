@@ -1,6 +1,6 @@
 # Pi-Office Capability Boundaries
 
-Pi-Office uses `UserPreferences.companionRuntimeMode` to control runtime ownership. The default is Smart Auto routing: the taskpane remains fully usable by itself, and when a healthy companion is connected, eligible non-Office capabilities prefer companion execution while keeping taskpane fallback where the browser runtime can honestly execute the work. Basic mode keeps companion-only tools hidden from model turns. Advanced mode prefers companion-owned provider/auth/agent capability once advertised, but falls back to taskpane-supported inference until those companion surfaces exist.
+Pi-Office uses `UserPreferences.companionRuntimeMode` to control runtime ownership. The default is Smart Auto routing: the taskpane remains fully usable by itself, and when a healthy companion is connected, eligible non-Office capabilities prefer companion execution while keeping taskpane fallback where the browser runtime can honestly execute the work. Basic mode keeps companion-only tools hidden from model turns. Advanced mode can use companion-owned provider auth and the first companion Pi agent runtime path once those capabilities are advertised and explicit companion-held provider auth exists.
 
 Connected companion sessions receive an explicit non-secret settings sync containing taskpane preferences, runtime mode, enabled provider/model choices, provider default selections, and connector summary counts. This sync deliberately excludes provider API keys, OAuth tokens, and manual connector secrets. Moving provider API keys into companion-owned auth now uses a separate explicit provider-auth route with secure companion storage where available; broad OAuth/cloud migration remains planned.
 
@@ -28,7 +28,7 @@ The broader Basic/Advanced handoff contract lives in `TASKPANE_COMPANION_PROTOCO
 | --- | --- | --- |
 | `addin-only` | Office.js reads/writes, selection, navigation, review cards, Office permissions, PowerPoint native slide/shape visual verification | Always execute in the Office-hosted taskpane. |
 | `companion-only` | Saved-folder file reads, MCP/web connectors, sandbox shell, true viewport/window screenshots, memory | Hidden/unavailable unless the companion advertises support. |
-| `either` | Inference, browser API-key provider calls, image generation, diagnostics, background jobs | Prefer companion only when companion provider auth/agent support is available; otherwise use taskpane fallback. |
+| `either` | Inference, browser API-key provider calls, image generation, diagnostics, background jobs | Prefer companion only when companion provider auth/agent support is available and configured; otherwise use taskpane fallback. |
 
 Office document mutation is permanently taskpane-owned. A companion-owned agent may request Office tool execution, but the taskpane remains the authoritative Office.js executor and permission surface.
 
@@ -36,7 +36,7 @@ Office document mutation is permanently taskpane-owned. A companion-owned agent 
 
 Browser API-key providers remain supported in taskpane-only mode. Companion API-key provider storage is available through `POST /v1/provider-auth/api-key` only after explicit user action, reports redacted state through `GET /v1/provider-auth/status`, and clears via `DELETE /v1/provider-auth`. On Windows companion hosts this storage uses the same DPAPI `CurrentUser` envelope pattern as connector OAuth tokens; on platforms without secure storage support, provider-secret writes fail closed until `SECURITY-010` adds non-Windows keychain backends.
 
-Companion-owned inference still requires a companion Pi agent/session runtime. Even when provider-auth storage is available, Smart Auto and Advanced mode must keep inference taskpane-owned until both `CompanionCapabilities.providerAuth` and `CompanionCapabilities.agent` report available.
+Companion-owned inference requires Advanced mode plus explicit companion-held provider auth for the selected synced provider. Smart Auto keeps browser/taskpane inference as the default, and Office.js execution remains taskpane-owned even when the companion Pi agent handles the model turn.
 
 ## Visual Capture
 

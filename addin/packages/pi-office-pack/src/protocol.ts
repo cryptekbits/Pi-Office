@@ -123,16 +123,16 @@ export const TASKPANE_COMPANION_PROTOCOL: CompanionProtocolDescriptor = {
     {
       id: "chat_streaming",
       label: "Companion-owned chat streaming",
-      state: "reserved",
+      state: "available",
       owner: "companion",
       version: "companion-agent-v1",
-      summary: "Reserved for companion-owned Pi agent sessions after the companion agent runtime lands.",
+      summary: "Companion-owned Pi agent sessions are available for Advanced mode through a synchronous first runtime path; streaming UI handoff remains planned.",
       routes: [
         {
           method: "POST",
           path: "/v1/sessions/:sessionId/agent/prompt",
-          state: "reserved",
-          description: "Agent preflight entrypoint; current companion owns session readiness checks and returns fail-closed until the companion Pi agent runtime lands.",
+          state: "available",
+          description: "Runs an Advanced-mode companion-owned Pi agent prompt using explicit companion-held provider auth. Office.js execution remains taskpane-owned.",
         },
       ],
     },
@@ -564,6 +564,10 @@ export interface CompanionAgentPromptResponse {
   taskpaneFallback: boolean;
   officeToolProxy: true;
   secretsIncluded: false;
+  completed?: boolean | undefined;
+  assistantText?: string | undefined;
+  messageCount?: number | undefined;
+  toolCallCount?: number | undefined;
 }
 
 export type CompanionOfficeToolResultStatus =

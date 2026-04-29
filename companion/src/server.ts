@@ -72,6 +72,7 @@ function createCompanionState(
   providerAuth?: CompanionProviderAuthCapability | undefined,
 ): CompanionState {
   const connectorToolCount = connectorToolNames?.length ?? 0;
+  const providerAuthAvailable = providerAuth?.available === true;
   return {
     status: "connected",
     endpoint: config.endpoint,
@@ -86,13 +87,15 @@ function createCompanionState(
       shell,
       version: "companion-capabilities-v1",
       agent: {
-        state: "unavailable",
-        available: false,
+        state: providerAuthAvailable ? "available" : "unavailable",
+        available: providerAuthAvailable,
         version: "companion-agent-v1",
         officeToolProxy: true,
-        providerAuth: false,
+        providerAuth: providerAuthAvailable,
         smartAuto: true,
-        reason: "Companion-owned inference is capability-gated until the companion agent runtime and provider auth setup are available.",
+        reason: providerAuthAvailable
+          ? "Companion-owned inference is available in Advanced mode when a synced provider has explicit companion-held auth. Office.js execution remains taskpane-owned."
+          : "Companion-owned inference requires secure companion provider auth setup before Advanced mode can use it.",
       },
       providerAuth: providerAuth ?? {
         state: "unavailable",
@@ -424,7 +427,7 @@ export class CompanionServer {
       response.json(result);
     });
 
-    app.post("/v1/sessions/:sessionId/agent/prompt", (request, response) => {
+    app.post("/v1/sessions/:sessionId/agent/prompt", async (request, response) => {
       const session = this.sessionsById.get(request.params.sessionId);
       if (!session) {
         response.status(404).json({ error: "Unknown companion session." });
@@ -432,7 +435,7 @@ export class CompanionServer {
       }
 
       try {
-        response.json(this.agentSessions.handlePrompt(session, request.body as CompanionAgentPromptRequest));
+        response.json(await this.agentSessions.handlePrompt(session, request.body as CompanionAgentPromptRequest));
       } catch (error) {
         response.status(400).json({
           error: error instanceof Error ? error.message : String(error),

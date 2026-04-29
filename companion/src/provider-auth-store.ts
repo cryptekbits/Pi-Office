@@ -158,6 +158,43 @@ export class CompanionProviderAuthStore {
     return this.loadEnvelope().providers[normalized]?.secret;
   }
 
+  markVerificationSuccess(provider: string): CompanionProviderAuthStatusResponse {
+    const normalized = normalizeProvider(provider);
+    if (!normalized) {
+      throw new Error("provider is required.");
+    }
+    const envelope = this.loadEnvelope();
+    const record = envelope.providers[normalized];
+    if (!record) return this.status([normalized]);
+    const verifiedAt = new Date().toISOString();
+    envelope.providers[normalized] = {
+      ...record,
+      verifiedAt,
+      lastVerificationAttemptAt: verifiedAt,
+      lastVerificationError: undefined,
+    };
+    this.saveEnvelope(envelope);
+    return this.status([normalized]);
+  }
+
+  markVerificationFailure(provider: string, error: unknown): CompanionProviderAuthStatusResponse {
+    const normalized = normalizeProvider(provider);
+    if (!normalized) {
+      throw new Error("provider is required.");
+    }
+    const envelope = this.loadEnvelope();
+    const record = envelope.providers[normalized];
+    if (!record) return this.status([normalized]);
+    envelope.providers[normalized] = {
+      ...record,
+      verifiedAt: undefined,
+      lastVerificationAttemptAt: new Date().toISOString(),
+      lastVerificationError: error instanceof Error ? error.message : String(error),
+    };
+    this.saveEnvelope(envelope);
+    return this.status([normalized]);
+  }
+
   setApiKey(request: CompanionProviderApiKeyRequest): CompanionProviderAuthStatusResponse {
     if (!this.persistence.secure) {
       throw new Error("Secure companion provider auth storage is unavailable on this platform.");

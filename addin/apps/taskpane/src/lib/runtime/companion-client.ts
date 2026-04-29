@@ -6,6 +6,8 @@ import type {
   CompanionConnectorOAuthStartRequest,
   CompanionConnectorOAuthStatusRequest,
   CompanionConnectorOAuthStatusResponse,
+  CompanionAgentPromptRequest,
+  CompanionAgentPromptResponse,
   CompanionHealthResponse,
   CompanionNativeCaptureRequest,
   CompanionNativeCaptureResponse,
@@ -677,5 +679,20 @@ export class CompanionClient {
       method: "POST",
       body: JSON.stringify(request),
     });
+  }
+
+  async promptAgent(
+    browserSessionId: string,
+    request: CompanionAgentPromptRequest,
+  ): Promise<CompanionAgentPromptResponse> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.state.endpoint) {
+      throw new Error("Optional companion agent is not connected for this taskpane session.");
+    }
+
+    return fetchJsonWithTimeout(`${this.state.endpoint}/v1/sessions/${binding.companionSessionId}/agent/prompt`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    }, 120_000);
   }
 }

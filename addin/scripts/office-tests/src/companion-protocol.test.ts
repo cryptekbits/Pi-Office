@@ -29,7 +29,7 @@ test("advanced companion protocol covers the required ownership seams", () => {
 
   assert.equal(protocolFeature("capability_discovery").state, "available");
   assert.equal(protocolFeature("tool_requests").state, "available");
-  assert.equal(protocolFeature("chat_streaming").state, "reserved");
+  assert.equal(protocolFeature("chat_streaming").state, "available");
   assert.equal(protocolFeature("office_tool_execution").owner, "taskpane");
   assert.equal(protocolFeature("settings_sync").state, "available");
   assert.equal(protocolFeature("auth_migration").state, "available");
@@ -47,7 +47,7 @@ test("companion protocol routes are declared and implemented", () => {
   }
 
   assert.equal(protocolFeature("settings_sync").routes.some((route) => route.path === "/v1/sessions/:sessionId/settings/sync"), true);
-  assert.equal(protocolFeature("chat_streaming").state, "reserved");
+  assert.equal(protocolFeature("chat_streaming").state, "available");
   assert.equal(protocolFeature("office_tool_execution").state, "reserved");
 });
 
