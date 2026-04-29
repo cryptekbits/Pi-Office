@@ -27,6 +27,8 @@ Use this format for every new task:
 
 Checkbox rule: checked boxes are only for tasks whose `Status` is `done` or `obsolete`. Keep active, blocked, or parked work unchecked.
 
+Parent epic rule: parent epics are backlog rollups, not direct implementation picks. If an item is marked `Parent Epic: yes` or says `Selection: do not pick directly`, choose or create a concrete child task instead, and update the parent only as a rollup after child progress lands.
+
 Commit rule: when working on a backlog task, commit that task's code/doc/test changes right away after validation. Keep the commit scoped to that backlog item only, and use conventional commit style with the backlog ID in the subject, for example `fix(BUG-001): make taskpane build independent of local certs`.
 
 ## Active Backlog
@@ -914,8 +916,10 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
 
 - [ ] FEATURE-006: Add advanced mode where companion owns inference, providers, MCP, memory, and non-Office tools
   - Category: Feature
-  - Status: in_progress
+  - Status: blocked
   - Priority: P0
+  - Parent Epic: yes
+  - Selection: do not pick directly; use child tasks `FEATURE-033` through `FEATURE-038` for future implementation work.
   - Source: 2026-04-26 plan implementation after user clarified "Companion owns all" for advanced mode.
   - Details: The current taskpane owns the Pi agent, model/provider catalog, provider auth, and tool loop, while the companion is a sidecar for read-only file and local MCP calls. Advanced mode should invert that ownership: the companion owns inference, providers, model auth, MCP, memory, non-Office tools, and tool calling. The taskpane remains the Office-hosted presentation layer and structured Office.js executor. Basic taskpane-only mode must remain usable when the companion is absent.
   - Dependencies: SECURITY-006, FEATURE-002, BUG-003, SECURITY-001.
@@ -927,16 +931,132 @@ Commit rule: when working on a backlog task, commit that task's code/doc/test ch
     - [x] Surface companion provider-auth status/copy/clear in taskpane Settings without silent taskpane-secret migration.
     - [x] Add companion-side agent session preflight and Office tool result scaffold that fails closed until the real companion Pi agent runtime lands.
     - [x] Add a first companion-side Pi agent runtime path for Advanced prompts using explicit companion-held API-key auth.
-    - [ ] Add companion-side Pi agent/session ownership while keeping Office tools proxied back to the taskpane.
-    - [ ] Complete seamless Basic -> Advanced migration of settings, preferences, enabled providers/models, and connector configuration.
-    - [ ] Store or broker remaining OAuth/cloud provider secrets through the companion using OS keychain-compatible storage where available.
-    - [ ] Preserve taskpane-only fallback when the companion disconnects or is not installed.
+    - [ ] Complete child tasks `FEATURE-033` through `FEATURE-038`.
   - Acceptance Criteria:
-    - [ ] In Advanced mode, provider/model inference and non-Office tool calls are executed by the companion, not the browser taskpane.
-    - [ ] Office.js calls still execute only inside the active Office taskpane.
-    - [ ] Switching Basic -> Advanced preserves non-secret preferences automatically and handles secrets through an explicit safe migration flow.
-    - [ ] Reconnect/fallback behavior is visible and tested.
-  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `companion/src/server.ts` only exposes health, read-only file tools, and MCP execution. 2026-04-26 Smart Auto slice added a shared `CapabilityRegistry`, explicit runtime resolution fields, session capability route, extended `CompanionCapabilities`, Settings capability groups, companion-only native viewport capture gating, Windows-first native capture API, taskpane fallback behavior for browser-supported providers/images, and capability docs. This slice keeps real companion-owned provider auth/inference unavailable until explicit companion auth/session storage exists; no taskpane provider secrets are silently migrated. Validation passed: `npm --prefix addin run typecheck:pack`, `npm --prefix addin run typecheck:taskpane`, `npm --prefix companion run typecheck`, `npm --prefix addin run test:office` with 138 tests, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`. 2026-04-28 protocol slice added `TASKPANE_COMPANION_PROTOCOL` with a versioned Basic/Advanced contract for capability discovery, planned settings sync, reserved companion chat streaming, available companion tool requests, reserved Office tool result proxying, and planned explicit auth migration. Companion health/default taskpane fallback state now advertises `CompanionCapabilities.protocol`, `docs/advanced-companion-protocol.md` documents the current available/reserved/planned route states, and `companion-protocol.test.ts` protects taskpane-owned Office.js execution plus the no-silent-secret-migration rule. 2026-04-28 mode-switch slice added `UserPreferences.companionRuntimeMode` with `basic`, `smart_auto`, and `advanced` values, exposed it in Settings -> Companion, made capability resolution and model-visible tool publication honor Basic mode by hiding companion-only tools, and documented Advanced fallback until companion agent/provider auth exists. 2026-04-28 settings-sync slice made `settings_sync` an available protocol route, added `POST /v1/sessions/:sessionId/settings/sync`, syncs `UserPreferences`, runtime mode, default provider models, enabled providers/models, and connector counts to connected companion sessions, and rejects any request that claims to include secrets. 2026-04-28 provider-auth storage slice added `companion/src/provider-auth-store.ts`, shared secure-store file naming, companion routes `GET /v1/provider-auth/status`, `POST /v1/provider-auth/api-key`, and `DELETE /v1/provider-auth`, provider-auth capability metadata for secure storage/configured-provider counts, protocol/docs updates, and tests proving raw API keys are absent from DPAPI envelopes, explicit user action is required, unsupported storage fails closed, and clear behavior works. 2026-04-28 Settings UI slice added `CompanionClient` provider-auth status/set/clear calls, taskpane routes for explicit copy from existing browser API-key storage into companion secure storage, provider-card companion status/copy/clear controls, and source tests proving settings sync still excludes API keys. 2026-04-29 agent-session scaffold added typed companion agent prompt and Office-result contracts, `companion/src/agent-session.ts`, server routing for the reserved agent routes, Advanced-mode provider-auth preflight, no-secret validation, Basic/Smart Auto taskpane fallback responses, and fail-closed `agent_runtime_unavailable` / `no_pending_office_tool_request` states until a real companion Pi agent runtime lands. 2026-04-29 first runtime slice added direct companion `@mariozechner/pi-agent-core` / `@mariozechner/pi-ai` dependencies, session-scoped companion `Agent` instances, Advanced-mode provider/model resolution from synced settings, companion-held API-key use, provider verification success/failure promotion/demotion, available protocol state for `POST /v1/sessions/:sessionId/agent/prompt`, taskpane `CompanionClient.promptAgent`, and tests proving prompt completion plus auth-failure demotion. OAuth/cloud provider secret brokerage, streaming UI handoff, pending Office tool proxy turns, broader non-Office tool ownership, and full config migration remain open. Validation for the first runtime slice passed: `npm --prefix addin run test:office -- companion-agent-session companion-protocol companion-provider-auth` (285 tests), `npm run typecheck:companion`, `npm run typecheck:addin`, `npm run build`, `npm run check:bundle` (`main.js=1555.0 KiB`), `npm run validate:manifests`, and `git diff --check`. Validation for the agent-session scaffold passed: `npm run typecheck:companion`; add-in package/taskpane typechecks via local `tsc` workaround after `npm run typecheck:addin` hit a Windows workspace PATH issue; `npm --prefix addin run test:office -- companion-agent-session companion-protocol capability-routing companion-provider-auth` (284 tests); local pack/taskpane/companion builds via local `tsc`/Vite workaround after `npm run build` hit the same PATH issue; `npm run check:bundle` (`main.js=1554.7 KiB`); `npm run validate:manifests`; and `git diff --check`. Validation for the provider-auth storage slice passed: `npm --prefix addin run test:office -- companion-provider-auth companion-protocol capability-routing` (265 tests), `npm run typecheck:companion`, and `npm run typecheck:addin`.
+    - [ ] `FEATURE-033` through `FEATURE-038` are done or explicitly obsolete with evidence.
+    - [ ] Advanced mode has a tested end-to-end companion-owned inference/tool loop while Office.js execution remains taskpane-owned.
+    - [ ] Basic/Smart Auto fallback, Advanced migration, provider-secret handling, and reconnect/disconnect behavior are covered by automated or documented manual validation.
+  - Notes/Evidence: 2026-04-26 review found `BrowserOfficeSession` still constructs the Pi `Agent` in `addin/apps/taskpane/src/lib/runtime/inprocess-kernel.ts`, while `companion/src/server.ts` only exposes health, read-only file tools, and MCP execution. 2026-04-26 Smart Auto slice added a shared `CapabilityRegistry`, explicit runtime resolution fields, session capability route, extended `CompanionCapabilities`, Settings capability groups, companion-only native viewport capture gating, Windows-first native capture API, taskpane fallback behavior for browser-supported providers/images, and capability docs. This slice keeps real companion-owned provider auth/inference unavailable until explicit companion auth/session storage exists; no taskpane provider secrets are silently migrated. Validation passed: `npm --prefix addin run typecheck:pack`, `npm --prefix addin run typecheck:taskpane`, `npm --prefix companion run typecheck`, `npm --prefix addin run test:office` with 138 tests, `npm run build`, `npm run check:bundle`, `npm run validate:manifests`, and `git diff --check`. 2026-04-28 protocol slice added `TASKPANE_COMPANION_PROTOCOL` with a versioned Basic/Advanced contract for capability discovery, planned settings sync, reserved companion chat streaming, available companion tool requests, reserved Office tool result proxying, and planned explicit auth migration. Companion health/default taskpane fallback state now advertises `CompanionCapabilities.protocol`, `docs/advanced-companion-protocol.md` documents the current available/reserved/planned route states, and `companion-protocol.test.ts` protects taskpane-owned Office.js execution plus the no-silent-secret-migration rule. 2026-04-28 mode-switch slice added `UserPreferences.companionRuntimeMode` with `basic`, `smart_auto`, and `advanced` values, exposed it in Settings -> Companion, made capability resolution and model-visible tool publication honor Basic mode by hiding companion-only tools, and documented Advanced fallback until companion agent/provider auth exists. 2026-04-28 settings-sync slice made `settings_sync` an available protocol route, added `POST /v1/sessions/:sessionId/settings/sync`, syncs `UserPreferences`, runtime mode, default provider models, enabled providers/models, and connector counts to connected companion sessions, and rejects any request that claims to include secrets. 2026-04-28 provider-auth storage slice added `companion/src/provider-auth-store.ts`, shared secure-store file naming, companion routes `GET /v1/provider-auth/status`, `POST /v1/provider-auth/api-key`, and `DELETE /v1/provider-auth`, provider-auth capability metadata for secure storage/configured-provider counts, protocol/docs updates, and tests proving raw API keys are absent from DPAPI envelopes, explicit user action is required, unsupported storage fails closed, and clear behavior works. 2026-04-28 Settings UI slice added `CompanionClient` provider-auth status/set/clear calls, taskpane routes for explicit copy from existing browser API-key storage into companion secure storage, provider-card companion status/copy/clear controls, and source tests proving settings sync still excludes API keys. 2026-04-29 agent-session scaffold added typed companion agent prompt and Office-result contracts, `companion/src/agent-session.ts`, server routing for the reserved agent routes, Advanced-mode provider-auth preflight, no-secret validation, Basic/Smart Auto taskpane fallback responses, and fail-closed `agent_runtime_unavailable` / `no_pending_office_tool_request` states until a real companion Pi agent runtime lands. 2026-04-29 first runtime slice added direct companion `@mariozechner/pi-agent-core` / `@mariozechner/pi-ai` dependencies, session-scoped companion `Agent` instances, Advanced-mode provider/model resolution from synced settings, companion-held API-key use, provider verification success/failure promotion/demotion, available protocol state for `POST /v1/sessions/:sessionId/agent/prompt`, taskpane `CompanionClient.promptAgent`, and tests proving prompt completion plus auth-failure demotion. OAuth/cloud provider secret brokerage, streaming UI handoff, pending Office tool proxy turns, broader non-Office tool ownership, and full config migration remain open. 2026-04-29 stakeholder review froze `FEATURE-006` as a blocked parent epic because repeated backlog sessions kept selecting the broad P0 umbrella; remaining work is split into child tasks `FEATURE-033` through `FEATURE-038`, and future agents must not pick `FEATURE-006` directly. Validation for the first runtime slice passed: `npm --prefix addin run test:office -- companion-agent-session companion-protocol companion-provider-auth` (285 tests), `npm run typecheck:companion`, `npm run typecheck:addin`, `npm run build`, `npm run check:bundle` (`main.js=1555.0 KiB`), `npm run validate:manifests`, and `git diff --check`. Validation for the agent-session scaffold passed: `npm run typecheck:companion`; add-in package/taskpane typechecks via local `tsc` workaround after `npm run typecheck:addin` hit a Windows workspace PATH issue; `npm --prefix addin run test:office -- companion-agent-session companion-protocol capability-routing companion-provider-auth` (284 tests); local pack/taskpane/companion builds via local `tsc`/Vite workaround after `npm run build` hit the same PATH issue; `npm run check:bundle` (`main.js=1554.7 KiB`); `npm run validate:manifests`; and `git diff --check`. Validation for the provider-auth storage slice passed: `npm --prefix addin run test:office -- companion-provider-auth companion-protocol capability-routing` (265 tests), `npm run typecheck:companion`, and `npm run typecheck:addin`.
+
+- [ ] FEATURE-033: Wire companion-owned agent prompts into taskpane chat streaming UI
+  - Category: Feature
+  - Status: open
+  - Priority: P0
+  - Parent: FEATURE-006
+  - Source: 2026-04-29 `FEATURE-006` parent-epic split after stakeholder asked to stop repeatedly selecting the broad parent task.
+  - Details: The companion can now synchronously run a first Advanced-mode Pi agent prompt through `POST /v1/sessions/:sessionId/agent/prompt`, but the taskpane chat loop still does not hand normal user turns to that route or render companion-owned response state as the primary chat stream. This task wires Advanced-mode prompt routing and UI state without moving Office.js execution out of the taskpane.
+  - Dependencies: FEATURE-006, FEATURE-002, SECURITY-002.
+  - Subtasks:
+    - [ ] Route Advanced-mode chat prompts through `CompanionClient.promptAgent` when the companion advertises agent/provider-auth capability and the selected provider has companion-held auth.
+    - [ ] Preserve Basic and Smart Auto taskpane-owned inference behavior.
+    - [ ] Render companion responses, failures, and fallback guidance in the existing chat transcript without exposing provider secrets.
+    - [ ] Add timeout/cancel/session-cleanup behavior for companion prompt turns.
+  - Acceptance Criteria:
+    - [ ] In Advanced mode with companion-held auth, a normal taskpane chat prompt uses the companion agent route instead of browser taskpane inference.
+    - [ ] Basic/Smart Auto continue using the existing taskpane runtime unless a later explicit child task changes that behavior.
+    - [ ] Companion prompt failures surface actionable fallback copy and never duplicate stale-session errors.
+    - [ ] Automated tests cover routing, response rendering, no-secret payloads, and timeout/cancel cleanup.
+  - Notes/Evidence: Split out of `FEATURE-006` after the first companion agent runtime path landed in `709ec12`.
+
+- [ ] FEATURE-034: Add companion agent Office tool proxy turn loop
+  - Category: Feature
+  - Status: open
+  - Priority: P0
+  - Parent: FEATURE-006
+  - Source: 2026-04-29 `FEATURE-006` parent-epic split.
+  - Details: Office.js must remain taskpane-owned, but a companion-owned agent needs a structured way to request Office tool calls, pause while the taskpane executes them under existing permission rules, and resume with compact results. The current `/v1/sessions/:sessionId/agent/office-tool-result` route intentionally returns `no_pending_office_tool_request`.
+  - Dependencies: FEATURE-006, FEATURE-028, FEATURE-029, SECURITY-002, SECURITY-003.
+  - Subtasks:
+    - [ ] Define pending Office tool request state in the companion agent session manager.
+    - [ ] Add taskpane polling or push-style delivery for companion-requested Office tool calls.
+    - [ ] Execute Office requests through the existing taskpane Office tool dispatcher and permission/autonomy gates.
+    - [ ] Resume the companion agent with compact Office tool results and preserve MCP result-handle behavior for large payloads.
+  - Acceptance Criteria:
+    - [ ] A companion-owned Advanced-mode agent can request at least one read Office tool and one gated write Office tool through the taskpane.
+    - [ ] Office.js never executes in the companion process.
+    - [ ] Permission timeouts, denial, disconnect, and session cleanup fail closed.
+    - [ ] Tests cover pending-request lifecycle, result delivery, and no-secret result payloads.
+  - Notes/Evidence: Parent `FEATURE-006` now records Office proxying as child work rather than a direct parent-epic subtask.
+
+- [ ] FEATURE-035: Broker Advanced-mode OAuth and cloud provider secrets through the companion
+  - Category: Feature
+  - Status: open
+  - Priority: P0
+  - Parent: FEATURE-006
+  - Source: 2026-04-29 `FEATURE-006` parent-epic split.
+  - Details: Companion provider auth currently supports explicit API-key storage. Advanced mode also needs honest companion-owned auth for OAuth/subscription/cloud providers such as Copilot/Codex-style access, Gemini CLI/Vertex, Bedrock, Azure, and future providers where browser API-key execution is not appropriate. Secret migration must remain explicit and OS-keychain-compatible.
+  - Dependencies: FEATURE-006, FEATURE-002, SECURITY-008, SECURITY-010.
+  - Subtasks:
+    - [ ] Map provider catalog auth methods to companion-supported broker/storage paths.
+    - [ ] Add or extend companion auth routes for OAuth/cloud provider credentials without exposing tokens to taskpane storage.
+    - [ ] Keep unsupported providers visible as planned/auth-required rather than executable.
+    - [ ] Add clear/revoke behavior where provider APIs support revocation, and document gaps.
+  - Acceptance Criteria:
+    - [ ] At least one non-API-key Advanced provider path can be configured and used through companion-held auth.
+    - [ ] Taskpane settings sync still excludes provider secrets.
+    - [ ] Unsupported provider paths fail closed with precise user-facing status.
+    - [ ] Tests cover token redaction, auth-required state, clear/revoke behavior, and provider readiness transitions.
+  - Notes/Evidence: Follows provider-auth storage and connector OAuth token-store work; non-Windows secure storage remains tracked by `SECURITY-010`.
+
+- [ ] FEATURE-036: Complete Basic to Advanced migration and companion config handoff
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Parent: FEATURE-006
+  - Source: 2026-04-29 `FEATURE-006` parent-epic split.
+  - Details: Non-secret settings sync exists, but Advanced mode still needs a complete migration experience for user preferences, enabled providers/models, connector configuration, and explicit user-approved secret movement. Migration must avoid surprise deletion of taskpane credentials and must stay understandable when the companion is absent or storage is unsupported.
+  - Dependencies: FEATURE-006, FEATURE-033, FEATURE-035, SECURITY-004.
+  - Subtasks:
+    - [ ] Audit which taskpane settings already sync and which still need migration coverage.
+    - [ ] Add explicit user-visible migration status for providers, models, connectors, and preferences.
+    - [ ] Implement safe copy/update/clear flows for supported secrets and connector credentials.
+    - [ ] Document what remains taskpane-local, companion-held, or unsupported.
+  - Acceptance Criteria:
+    - [ ] Switching Basic -> Advanced preserves non-secret settings and clearly reports each auth/config migration state.
+    - [ ] Secret movement always requires explicit user action and never occurs through settings sync.
+    - [ ] Users can keep or clear taskpane-local credentials separately from companion-held credentials.
+    - [ ] Tests cover migration status, supported copy paths, unsupported storage, and clear behavior.
+  - Notes/Evidence: Parent `FEATURE-006` keeps the broad migration acceptance criterion; this child owns the implementation and validation details.
+
+- [ ] FEATURE-037: Add companion-owned memory and non-Office tool context for Advanced agent sessions
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Parent: FEATURE-006
+  - Source: 2026-04-29 `FEATURE-006` parent-epic split.
+  - Details: Advanced mode says the companion should own memory, MCP, saved-folder context, shell-gated non-Office tools, and local workspace context. Some tools already execute through the companion, but the companion-owned agent session does not yet receive a coherent memory/context layer or tool inventory for non-Office work.
+  - Dependencies: FEATURE-006, FEATURE-001, FEATURE-007, FEATURE-008, FEATURE-030, SECURITY-006.
+  - Subtasks:
+    - [ ] Define the companion agent's non-Office tool inventory contract for file, MCP, MCP handles, shell-gated tools, and future memory.
+    - [ ] Attach read-safe companion tools to Advanced agent sessions with existing policy gates.
+    - [ ] Add memory/context loading boundaries that respect saved-vs-unsaved document state and privacy settings.
+    - [ ] Keep large connector/file results behind compact handles or summaries.
+  - Acceptance Criteria:
+    - [ ] Advanced companion agent sessions can use at least one read-safe saved-folder tool and one MCP result-handle flow without taskpane inference ownership.
+    - [ ] Unsaved documents and disabled companion capabilities hide the relevant context/tools.
+    - [ ] Memory/context payloads are bounded, redacted where needed, and documented.
+    - [ ] Tests cover tool inventory gating, saved/unsaved context, handle compaction, and no-secret boundaries.
+  - Notes/Evidence: Splits the non-Office ownership and memory parts of `FEATURE-006` from the narrower companion prompt/runtime path.
+
+- [ ] FEATURE-038: Harden Advanced-mode disconnect, reconnect, and completion matrix
+  - Category: Feature
+  - Status: open
+  - Priority: P1
+  - Parent: FEATURE-006
+  - Source: 2026-04-29 `FEATURE-006` parent-epic split.
+  - Details: Advanced mode needs a clear operational story when the companion is missing, unhealthy, disconnected mid-turn, has unsupported secure storage, or loses provider/tool capability. This child owns the final fallback/reconnect matrix and the evidence needed to close the `FEATURE-006` parent epic.
+  - Dependencies: FEATURE-033, FEATURE-034, FEATURE-035, FEATURE-036, FEATURE-037.
+  - Subtasks:
+    - [ ] Define the Basic/Smart Auto/Advanced fallback and reconnect matrix.
+    - [ ] Add or update UI copy and runtime state for companion missing, disconnected, stale session, unsupported storage, and provider-auth-required cases.
+    - [ ] Add automated regression coverage for disconnect, reconnect, cancellation, stale session, and capability downgrade.
+    - [ ] Update `FEATURE-006` acceptance evidence and close or obsolete any remaining child gaps.
+  - Acceptance Criteria:
+    - [ ] Users can tell whether Advanced mode is using companion execution, taskpane fallback, or blocked/auth-required state.
+    - [ ] Mid-turn disconnects and stale sessions fail closed without duplicate noisy chat errors.
+    - [ ] Reconnect re-syncs non-secret settings and tool/provider capability state.
+    - [ ] `FEATURE-006` has a final dated completion matrix referencing all child tasks and validation commands.
+  - Notes/Evidence: This is the intended final child before closing or explicitly narrowing parent `FEATURE-006`.
 
 - [x] FEATURE-007: Curate connector setup profiles and enforce visible tool safety controls
   - Category: Feature
